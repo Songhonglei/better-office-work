@@ -1,0 +1,3 @@
+interface:
+  display_name: "macOS 合盖与电源设置"
+  short_description: "用一句话调整 Mac 合盖、休眠与电源策略，先展示方案并确认再执行"
