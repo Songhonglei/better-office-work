@@ -15,10 +15,21 @@ text-humanize / scripts/preflight-check.py
 
 结果分三级:
     FAIL  机器残留，必须归零（半角引号 / 编号小标题 / 标点空格 / 破折号形态）
-    WARN  文风项，只报数字供判断（超长段 / 同位语密度 / 词库命中）
+    WARN  文风项，只报数字供判断（超长段 / 同位语密度 / 词库命中 / SS-CN8 节拍）
     INFO  仅记录（段落数、人称计数）
 
 退出码: 0 = 无 FAIL; 1 = 有 FAIL。加 --strict 时 WARN 也计入。
+
+基线核对（SS-CN7，双向自检）:
+    中文稿的正常形态是**全角引号多、半角引号 0**。反过来（全角 0 / 半角 N）几乎只有一个成因：
+    原文被写盘时把 “ ” 落成了 \" —— 也就是**转录污染**，不是原文缺陷。
+    脚本会把「全角引号」数字一并打出，并在这种形态下额外提示，避免把 0 缺陷的原文
+    误报成 N 处 FAIL，再顺着「修」出一批假改动。
+
+SS-CN8（节拍化人味，仅 long / literary）:
+    「人味标记太规律」是 2026-10 才补录的反向模式 —— 现有五类都在抓「太机器」，
+    这条抓「太像人」。段尾俏皮句节拍化 / 每节必收束 / 招呼式称谓密度 / 同构三连排比。
+    全部只报数字，不参与退出码：节拍是文风取舍，该不该砍由作者定。
 
 语言护栏（--lang，默认 auto）:
     本脚本的标点层规则是**中文专属**的 —— 半角引号、`...`、`--` 在英文里本来就是正确写法，
@@ -38,6 +49,20 @@ FENCE = BQ + BQ + BQ
 
 CLICHE_METAPHOR = ["信使", "信笺", "叹息", "诗篇", "守望者", "耳语", "序章", "独白", "回响"]
 FILLER_ADJ = ["温柔", "沉默", "浪漫", "治愈", "漫长", "细碎"]
+
+# ---------- SS-CN8：节拍化人味（长文反向模式）----------
+# 下面三个词库不是「禁用词」，是**密度探针**：散文里出现一两次是好事，
+# 以固定间隔复现才说明「人味被当成开关在用」。阈值故意放宽，只报数不判死。
+GREET_WORDS = ["咱们", "大伙儿", "人家"]
+SOFT_WORDS = ["确实", "自然", "实在", "其实", "恐怕", "大概"]
+# 段尾短句：段落末句 CJK 不超过这个字数就算一记，**只报数不设阈值**（原因见 collect() 内注释）。
+# 20 字是按真实稿子标定的读数口径：被判定「段尾节拍化」的《拿破仑》原稿 43% / 24 处，
+# 未命中的《佛像》原稿 24% / 12 处 —— 数字能提示，但不足以自动判死。
+TAIL_SENT_MAX = 20
+# 同构三连排比：句内 2 个以上逗号/顿号、且整句不超过这个字数。
+# 注意是**粗略**计数，会把「制作、供奉」这类顿号词组一起算进来（虚高约三成），所以限放 8。
+TRIAD_SENT_MAX = 22
+TRIAD_LIMIT = 8
 
 # 「编号式小标题」：四种形态
 #   1、/ 1. / 1) / 1）   —— 阿拉伯数字 + 分隔符
@@ -106,6 +131,25 @@ def strip_md_markers(text):
     return text
 
 
+def baseline_note(text):
+    """SS-CN7 的**方向核对**：光有「半角引号 N 处」这个数，不足以判断是原文缺陷还是转录污染。
+
+    中文稿的正常形态是全角引号多、半角引号 0。反过来的形态（全角 0 / 半角 N）几乎只有一个
+    成因 —— 把原文写进草稿文件时，工具把 “ ” 落成了 "。此时报出 N 处 FAIL 是假 FAIL，
+    照着「修」还会修出一批假改动（实测 2026-10《佛像》稿：原文标点层全 0，写盘后变成 12 处半角）。
+    """
+    half = text.count('"')
+    curly = text.count("“") + text.count("”")
+    if half and not curly:
+        return ("基线核对（SS-CN7）：全文 0 个全角引号 / %d 个半角引号 —— 中文稿正常应相反。\n"
+                "     先确认这是不是「写盘转录污染」：把成对的 \" 按出现顺序还原成 “ ”，再重跑。\n"
+                "     不核对方向就当成 FAIL 去改，会把 0 缺陷的原文改成假修复。" % half)
+    if half and curly:
+        return ("基线核对（SS-CN7）：全角引号 %d 个、半角引号 %d 个并存。\n"
+                "     半角那 %d 处才是真残留，全角那些不要动。" % (curly, half, half))
+    return None
+
+
 def collect(text, tier, para_max, lyrical):
     rows = []
 
@@ -119,6 +163,9 @@ def collect(text, tier, para_max, lyrical):
     # ---------- 标点层：FAIL ----------
     add(FAIL, "标点层", '半角双引号 "', text.count('"'), 0)
     add(FAIL, "标点层", "半角单引号 '", text.count("'"), 0)
+    # 全角引号只报数，不设限。存在的意义是给「半角引号 N 处」一个**方向感**：
+    # 中文稿应当全角多、半角 0；全角也是 0 而半角非 0，就是转录污染（见 baseline_note）。
+    add(INFO, "标点层", "全角引号 “ ”", text.count("“") + text.count("”"))
     add(FAIL, "标点层", "中文后半角逗号/句点", len(re.findall(r"[\u4e00-\u9fff][,.]", text)), 0)
     add(FAIL, "标点层", "三点省略号 ...", text.count("..."), 0)
     # 注意左右负向断言：否则 markdown 的 --- 分隔线会被当成 -- 误报
@@ -166,6 +213,43 @@ def collect(text, tier, para_max, lyrical):
         detail = {w: text.count(w) for w in CLICHE_METAPHOR + FILLER_ADJ if text.count(w)}
         if detail:
             add(INFO, "R类", "词库命中明细", detail)
+
+    # ---------- SS-CN8：节拍化人味（仅 long / literary）----------
+    # 短文本不适用：评论 / 即刻 / 微博本来就该塞语气词，「节拍」无从谈起（见 SKILL.md Genre Gate）。
+    # 全部只报数字、不设 FAIL —— 节拍是文风取舍，砍不砍由作者定（阈值故意放宽）。
+    #
+    # 本块只实现**能可靠计数**的三项（8c 密度探针 / 8d 同构排比，以及 8a 的原始数字）。
+    # SS-CN8 的另两条（段尾俏皮句节拍化、每节必收束）靠人工读，判据写在 references/ai-smells-cn.md。
+    # 为什么不给 8a 设 WARN 阈值：实测标不出来。20 字这个宽限会把「布袋和尚这条线，跟中国十世纪
+    # 的一位僧人有关」这种普通中句一起算进去，于是「改得更好」的稿子占比反而从 24% 涨到 35%。
+    # 阈值造出来的只会是假精确，所以 8a 只手报数字 + 正文里那句人工判据。
+    if tier in ("long", "literary"):
+        # 8a 段尾短句：段落末句 ≤20 字，供人工看「是不是每段都在抖包袱」
+        tail = 0
+        for p in paras:
+            ps = [s for s in re.split(r"[。！？!?]", p) if cjk_len(s) >= 2]
+            if ps and cjk_len(ps[-1]) <= TAIL_SENT_MAX:
+                tail += 1
+        add(INFO, "SS-CN8", "段尾短句(≤%d字) / 段落数" % TAIL_SENT_MAX,
+            "%d / %d" % (tail, len(paras)))
+        add(INFO, "SS-CN8", "段尾短句占比%(仅供人工参考)",
+            round(tail * 100.0 / len(paras)) if paras else 0)
+
+        # 8c 招呼式称谓 / 模糊限定词密度
+        add(WARN, "SS-CN8", "招呼式称谓(咱们/大伙儿/人家)",
+            sum(text.count(w) for w in GREET_WORDS), 5)
+        add(WARN, "SS-CN8", "模糊限定词(确实/自然/实在/其实/恐怕/大概)",
+            sum(text.count(w) for w in SOFT_WORDS), 8)
+
+        # 8d 同构三连排比（粗略计数，见常量注释）
+        ss = [s for s in re.split(r"[。！？!?\n]", text) if cjk_len(s) >= 2]
+        triad = sum(1 for s in ss
+                    if (s.count("，") + s.count("、")) >= 2 and cjk_len(s) <= TRIAD_SENT_MAX)
+        add(WARN, "SS-CN8", "同构三连排比(粗略)", triad, TRIAD_LIMIT)
+
+        # 结构背景：只报节数，节末是否「必收束」交人工（见上）
+        add(INFO, "SS-CN8", "小标题节数",
+            len(re.findall(r"^[ \t]{0,3}#{1,6}[ \t]+", text, flags=re.M)))
 
     return rows
 
@@ -230,6 +314,8 @@ def main():
         lang_note = ("非中文文本（中文占比 %.0f%% < 50%%），标点层规则不适用，已降级为 INFO。"
                      "本脚本只覆盖中文文本；确需强制判定请传 --lang zh。" % (ratio * 100))
 
+    base_note = baseline_note(text) if zh_mode else None
+
     if a.json:
         out = {
             "file": a.path, "tier": a.tier, "cjk": cjk_len(text),
@@ -240,6 +326,8 @@ def main():
         }
         if lang_note:
             out["lang_note"] = lang_note
+        if base_note:
+            out["baseline_note"] = base_note
         print(json.dumps(out, ensure_ascii=False, indent=2))
         return 1 if (fails or (a.strict and warns)) else 0
 
@@ -247,6 +335,8 @@ def main():
     print("档位: %s    中文字数: %d" % (a.tier, cjk_len(text)))
     if lang_note:
         print("!! %s" % lang_note)
+    if base_note:
+        print("!! %s" % base_note)
     print("-" * 66)
     scope = None
     for r, mark, bad in graded:
