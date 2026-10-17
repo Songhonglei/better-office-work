@@ -43,10 +43,10 @@ class DocumentTests(unittest.TestCase):
             self.assertTrue(case['expected'])
 
     def test_version_and_history_boundary(self):
-        self.assertIn('**Version**: 1.5.0', (ROOT / 'SKILL.md').read_text())
+        self.assertIn('**Version**: 1.5.1', (ROOT / 'SKILL.md').read_text())
         self.assertIn('旧版目标和写作规则已废弃', (ROOT / 'SKILL.md').read_text())
         changelog = (ROOT / 'CHANGELOG.md').read_text()
-        self.assertLess(changelog.index('v1.5.0'), changelog.index('### v1.4.0'))
+        self.assertLess(changelog.index('### v1.5.1'), changelog.index('### v1.4.0'))
         self.assertIn('不作为当前操作规则', changelog)
 
 
