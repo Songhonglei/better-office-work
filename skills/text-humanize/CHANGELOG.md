@@ -3,6 +3,18 @@
 All notable changes to this skill are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+### v1.6.0 (2026-10-18)
+
+**Added**
+
+- SS-CN7 新增「体例统一清单」，用户显式选定格式统一润色时执行六条标准动作：主流人物译名并全篇统一、人名分隔符统一为中文间隔号「·」（U+00B7）、半角直引号统一为全角引号、替换后逐对核对引号配对、清理中文与标点间冗余空格、书名号并列不加顿号。
+- SKILL.md 模式 B 第 2 步挂接该清单，要求在改动说明中逐条报告执行结果。
+- 安全边界零变化：清单仅约束排版体例，不涉及来源判定或规避审核。
+
+**Changed**
+
+- SS-CN7 原「不要自动把所有 ASCII 引号配对替换」收紧为「默认不自动全篇替换；用户选定体例后按清单执行并核对配对」。
+
 ### v1.5.1 (2026-10-17)
 
 **Changed**
