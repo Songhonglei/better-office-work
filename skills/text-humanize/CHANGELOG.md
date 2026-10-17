@@ -3,6 +3,24 @@
 All notable changes to this skill are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+### v1.5.0 (2026-10-17)
+
+**Changed**
+
+- 重定位为中英文清晰表达与风格润色：保留自然表达、体裁适配、修辞分析、排版、诊断和对照改写，保留原意、事实、引语、引用和必要披露。
+- 废弃来源判断和概率、Looks human / High risk of flagging、过审保证、规避审核或检测、隐瞒必要披露、伪装真人等目标。
+- 删除故意错字、人类指纹、假犹豫、强制站队、虚构身份或亲历、日期模糊化、虚构出处规则。标题、列表、平衡观点、正确语法和破折号均允许。
+- `ai-smells-cn.md` → `style-patterns-cn.md`，`ai-smells-en.md` → `style-patterns-en.md`，`ai-smells-r-cn.md` → `rhetoric-cn.md`，同步所有当前互引。`lyrical-appositive.md` 保留修辞分析，示例明确为虚构；纸箱、凉水等新材料不能冒充忠实润色或亲历。
+- `preflight-check.py` 保留标准库 CLI、JSON、改前改后统计，默认仅 INFO/WARN。`--strict` 仅将显式选定 `--check` 的格式项升级为 FAIL；SS-CN8、R 类、词频、句长/段长不阻塞。移除无充分依据的质量阈值。
+- 统一自动语言口径为 CJK >50%（正好 50% 归英文），修复普通标题和短文本破折号被强制 FAIL、软换行按段计数、引号计数推断转录污染的问题。支持波浪线/多反引号围栏、多反引号行内代码、URL、英文片段、引用保护。
+- 新增脚本自动化回归、静态文档校验、改前改后样例及单独的模型行为验收用例。测试范围和真实运行结果见 `tests/README.md`；模型行为未运行时不得宣称通过。
+
+**历史保留与兼容性**
+
+以下 v1.4.0 及更早记录是原样保留的历史资料，其中来源结论、伪装指令、质量阈值和 FAIL/strict 语义均已废弃，不作为当前操作规则。SS-CN7/SS-CN8 代码仅保留检索兼容；JSON 常用顶层字段保留，行名和级别随新语义调整。旧依赖方需重新核对。
+
+本版本同步更新入口、参考、脚本和测试；升级时应复制完整技能目录，避免混用旧入口。发布范围为 GitHub 仓库更新，不包含 ClawHub 发布、平台申诉或审核承诺。
+
 ### v1.4.0 (2026-10-16)
 
 **新增 SS-CN8「节拍化人味」（反向模式）+ SS-CN7 补录「基线方向核对」**
