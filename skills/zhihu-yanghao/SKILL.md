@@ -4,7 +4,7 @@ description: This skill provides the full Zhihu account-nurturing (养号) workf
 agent_created: true
 ---
 
-# 知乎养号（zhihu-yanghao）v1.3.8
+# 知乎养号（zhihu-yanghao）v1.3.9
 
 > ## ⛔ 跑之前先确认账号状态
 > 若账号处于限流 / 禁言（`config.account_status.silenced=true`），**只做只读浏览**：
@@ -210,6 +210,10 @@ DOM 选择器、按钮点击要点见 references/selectors.md。
 - references/workflow.md — config.json 配置、脚本调用方式、env 变量、示例命令
 
 ## 版本变更
+- **v1.3.9（2026-10-19）**：`write_answer.js` 发布按钮零宽字符修复（同步 run_shift.js v1.3.7 已验证逻辑）：
+  1. 旧 `innerText.trim() === "发布回答"` 不去 `\u200b`——按钮带零宽字符时静默 `publish-clicked: false`（正文已填、URL 不跳转、不报错）。2026-10-19 实测复现该坑后修复。
+  2. 改为 `[\u200b\s]+` 清洗 + 主候选 `["发布回答","提交回答"]` + 回退「发布」（仅编辑器存在时）+ 跳过 `disabled`，失败时输出 `WRITE_ANSWER_PARTIAL_FAIL: publish`（同页禁止重试）。
+  3. 已实测发布成功（37 字短回答，CLI 验证 `OK_NOT_COLLAPSED`）。
 - **v1.3.8（2026-09-15）**：账号受限期（限流 / 禁言）降级能力与写作整改：
   1. **禁言期模式**：`config.account_status.silenced` 开关 + `run_shift.js` 配置加载后立即退出的硬护栏（`SILENCED_MODE`/`SHIFT_SKIPPED`）；三班 `answer=false`、`interactions.like.min/max=0` 双击保险。
   2. **新增 `scripts/browse_only.js`**：只读浏览（热榜 → 垂直领域问题 → 滚动停留 → 首页流），零点击互动，用于禁言期维持活跃度。

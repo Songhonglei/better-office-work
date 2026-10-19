@@ -43,13 +43,22 @@
   cliLog('risk-control wait 60s before publish...')
   await wait(60)
 
+  // v1.3.9 发布按钮修复（与 run_shift.js 对齐）：innerText.trim() 不去零宽字符 \u200b，
+  // 按钮带 \u200b 时旧匹配恒 false → 静默 publish-clicked: false。
+  // 改为 [\u200b\s]+ 清洗 + 主候选 ["发布回答","提交回答"] + 回退「发布」（仅编辑器存在时）+ 跳过 disabled。
   const pub = await js('(() => {'
+    + ' const clean = function (s) { return (s || "").replace(/[\\u200b\\s]+/g, ""); };'
     + ' const btns = Array.from(document.querySelectorAll("button"));'
-    + ' const b = btns.find(function(x){ return x.innerText.trim() === "发布回答"; });'
-    + ' if (b) { b.click(); return true; }'
+    + ' const pre = ["发布回答", "提交回答"];'
+    + ' const b1 = btns.find(function (x) { return pre.indexOf(clean(x.innerText)) >= 0 && !x.disabled; });'
+    + ' if (b1) { b1.click(); return clean(b1.innerText); }'
+    + ' if (!document.querySelector(".public-DraftEditor-content")) return false;'
+    + ' const b2 = btns.find(function (x) { return clean(x.innerText) === "发布" && !x.disabled; });'
+    + ' if (b2) { b2.click(); return "发布"; }'
     + ' return false;'
     + '})()')
   cliLog('publish-clicked: ' + pub)
+  if (pub === false) cliLog('WRITE_ANSWER_PARTIAL_FAIL: publish — do NOT retry on same page (density risk)')
   await wait(8)
 
   const info = await pageInfo()
