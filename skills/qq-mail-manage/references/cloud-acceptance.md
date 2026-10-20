@@ -1,10 +1,10 @@
 # 临时云端发票转发验收
 
-在 Ela 等目标云环境执行；本机 Mac 或离线模拟通过不能替代云端通过。此文是执行协议，不是已完成记录。只有用户确认官方 access token 的安全取得和宿主注入后，才开始真实验收；未注入时交付代码与待执行清单。
+在 Ela 等目标云环境执行；本机 Mac 或离线模拟通过不能替代云端通过。此文是执行协议，不是已完成记录。只有用户确认官方完整凭据的安全取得、持久保存和宿主注入后，才开始真实验收；未注入时交付代码与待执行清单。
 
 ## 入口与认证
 
-确认目标环境安装真实 Codex CLI、Python 3.11+，可以访问腾讯官方 MCP。OAuth 模式依旧需要凭据库；此案例使用 env_token 和 read_send，不需要删除权限或钥匙串。由宿主安全注入 QQ_MAIL_ACCESS_TOKEN，操作者不打印、不复制到参数文件或 .env，不从另一台电脑导出令牌。
+确认目标环境安装真实 Codex CLI、Python 3.11+，可以访问腾讯官方 MCP。OAuth 模式依旧需要凭据库；此案例使用 env_token 和 read_send，不需要删除权限或钥匙串。优先由宿主安全保存并注入完整 bundle（含 QQ_MAIL_ACCESS_TOKEN、QQ_MAIL_REFRESH_TOKEN、原签发 client_id、token_type、scope、expires_at），操作者不打印、不复制到参数文件或 .env，不从另一台电脑导出令牌。
 
 在技能根目录：
 
@@ -14,7 +14,15 @@ python3 scripts/onboard.py --profile cloud init --account YOUR@qq.com --mode rea
 python3 scripts/onboard.py --profile cloud verify
 ```
 
-doctor 的存在性和历史时间不是认证成功；verify 必须本次实际通过 GetMe，账号别名精确匹配、scopes 包含 mail:read/mail:send 且不含 mail:delete 等额外写权限。失败停止，更新授权后再验证，不回退 OAuth、不自动刷新。
+doctor 的存在性和历史时间不是认证成功；verify 必须本次实际通过 GetMe，账号别名精确匹配、scopes 包含 mail:read/mail:send 且不含 mail:delete 等额外写权限。失败停止，更新授权后再验证，不回退 OAuth，不在 401 后刷新并重放邮件。默认 env + host 由宿主负责续期；本技能自动刷新必须先显式配置可原子保存的 host_command 或 private_file，见 [凭据与刷新](credentials.md)。环境变量不等于持久存储。
+
+## 凭据生命周期验收（用户确认后执行）
+
+- 不读取或复制 Mac 凭据，不读取其他账号/客户端的 token；同一 refresh token 不可由多个环境独立并行续期，迁移须由宿主完成单一所有权交接。
+- 记录来源、刷新策略、原签发客户端认证方法及持久化保障，只记录变量名/引用，绝不记录值。环境变量本身不保存轮换结果；宿主适配器须通过原子 CAS 合同。私有文件适配器须用户显式启用，明确未加密、生命周期不保证，目录 700、文件 600、当前用户所有且不在技能或仓库。
+- 离线验收先执行 `python3 -m unittest discover -s tests -v`。真实续期仅在父任务取得用户确认后，在目标云环境完成：到期前仅一次 POST、轮换结果整体保存、第二进程读取新版本且不再次刷新；无 refresh_token 返回时保留旧值。不得为了测试故意重放已消费的真实 refresh token。
+- 响应丢失、invalid_grant、保存失败或 pending 均停止，由宿主核对状态或替换新授权 bundle；不可直接清 pending 后重试旧值。容器重建必须恢复凭据、pending 与邮件回执，否则保持未验收。
+- 刷新后的首次邮件操作之前必须 GetMe 再核对账号与所需 read_send 权限，无 mail:delete；核验失败不读取或发送邮件。真实刷新未经执行时明确记录“未测试”。
 
 ## 固定查询与完整选取
 

@@ -18,7 +18,7 @@ from mail_config import (READ_TOOLS as TOOLS, WRITE_TOOLS, load_settings, codex_
 
 class AuthenticationError(RuntimeError):
     def __init__(self):
-        super().__init__("Official QQ MCP authorization failed or expired/revoked; securely update authorization and run verify; no refresh or automatic resend")
+        super().__init__("Official QQ MCP authorization failed or expired/revoked; securely update authorization and run verify; no reactive refresh or automatic resend")
 
 
 def authentication_failure(payload):
@@ -67,7 +67,7 @@ class CodexMail:
         self.sequence = 0
         try:
             await self.rpc("initialize", {
-                "clientInfo": {"name": "qq_mail_manage_bridge", "title": "QQ Mail Manage Bridge", "version": "1.1.1"},
+                "clientInfo": {"name": "qq_mail_manage_bridge", "title": "QQ Mail Manage Bridge", "version": "1.2.0"},
                 "capabilities": {"experimentalApi": True},
             })
             await self.send({"method": "initialized", "params": {}})

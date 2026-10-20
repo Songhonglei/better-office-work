@@ -1,6 +1,6 @@
 # QQ Mail Manage
 
-Version: **1.1.1** · License: [MIT](LICENSE)
+Version: **1.2.0** · License: [MIT](LICENSE)
 
 通过真实 Codex CLI 和腾讯官方 MCP 管理 QQ 邮箱，账号可配置。支持多 profile、OAuth/keyring 或环境变量认证初始化、列表/搜索/正文/附件，以及按用户具体指令发送、回复、转发；删除需先确认具体清单，执行移至垃圾箱。
 
@@ -33,17 +33,22 @@ python3 scripts/onboard.py --profile cloud init --account YOUR@qq.com --mode rea
 python3 scripts/onboard.py --profile cloud verify
 ```
 
-env_token 跳过 OAuth 登录及钥匙串要求，通过 bearer_token_env_var 向真正调用 MCP 的 app-server 提供变量名；profile 不存值。需要的是 QQ 官方 MCP access token，不是邮箱密码、IMAP 授权码或 refresh token。变量存在不等于成功，GetMe 必须核对实际邮箱和 scopes。401/过期/撤销时停止，不刷新、不重发、不回退其他身份。环境变量不保证云端重建后仍可用，不提交 .env、不从 Mac 导出令牌。
+env_token 跳过浏览器登录和钥匙串。默认宿主注入完整凭据：`QQ_MAIL_ACCESS_TOKEN`、`QQ_MAIL_REFRESH_TOKEN`、`QQ_MAIL_CLIENT_ID`、`QQ_MAIL_TOKEN_TYPE`、`QQ_MAIL_SCOPE`、`QQ_MAIL_EXPIRES_AT`（UTC Unix 秒），机密客户端另有 `QQ_MAIL_CLIENT_SECRET`。旧版仅 access token 配置仍兼容；已知临近到期则停止，由宿主刷新并重新注入。环境变量不等于持久存储，也不能把轮换结果只保存在当前进程环境中。
+
+需要本技能自动刷新时，优先选择宿主 `host_command` 原子存储适配器，显式设置 `--refresh-policy auto --client-auth-method METHOD`。无宿主适配能力时可显式选择 `private_file`；它未加密，生命周期不保证，目录 700、文件 600、当前用户所有，必须在技能及仓库外。具体配置、宿主协议和中断恢复见 [凭据与刷新](references/credentials.md)。同一 refresh token 不可由多个环境独立并行续期；不要从 Mac 导出凭据。
+
+单次刷新仅向已核实的 QQ 官方端点，不跟随重定向，按原签发客户端认证；轮换结果整体原子保存。响应丢失、invalid_grant 或中断会保留 pending 屏障，交给凭据所有者核对，禁止重试旧 refresh token。刷新后 GetMe 必须核对邮箱和权限；refresh token 不传给 MCP 子进程。邮件发送超时或结果未知仍不重发。
 
 ## Operations
 
 - [技能指令](SKILL.md)：工作流与用户授权边界。
 - [初始化与跨机使用](references/onboarding.md)：权限、profile、复用本机授权及恢复。
+- [凭据与刷新](references/credentials.md)：来源、续期、并发及故障恢复。
 - [操作参考](references/operations.md)：发送/回复/转发、批量删除、续期及写后核验。
 - [云端发票转发验收](references/cloud-acceptance.md)：固定七天范围、全分页、实际收件时间、发票字段及 QQ/Gmail 双端核验。
 - [版本记录](CHANGELOG.md)。
 
-原 OAuth 仍由真实 Codex 保存到安全凭据库；env_token 只从宿主注入变量读取。账号配置、邮件、附件和操作回执放在技能目录外，不随本包分发。不支持恢复、永久删除或清空垃圾箱。`queued=true` 仅代表入队；空响应、超时或结果未知时不自动重试。
+原 OAuth 仍由真实 Codex 保存到安全凭据库；env_token 通过显式选择的来源读取，不自动寻找本机凭据。账号配置、邮件、附件和操作回执放在技能目录外，不随本包分发。不支持恢复、永久删除或清空垃圾箱。`queued=true` 仅代表入队；空响应、超时或结果未知时不自动重试。
 
 ## Validation
 
@@ -51,4 +56,4 @@ env_token 跳过 OAuth 登录及钥匙串要求，通过 bearer_token_env_var �
 python3 -m unittest discover -s tests -v
 ```
 
-58 项离线回归（含原有 29 项）涵盖账号隔离、别名校验、授权范围、单次写入、未知结果不重试、删除续期和独立进程 onboard。不会自动发送或删除真实测试邮件。实际腾讯账号可获得的范围、完整历史、刷新和撤销行为仍需分别验收。
+91 项离线回归（保留原有 58 项）涵盖账号隔离、别名校验、授权范围、单次写入、未知结果不重试、删除续期和独立进程 onboard。不会自动发送或删除真实测试邮件。实际腾讯账号可获得的范围、完整历史、真实刷新和撤销行为仍需分别验收。

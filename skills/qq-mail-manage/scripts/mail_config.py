@@ -5,7 +5,7 @@ import re
 import shutil
 import tempfile
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import quote
 
@@ -16,29 +16,30 @@ MODES = {"read": ("mail:read",), "read_send": ("mail:read", "mail:send"), "manag
 AUTH_MODES = ("oauth_keyring", "env_token")
 DEFAULT_TOKEN_ENV = "QQ_MAIL_ACCESS_TOKEN"
 _known_token_names = {DEFAULT_TOKEN_ENV}
+_known_secret_names = {DEFAULT_TOKEN_ENV, "QQ_MAIL_REFRESH_TOKEN", "QQ_MAIL_CLIENT_SECRET"}
 _runtime_secrets = set()
 
 
-def validate_token_env_var(name):
+def validate_token_env_var(name, *, secret=True):
     if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name) or name in {
         "PATH", "HOME", "CODEX_HOME", "QQ_MAIL_HOME", "QQ_MAIL_PROFILE", "PYTHONPATH", "LD_PRELOAD", "RUST_LOG"}:
         raise ValueError("Invalid token environment variable name; use a dedicated credential variable")
     _known_token_names.add(name)
+    if secret:
+        _known_secret_names.add(name)
     return name
 
 
 def token_value(settings):
-    name = validate_token_env_var(settings.token_env_var)
-    value = os.environ.get(name)
-    if value is None or not value.strip() or any(c.isspace() for c in value):
-        raise RuntimeError("MCP access-token variable is missing, empty or invalid; securely inject/update it, then verify; no authentication fallback")
-    _runtime_secrets.add(value)
-    return value
+    from mail_credentials import access_token
+    return access_token(settings)
 
 
 def token_names(extra=()):
     """Read variable names only from profiles, never credentials or OAuth stores."""
     names = set(_known_token_names)
+    from mail_credentials import credential_env_names
+    names.update(credential_env_names())
     names.update(n for n in extra if isinstance(n, str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", n))
     try:
         paths = list((data_home() / "profiles").glob("*.json"))
@@ -48,6 +49,9 @@ def token_names(extra=()):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             name = data.get("token_env_var") if isinstance(data, dict) else None
+            if isinstance(data, dict) and isinstance(data.get("credential_env_vars"), dict):
+                names.update(n for n in data["credential_env_vars"].values()
+                             if isinstance(n, str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", n))
             if isinstance(name, str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
                 names.add(name)
         except (ValueError, OSError):
@@ -56,7 +60,9 @@ def token_names(extra=()):
 
 
 def subprocess_env(settings=None, *, for_mcp=False, extra_names=()):
+    from mail_credentials import credential_env_names
     names = token_names((*extra_names, settings.token_env_var if settings else None))
+    names.update(credential_env_names(settings))
     result = {k: v for k, v in os.environ.items() if k not in names}
     if for_mcp and settings and settings.auth_mode == "env_token":
         result[settings.token_env_var] = token_value(settings)
@@ -65,7 +71,24 @@ def subprocess_env(settings=None, *, for_mcp=False, extra_names=()):
 
 def redact(value):
     """Redact current runtime tokens before output, diagnostics or receipt persistence."""
-    secrets = set(_runtime_secrets) | {os.environ[n] for n in token_names() if os.environ.get(n)}
+    names = set(_known_secret_names)
+    # Public scope/type/client metadata must remain intact for GetMe validation.
+    try:
+        paths = list((data_home() / "profiles").glob("*.json"))
+    except (ValueError, OSError):
+        paths = []
+    for path in paths:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                candidates = [data.get("token_env_var")]
+                mapping = data.get("credential_env_vars", {})
+                if isinstance(mapping, dict):
+                    candidates.extend(mapping.get(key) for key in ("refresh_token", "client_secret"))
+                names.update(n for n in candidates if isinstance(n, str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", n))
+        except (ValueError, OSError):
+            continue
+    secrets = set(_runtime_secrets) | {os.environ[n] for n in names if isinstance(n, str) and os.environ.get(n)}
     if isinstance(value, str):
         for secret in sorted(secrets, key=len, reverse=True):
             for form in {secret, quote(secret, safe=""), json.dumps(secret)[1:-1]}:
@@ -135,6 +158,13 @@ class Settings:
     mode: str
     auth_mode: str = "oauth_keyring"
     token_env_var: str | None = None
+    credential_source: str = "env"
+    credential_env_vars: dict = field(default_factory=dict)
+    credential_file: str | None = None
+    credential_command: str | None = None
+    refresh_policy: str = "host"
+    client_auth_method: str | None = None
+    refresh_skew: int = 120
 
     @property
     def scopes(self):
@@ -145,10 +175,15 @@ class Settings:
         return data_home() / "state" / self.profile
 
     def as_dict(self):
-        result = {"version": 2, "profile": self.profile, "account": self.account, "server": self.server,
+        result = {"version": 3, "profile": self.profile, "account": self.account, "server": self.server,
                   "mode": self.mode, "auth_mode": self.auth_mode}
         if self.auth_mode == "env_token":
             result["token_env_var"] = self.token_env_var
+            result.update(credential_source=self.credential_source, credential_env_vars=self.credential_env_vars,
+                          refresh_policy=self.refresh_policy, refresh_skew=self.refresh_skew)
+            for key in ("credential_file", "credential_command", "client_auth_method"):
+                if getattr(self, key) is not None:
+                    result[key] = getattr(self, key)
         return result
 
 
@@ -173,7 +208,41 @@ def settings_from(data):
         token_env_var = validate_token_env_var(DEFAULT_TOKEN_ENV if token_env_var is None else token_env_var)
     elif token_env_var is not None:
         raise ValueError("token_env_var is only valid in env_token mode")
-    return Settings(name, account, server, data["mode"], auth_mode, token_env_var)
+    from mail_credentials import SOURCES, POLICIES, CLIENT_AUTH, ENV_FIELDS, outside_package
+    source = data.get("credential_source", "env")
+    policy = data.get("refresh_policy", "host")
+    mapping = data.get("credential_env_vars", {})
+    credential_file = data.get("credential_file")
+    command = data.get("credential_command")
+    method = data.get("client_auth_method")
+    skew = data.get("refresh_skew", 120)
+    if source not in SOURCES or policy not in POLICIES or type(skew) is not int or not 0 <= skew <= 3600:
+        raise ValueError("Invalid credential source, refresh policy or refresh_skew (0..3600 seconds)")
+    if not isinstance(mapping, dict) or set(mapping) - (ENV_FIELDS.keys() - {"access_token"}):
+        raise ValueError("Invalid credential environment field mapping; access_token uses token_env_var")
+    mapping = {key: validate_token_env_var(value, secret=key in ("refresh_token", "client_secret")) for key, value in mapping.items()}
+    effective_names = {**ENV_FIELDS, **mapping, "access_token": token_env_var}
+    if auth_mode == "env_token" and len(set(effective_names.values())) != len(effective_names):
+        raise ValueError("Credential environment variables must be distinct")
+    if method is not None and method not in CLIENT_AUTH:
+        raise ValueError("Unsupported original client authentication method")
+    if policy == "auto" and (auth_mode != "env_token" or source == "env" or method is None):
+        raise ValueError("Automatic refresh needs an explicit durable source and original client_auth_method")
+    if source == "private_file":
+        if not isinstance(credential_file, str) or not Path(credential_file).is_absolute():
+            raise ValueError("private_file needs an explicit absolute credential_file")
+        outside_package(credential_file)
+    elif credential_file is not None:
+        raise ValueError("credential_file requires explicit private_file source")
+    if source == "host_command":
+        if not isinstance(command, str) or not Path(command).is_absolute():
+            raise ValueError("host_command needs an explicit absolute executable credential_command")
+    elif command is not None:
+        raise ValueError("credential_command requires host_command source")
+    if auth_mode != "env_token" and (source != "env" or mapping or policy != "host" or method is not None):
+        raise ValueError("Credential source and refresh options require env_token mode")
+    return Settings(name, account, server, data["mode"], auth_mode, token_env_var, source, mapping,
+                    credential_file, command, policy, method, skew)
 
 
 def load_settings():

@@ -56,28 +56,26 @@ python3 scripts/onboard.py init --account YOUR@qq.com --mode manage --server qq-
 
 入口退出码：0 表示命令已返回结果，仍须查看 state 是 verified、configured_not_verified 或 awaiting_user_confirmation；1 表示运行失败，2 表示命令参数有误。profile 字段损坏时会提示修复非秘密 JSON 或新建 profile，不读取其他客户端凭据。操作结果未知时保留原记录，按操作参考核对邮箱后再决定下一步。
 
-## env_token：临时云端模式
+## env_token：宿主凭据与刷新
 
-通过 --auth-mode env_token 和 --token-env-var VARIABLE_NAME 选择认证，默认变量名 QQ_MAIL_ACCESS_TOKEN。变量名按 shell 环境变量规则校验，不能使用 PATH/HOME 等运行时配置变量；RUST_LOG 由桥接层固定关闭调试，也不能用作令牌变量，配置及加载时都会拒绝。profile 只保存 auth_mode 和 token_env_var，不保存值；旧 profile 缺 auth_mode 时按 oauth_keyring 处理。
-
-真实值必须由用户认可的官方令牌取得途径及云端 secret manager/运行时注入提供，另行确认，不在聊天、命令行、参数 JSON、.env 或仓库中传递。这里需要 QQ 官方 MCP access token，不是邮箱密码、IMAP 授权码或 refresh token。不要读取或导出 Mac 钥匙串，不借用其他客户端身份或令牌。
+默认 `--auth-mode env_token --token-env-var QQ_MAIL_ACCESS_TOKEN` 兼容旧配置，不启动 `codex mcp login`、不读取钥匙串。首次运行先由宿主安全取得官方凭据并注入，不在聊天、命令行、参数 JSON、.env 或仓库中传值。refresh token 是续期凭据，不能作为 MCP access token；原签发 client_id 和客户端认证方式必须来自原始授权/注册记录，不猜测或借用其他客户端。
 
 ```bash
-python3 scripts/onboard.py --profile cloud doctor --auth-mode env_token --token-env-var QQ_MAIL_ACCESS_TOKEN
-python3 scripts/onboard.py --profile cloud init --account YOUR@qq.com --mode read_send --auth-mode env_token --token-env-var QQ_MAIL_ACCESS_TOKEN
+python3 scripts/onboard.py --profile cloud doctor --auth-mode env_token
+python3 scripts/onboard.py --profile cloud init --account YOUR@qq.com --mode read_send --auth-mode env_token
 python3 scripts/onboard.py --profile cloud verify
 ```
 
-init 自动跳过 codex mcp login，verify 实际执行 GetMe；不把变量存在视为认证成功。--configure-only 仅写非秘密配置，仍为 configured_not_verified。login 子命令在 env_token 下明确拒绝启动 OAuth，提示安全更新变量后 verify。
+init 默认 env + host：宿主负责轮换、原子保存完整 bundle 并重新注入；本技能不在不可持久保存的环境变量上直接消费 refresh token。环境变量不等于持久存储，不保证跨进程或容器重建保留；仅更新当前进程 `os.environ` 无法保证下次启动读到新令牌。
 
-doctor 支持 --auth-mode/--token-env-var 诊断未初始化的环境。输出 token_variable_present/nonempty 和 auth_mode，不输出值；credential_status 为 unverified 或 previously_verified，last_verified_at 仅是历史实测，currently_verified 始终 false。只有本次 verify 成功才表示本次服务端身份/权限已验证；doctor 不探测钥匙串。
+若需要本技能自动刷新，选择明确的原子存储来源。推荐宿主 `host_command`；可显式启用未加密、生命周期不保证的 `private_file`（目录 700、文件 600、当前用户所有、包与仓库外）。全部字段、命令、权限和恢复流程见 [凭据与刷新](credentials.md)。profile 只存来源引用、变量名与非秘密刷新策略；旧 profile 缺 auth_mode 时仍按 oauth_keyring 处理，再初始化会保留已有来源与刷新配置。
 
-仅真正调用 MCP 的 app-server 子进程接收所选变量。版本检查、帮助、OAuth 登录等子进程移除登记的 QQ 令牌变量；配置中只传 bearer_token_env_var 变量名，不构造 Authorization 头；env_token 子进程将无关的 CLI 登录缓存设为 ephemeral，不读取系统登录凭据库。MCP 凭据由显式 bearer 变量提供，而非缓存或文件回退。沿用官方固定端点和同名配置冲突检查，仅允许与当前 profile 完全一致的 bearer_token_env_var；拒绝其他变量、静态认证头和 env_http_headers。
+doctor 支持与 init 相同的凭据来源/刷新参数，只显示变量名、存在性、策略和历史时间；不会打开凭据文件、调用宿主适配器或刷新。`currently_verified=false`，`store_inspected=false`；变量存在或历史 verified_at 均不能证明本次身份有效。`--configure-only` 只保存非秘密配置，之后仍须 verify。
 
-变量缺失、空值或非法值时在 app-server 启动前失败。服务返回 401、过期或撤销则终止当前客户端，不刷新、不切换 OAuth/文件/匿名身份、不重新提交写操作。若无法从底层错误判断原因，报告未验证并让宿主检查授权；不要因通用传输错误就重发。
+仅真正调用 MCP 的 app-server 接收 access token。版本检查、帮助、OAuth 登录和宿主凭据适配器均移除登记的 QQ 凭据变量，包括 refresh token/client secret；refresh token 不进入 MCP。环境变量名须专用，RUST_LOG/PATH/HOME 等运行时变量被拒绝；RUST_LOG 在 MCP 子进程固定关闭。仅固定官方 MCP 端点、通过 bearer_token_env_var 引用 access token，拒绝同名 server 中冲突认证配置，不修改 Codex 配置。
 
-QQ_MAIL_HOME 的配置和操作回执必须在私有位置，不放在技能目录或仓库。临时云环境重建可能同时丢失变量与回执；本功能不提供持久 secret 存储或刷新。发送结果不明时，先核对 QQ 已发送和收件方，不能在重建后新建请求直接重发。
+单次连接在使用 token 前按到期时间刷新一次，锁内重读并持久化 pending；临近到期默认 120 秒。成功后整体原子保存新 access token、到期时间及轮换 refresh token；GetMe 精确校验账号及 read_send 权限后才可操作邮件。连接期间出现 401、撤销或超时不会触发响应式刷新或邮件重放。refresh 结果未知及 pending 恢复由凭据所有者处理，不重试旧 refresh token、不回退浏览器。
 
-变量存在但 scopes 过宽（例如 read_send token 含 mail:delete）会失败；应由官方授权供应方提供符合范围的新 token，不能靠选择只读模式伪称降权。
+QQ_MAIL_HOME 的配置和操作回执须在包与仓库外的私有持久位置。云端重建可能同时丢失凭据、pending 屏障和邮件回执；先恢复可靠状态再运行。发送结果不明时核对 QQ 已发送和收件方，不能重建后新建请求重发。实际 scopes 超过 read_send（例如包含 mail:delete）也停止；配置模式不会给高权限 token 降权。
 
-Codex 官方配置定义：[bearer_token_env_var 与认证顺序](https://developers.openai.com/codex/config-reference)。底层客户端版本和目标云环境仍须按 [云端验收](cloud-acceptance.md) 单独确认。
+目标环境按 [云端验收](cloud-acceptance.md) 单独确认；本地测试不代替真实身份、轮换或送达验收。

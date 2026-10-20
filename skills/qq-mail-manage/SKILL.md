@@ -2,18 +2,20 @@
 name: qq-mail-manage
 description: >
   通过真实 Codex 和腾讯官方 MCP 管理 QQ 邮箱：初始化账号与 OAuth/环境变量认证、查询邮件和附件、按用户指令发送回复转发、确认后移至垃圾箱。支持可配置邮箱及多 profile，适用于具备本地执行能力的 Codex 或 dot；不支持恢复或永久删除。
+metadata:
+  version: 1.2.0
 ---
 
 # QQ 邮箱管理
 
-- **Version**: 1.1.1
+- **Version**: 1.2.0
 - **License**: MIT
 - **Author**: Evan Song · [github.com/Songhonglei](https://github.com/Songhonglei)
 - **Repository**: https://github.com/Songhonglei/better-office-work-flow
 
 版本记录见 [CHANGELOG.md](CHANGELOG.md)。
 
-运行命令时以本技能实际安装目录为工作目录，使用包内 `scripts/`；不依赖原作者电脑的路径或账号。由真实 `codex app-server` 调用 `https://api.mail.qq.com/mcp`，默认 OAuth 由 Codex 安全凭据库管理；云端可选 env_token，由宿主安全注入官方 MCP access token。桥接层不导出令牌、不额外调用推理模型。
+运行命令时以本技能实际安装目录为工作目录，使用包内 `scripts/`；不依赖原作者电脑的路径或账号。由真实 `codex app-server` 调用 `https://api.mail.qq.com/mcp`，默认 OAuth 由 Codex 安全凭据库管理；云端可选 env_token，优先由宿主安全注入官方 MCP 凭据；自动刷新需显式配置原子凭据存储。桥接层不导出令牌、不额外调用推理模型。
 
 ## 首次使用与换机器
 
@@ -34,13 +36,13 @@ python3 scripts/onboard.py --profile cloud doctor --auth-mode env_token --token-
 python3 scripts/onboard.py --profile cloud init --account YOUR@qq.com --mode read_send --auth-mode env_token --token-env-var QQ_MAIL_ACCESS_TOKEN
 ```
 
-示例只引用变量名。需要的是 QQ 官方 MCP access token，不是邮箱密码、IMAP 授权码或 refresh token。profile 只存变量名；env_token 不启动 OAuth 或要求钥匙串，变量缺失、空值或 401/撤销/过期时停止，不回退其他凭据，不负责刷新。变量存在不是连接成功，verify 必须实际通过 GetMe 的邮箱与权限检查。doctor 只显示存在性、未验证或历史实测时间，不证明当前授权有效。
+示例只引用变量名。MCP 使用官方 access token，refresh token 仅供原签发客户端续期，不能当作 MCP bearer。凭据来源与刷新策略独立：默认 env + host，由宿主注入并负责持久保存与续期；环境变量不等于持久存储。支持 access_token、refresh_token、原签发 client_id、token_type、scope、expires_at，变量名及宿主适配器协议见 [凭据与刷新](references/credentials.md)。自动刷新优先接入宿主原子存储；可显式启用未加密私有文件适配器（目录 700、文件 600，生命周期不保证），不得放入技能或仓库。profile 只保存引用和非秘密策略。变量缺失、凭据状态不明或 401 时停止，不自动重试或回退浏览器登录。刷新后仍先通过 GetMe 的账号与权限校验再操作邮件；doctor 不刷新、不访问凭据存储，不证明当前授权有效。
 
 read/read_send/manage 分别允许 read、read+send、read+send+delete；配置不会给高权限 token 降权，实际 scopes 过宽或不足均停止。旧 profile 自动按 oauth_keyring 读取。
 
 所有入口支持放在子命令之前的 `--profile NAME`；不指定时使用 `QQ_MAIL_PROFILE`，再默认 default。不同账号使用不同 profile 和 MCP 名，操作记录互相隔离。配置和操作状态放在技能目录外，可通过 `QQ_MAIL_HOME` 改位置；Codex 本身遵循 `CODEX_HOME`。
 
-`scripts/mail_config.py` 负责上述配置、路径隔离和 Codex 子进程覆盖项，供各入口导入，不需单独执行。
+`scripts/mail_config.py` 负责配置、路径隔离和 Codex 子进程覆盖项；`scripts/mail_credentials.py` 负责凭据适配与单次刷新，均供入口导入。只有 access token 传给 MCP 子进程，refresh token/client secret 不继承。
 
 ## 查询与附件
 
@@ -83,10 +85,10 @@ python3 scripts/qq_mail_write.py execute-authorized --tool SendMessage --argumen
 
 ## 依赖与验证边界
 
-Python 3.11+、真实 Codex CLI 和网络；oauth_keyring 需要可用系统安全凭据库，env_token 需要宿主注入官方 access token；无第三方 Python 依赖。当前实现使用 POSIX 文件锁，面向 macOS/Linux；Windows 使用 WSL（OAuth 另需凭据库），原生 Windows 尚不支持。app-server 为实验性接口，已实测 CLI 0.162.1；版本变化后运行 doctor 和 verify。
+Python 3.11+、真实 Codex CLI 和网络；oauth_keyring 需要可用系统安全凭据库，env_token 需要宿主注入官方凭据或显式配置凭据适配器；无第三方 Python 依赖。当前实现使用 POSIX 文件锁，面向 macOS/Linux；Windows 使用 WSL（OAuth 另需凭据库），原生 Windows 尚不支持。app-server 为实验性接口，已实测 CLI 0.162.1；版本变化后运行 doctor 和 verify。
 
 dot 必须能在已连接电脑上发现技能并执行脚本，同一系统用户可以复用该机授权；仅安装云端指令不构成本地执行入口。另一台机器必须在那台机器初始化与验收。不能将本机测试说成所有 dot 或其他电脑均已验收。
 
 Ela 等云端真实验收必须读取 [云端发票转发验收](references/cloud-acceptance.md)，在目标云环境完成全部分页、实际收件时间选取、发票字段提取和独立 Gmail 核验。缺运行入口、token 注入未确认或字段有歧义时报告未完成；不以 Mac 查询成功替代。环境变量不保证容器重建后仍可用，未知发送结果跨重建也不能重发。
 
-离线回归：`python3 -m unittest discover -s tests -v`，涵盖初始化、独立进程、账号隔离、写入授权与删除续期；不发送真实测试邮件。刷新、撤销、完整历史覆盖、原生回复转发和各台机器的 dot 对话仍需各自实测。
+离线回归：`python3 -m unittest discover -s tests -v`，涵盖初始化、独立进程、账号隔离、写入授权与删除续期；不发送真实测试邮件。刷新离线覆盖轮换/无轮换、拒绝、响应丢失、中断、并发、权限与脱敏；真实刷新、撤销、完整历史覆盖及目标云环境仍需各自验收。本地维护任务只运行假 token 测试。
