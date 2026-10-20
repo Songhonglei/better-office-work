@@ -1,6 +1,6 @@
 # QQ Mail Manage
 
-Version: **1.2.0** · License: [MIT](LICENSE)
+Version: **1.2.1** · License: [MIT](LICENSE)
 
 通过真实 Codex CLI 和腾讯官方 MCP 管理 QQ 邮箱，账号可配置。支持多 profile、OAuth/keyring 或环境变量认证初始化、列表/搜索/正文/附件，以及按用户具体指令发送、回复、转发；删除需先确认具体清单，执行移至垃圾箱。
 
@@ -37,7 +37,7 @@ env_token 跳过浏览器登录和钥匙串。默认宿主注入完整凭据：`
 
 需要本技能自动刷新时，优先选择宿主 `host_command` 原子存储适配器，显式设置 `--refresh-policy auto --client-auth-method METHOD`。无宿主适配能力时可显式选择 `private_file`；它未加密，生命周期不保证，目录 700、文件 600、当前用户所有，必须在技能及仓库外。具体配置、宿主协议和中断恢复见 [凭据与刷新](references/credentials.md)。同一 refresh token 不可由多个环境独立并行续期；不要从 Mac 导出凭据。
 
-单次刷新仅向已核实的 QQ 官方端点，不跟随重定向，按原签发客户端认证；轮换结果整体原子保存。响应丢失、invalid_grant 或中断会保留 pending 屏障，交给凭据所有者核对，禁止重试旧 refresh token。刷新后 GetMe 必须核对邮箱和权限；refresh token 不传给 MCP 子进程。邮件发送超时或结果未知仍不重发。
+单次刷新仅向已核实的 QQ 官方端点，遵循宿主既定代理与 CA/TLS 配置，不跟随重定向，按原签发客户端认证；轮换结果整体原子保存。响应丢失、invalid_grant 或中断会保留 pending 屏障，交给凭据所有者核对，禁止重试旧 refresh token。刷新后 GetMe 必须核对邮箱和权限；refresh token 不传给 MCP 子进程。邮件发送超时或结果未知仍不重发。
 
 ## Operations
 
@@ -56,4 +56,4 @@ env_token 跳过浏览器登录和钥匙串。默认宿主注入完整凭据：`
 python3 -m unittest discover -s tests -v
 ```
 
-91 项离线回归（保留原有 58 项）涵盖账号隔离、别名校验、授权范围、单次写入、未知结果不重试、删除续期和独立进程 onboard。不会自动发送或删除真实测试邮件。实际腾讯账号可获得的范围、完整历史、真实刷新和撤销行为仍需分别验收。
+102 项离线回归（保留原有 58 项）涵盖账号隔离、别名校验、授权范围、单次写入、未知结果不重试、删除续期和独立进程 onboard。不会自动发送或删除真实测试邮件。实际腾讯账号可获得的范围、完整历史、真实刷新和撤销行为仍需分别验收。

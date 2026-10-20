@@ -67,7 +67,7 @@ class CodexMail:
         self.sequence = 0
         try:
             await self.rpc("initialize", {
-                "clientInfo": {"name": "qq_mail_manage_bridge", "title": "QQ Mail Manage Bridge", "version": "1.2.0"},
+                "clientInfo": {"name": "qq_mail_manage_bridge", "title": "QQ Mail Manage Bridge", "version": "1.2.1"},
                 "capabilities": {"experimentalApi": True},
             })
             await self.send({"method": "initialized", "params": {}})

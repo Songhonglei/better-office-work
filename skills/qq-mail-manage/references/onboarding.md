@@ -21,7 +21,7 @@ init 将非秘密配置写到 `${QQ_MAIL_HOME:-${CODEX_HOME:-~/.codex}/qq-mail-m
 
 再次初始化同一 profile 时，省略 --server 会保留原服务名，便于升级权限。新 profile 若与全局已有 MCP 名冲突（不是官方邮箱地址，或带有额外传输／认证字段），会在写配置和发起 OAuth 前停止；选新的 profile/server 名即可，不改动其他服务。QQ_MAIL_HOME 不能位于本技能目录内部，以免升级或分发时混入私有数据。
 
-用户在官方腾讯页面完成登录和权限确认。服务地址固定 `https://api.mail.qq.com/mcp`，不接受任意第三方代理地址，不伪装其他客户端。账号应能在授权后 `GetMe.aliases` 中唯一匹配，支持配置 QQ/Foxmail 邮箱别名；最终可用性以服务实际接受及 GetMe 为准。其他账号的真实授权尚未在本环境完成，不承诺所有账号都有同样能力。
+用户在官方腾讯页面完成登录和权限确认。服务地址固定 `https://api.mail.qq.com/mcp`，不接受任意第三方 MCP 端点，不伪装其他客户端；网络代理与 CA 信任遵循宿主既定配置，不强制直连或关闭 TLS 验证。账号应能在授权后 `GetMe.aliases` 中唯一匹配，支持配置 QQ/Foxmail 邮箱别名；最终可用性以服务实际接受及 GetMe 为准。其他账号的真实授权尚未在本环境完成，不承诺所有账号都有同样能力。
 
 read 仅允许 mail:read；read_send 允许 mail:read、mail:send；manage 允许 mail:read、mail:send、mail:delete。OAuth 按所选模式请求范围，env_token 核对已有 token 的实际范围，不为其降权。实际权限超出所选模式则中止；服务不给所需权限也不称为完成初始化。
 

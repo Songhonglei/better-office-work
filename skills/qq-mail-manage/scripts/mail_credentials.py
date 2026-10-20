@@ -19,7 +19,7 @@ import uuid
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.parse import quote_plus, urlencode
-from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 TOKEN_ENDPOINT = "https://wx.mail.qq.com/oauth/token"
 SOURCES = ("env", "host_command", "private_file")
@@ -33,6 +33,10 @@ ENV_FIELDS = {"access_token": "QQ_MAIL_ACCESS_TOKEN", "refresh_token": "QQ_MAIL_
 
 class CredentialError(RuntimeError):
     pass
+
+
+class HostSaveAcknowledgementUnknown(CredentialError):
+    """Host CAS timed out; only a durable host read may resolve its acknowledgement."""
 
 
 def fail(message):
@@ -158,13 +162,32 @@ class FileStore:
         private_path(self.path.parent, directory=True)
 
     def load(self):
+        if os.path.lexists(self.commit_guard_path):
+            private_path(self.commit_guard_path)
+            fail("Credential file persistence is pending; visible records are not a durable acknowledgement")
         return read_file(self.path)
+
+    @property
+    def commit_guard_path(self):
+        return self.path.with_name(self.path.name + ".pending")
 
     def cas(self, previous, replacement):
         current = self.load()
         if current != previous:
             fail("Credential record changed; refusing to overwrite newer values")
-        atomic_record(self.path, replacement)
+        finalizing = previous.get("refresh_state") == "pending" and replacement.get("refresh_state") == "ready"
+        try:
+            if finalizing:
+                # Durable, non-secret guard survives a visible-but-not-durable
+                # final rename. A restart must not mistake that record for success.
+                atomic_record(self.commit_guard_path, {"revision": previous["revision"]})
+            atomic_record(self.path, replacement)
+            if finalizing:
+                self.commit_guard_path.unlink()
+                sync_directory(self.path.parent)
+        except OSError:
+            # Never recover a disk/fsync failure merely by reading visible bytes.
+            fail("Credential file persistence failed; readable values do not prove a durable save")
         return True
 
     @property
@@ -182,6 +205,10 @@ class HostStore:
             result = subprocess.run([self.command], input=json.dumps(payload), capture_output=True,
                                     text=True, timeout=20, check=True, env=subprocess_env())
             data = json.loads(result.stdout)
+        except subprocess.TimeoutExpired:
+            if payload.get("operation") == "compare_and_swap":
+                raise HostSaveAcknowledgementUnknown("Host CAS acknowledgement timed out; durable state must be checked") from None
+            fail("Host credential adapter timed out")
         except (OSError, subprocess.SubprocessError, ValueError, UnicodeError):
             fail("Host credential adapter failed or returned an unknown result")
         if isinstance(data, dict) and isinstance(data.get("record"), dict):
@@ -197,8 +224,8 @@ class HostStore:
     def cas(self, previous, replacement):
         data = self.request({"operation": "compare_and_swap", "protocol": 1,
                              "expected_revision": previous["revision"], "record": replacement})
-        if not isinstance(data, dict) or type(data.get("saved")) is not bool:
-            fail("Host save outcome unknown")
+        if not isinstance(data, dict) or set(data) != {"saved"} or type(data.get("saved")) is not bool:
+            fail("Host save failed or returned an invalid acknowledgement")
         return data["saved"]
 
     @property
@@ -229,7 +256,7 @@ class NoRedirect(HTTPRedirectHandler):
 
 
 def exchange(record, method):
-    """One POST, fixed verified official URL, no proxies, redirects or retries."""
+    """One POST, fixed official URL, host proxy/CA defaults, no redirects/retries."""
     fields = {"grant_type": "refresh_token", "refresh_token": record["refresh_token"]}
     headers = {"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"}
     if method == "none":
@@ -246,7 +273,9 @@ def exchange(record, method):
         else:
             fail("Unsupported original client authentication method")
     request = Request(TOKEN_ENDPOINT, data=urlencode(fields).encode(), headers=headers, method="POST")
-    opener = build_opener(ProxyHandler({}), NoRedirect())
+    # urllib defaults honor the host's proxy and TLS trust configuration. Do not
+    # replace its proxy handler, CA roots, hostname checks or verification mode.
+    opener = build_opener(NoRedirect())
     try:
         with opener.open(request, timeout=20) as response:
             if response.status != 200:
@@ -323,12 +352,12 @@ def access_token(settings):
         replacement = refreshed_record(pending, payload, started)
         try:
             saved = store.cas(pending, replacement)
-        except (OSError, CredentialError):
-            # Save ACK may be lost. A read is safe; never repeat the refresh POST.
-            saved = False
+        except HostSaveAcknowledgementUnknown:
+            # The host load contract returns durable commits only. This recovery
+            # is never used for file/fsync/disk errors or explicit host failures.
+            saved = store.load() == replacement
         if not saved:
-            if store.load() != replacement:
-                fail("Credential rotation save is unknown; do not reuse old tokens")
+            fail("Credential rotation save is unknown or conflicted; do not reuse old tokens")
         if replacement["expires_at"] <= time.time():
             fail("Refreshed access token expired before use")
         return replacement["access_token"]

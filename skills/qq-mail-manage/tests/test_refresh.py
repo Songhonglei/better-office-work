@@ -72,16 +72,17 @@ class RefreshTests(unittest.TestCase):
             if new["refresh_state"]=="ready": raise OSError("disk full")
             return original(store,old,new)
         with patch.object(creds.FileStore,"cas",broken),patch.object(creds,"exchange",return_value=self.reply):
-            with self.assertRaisesRegex(creds.CredentialError,"save is unknown"): creds.access_token(self.settings)
+            with self.assertRaisesRegex(OSError,"disk full"): creds.access_token(self.settings)
         self.assertEqual(self.load()["refresh_state"],"pending")
-    def test_lost_save_ack_read_resolves_without_post(self):
+    def test_file_error_after_visible_save_is_not_ack_recovered(self):
         original=creds.FileStore.cas
         def lost(store,old,new):
             original(store,old,new)
             if new["refresh_state"]=="ready": raise OSError("lost ack")
             return True
         with patch.object(creds.FileStore,"cas",lost),patch.object(creds,"exchange",return_value=self.reply) as exchange:
-            self.assertEqual(creds.access_token(self.settings),N); exchange.assert_called_once()
+            with self.assertRaisesRegex(OSError,"lost ack"): creds.access_token(self.settings)
+            exchange.assert_called_once()
     def test_claim_save_failure_no_network(self):
         with patch.object(creds.FileStore,"cas",side_effect=OSError("disk full")),patch.object(creds,"exchange") as exchange:
             with self.assertRaises(OSError): creds.access_token(self.settings)
