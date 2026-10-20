@@ -1,0 +1,480 @@
+{
+  "SendMessage": {
+    "type": "object",
+    "properties": {
+      "alias_id": {
+        "type": "string",
+        "description": "Usually not needed. The server defaults to the primary alias. Only provide to use a non-primary alias (starts with 'alias_')."
+      },
+      "to": {
+        "type": "array",
+        "description": "Primary recipients (at least one required)",
+        "items": {
+          "type": "object",
+          "description": "Primary recipients (at least one required)",
+          "properties": {
+            "email": {
+              "type": "string",
+              "description": "Email address, e.g. user@example.com"
+            },
+            "name": {
+              "type": "string",
+              "description": "Display name (optional)"
+            }
+          },
+          "required": [
+            "email"
+          ]
+        }
+      },
+      "cc": {
+        "type": "array",
+        "description": "CC recipients (optional)",
+        "items": {
+          "type": "object",
+          "description": "CC recipients (optional)",
+          "properties": {
+            "email": {
+              "type": "string",
+              "description": "Email address, e.g. user@example.com"
+            },
+            "name": {
+              "type": "string",
+              "description": "Display name (optional)"
+            }
+          },
+          "required": [
+            "email"
+          ]
+        }
+      },
+      "bcc": {
+        "type": "array",
+        "description": "BCC recipients (optional, hidden from other recipients)",
+        "items": {
+          "type": "object",
+          "description": "BCC recipients (optional, hidden from other recipients)",
+          "properties": {
+            "email": {
+              "type": "string",
+              "description": "Email address, e.g. user@example.com"
+            },
+            "name": {
+              "type": "string",
+              "description": "Display name (optional)"
+            }
+          },
+          "required": [
+            "email"
+          ]
+        }
+      },
+      "subject": {
+        "type": "string",
+        "description": "Email subject line (max 998 characters)"
+      },
+      "body": {
+        "type": "string",
+        "description": "Email body content"
+      },
+      "body_format": {
+        "type": "string",
+        "enum_detail": "BODY_FORMAT_UNKNOWN(0), PLAIN(1), HTML(2), MARKDOWN(3)",
+        "description": "Body content format: PLAIN (plain text), HTML (rich text), or MARKDOWN",
+        "default_value": "PLAIN",
+        "enum": [
+          "PLAIN",
+          "HTML",
+          "MARKDOWN"
+        ]
+      },
+      "confirmation_token": {
+        "type": "string",
+        "description": "Confirmation token from error response. Only include after user explicitly approves the operation."
+      },
+      "attachments": {
+        "type": "array",
+        "description": "Inline attachments",
+        "items": {
+          "type": "object",
+          "description": "Inline attachments",
+          "properties": {
+            "filename": {
+              "type": "string",
+              "description": "Attachment filename with extension"
+            },
+            "content_type": {
+              "type": "string",
+              "description": "MIME type (e.g., 'application/pdf', 'image/jpeg')"
+            },
+            "content": {
+              "type": "string",
+              "description": "Base64-encoded file content"
+            },
+            "size": {
+              "type": "integer",
+              "description": "Original file size in bytes"
+            },
+            "sha1": {
+              "type": "string",
+              "description": "SHA-1 hash of original file content (hex, 40 chars)"
+            }
+          },
+          "required": [
+            "filename",
+            "content_type",
+            "content",
+            "size",
+            "sha1"
+          ]
+        }
+      },
+      "file_refs": {
+        "type": "array",
+        "description": "File references from CLI upload.",
+        "items": {
+          "type": "object",
+          "description": "File references from CLI upload.",
+          "properties": {
+            "file_id": {
+              "type": "string",
+              "description": "File ID from UploadFile response (starts with 'file_'). This is a temporary upload reference, NOT a downloadable attachment ID."
+            }
+          },
+          "required": [
+            "file_id"
+          ]
+        }
+      },
+      "skip_confirmation": {
+        "type": "boolean",
+        "description": "Skip confirmation when explicitly authorized by the user."
+      }
+    },
+    "required": [
+      "to",
+      "subject",
+      "body"
+    ]
+  },
+  "DeleteMessage": {
+    "type": "object",
+    "properties": {
+      "alias_id": {
+        "type": "string",
+        "description": "Usually not needed. The server defaults to the primary alias. Only provide to use a non-primary alias (starts with 'alias_')."
+      },
+      "message_id": {
+        "type": "string",
+        "description": "Message ID to delete (starts with 'msg_')"
+      },
+      "confirmation_token": {
+        "type": "string",
+        "description": "Confirmation token from error response. Only include after user explicitly approves the operation."
+      }
+    },
+    "required": [
+      "message_id"
+    ]
+  },
+  "ReplyMessage": {
+    "type": "object",
+    "properties": {
+      "alias_id": {
+        "type": "string",
+        "description": "Usually not needed. The server defaults to the primary alias. Only provide to use a non-primary alias (starts with 'alias_')."
+      },
+      "message_id": {
+        "type": "string",
+        "description": "ID of message being replied to (starts with 'msg_')"
+      },
+      "body": {
+        "type": "string",
+        "description": "Reply content (your response)"
+      },
+      "body_format": {
+        "type": "string",
+        "enum_detail": "BODY_FORMAT_UNKNOWN(0), PLAIN(1), HTML(2), MARKDOWN(3)",
+        "description": "Reply format: PLAIN or HTML",
+        "default_value": "PLAIN",
+        "enum": [
+          "PLAIN",
+          "HTML"
+        ]
+      },
+      "cc": {
+        "type": "array",
+        "description": "Additional CC recipients beyond original thread",
+        "items": {
+          "type": "object",
+          "description": "Additional CC recipients beyond original thread",
+          "properties": {
+            "email": {
+              "type": "string",
+              "description": "Email address, e.g. user@example.com"
+            },
+            "name": {
+              "type": "string",
+              "description": "Display name (optional)"
+            }
+          },
+          "required": [
+            "email"
+          ]
+        }
+      },
+      "bcc": {
+        "type": "array",
+        "description": "BCC recipients (hidden)",
+        "items": {
+          "type": "object",
+          "description": "BCC recipients (hidden)",
+          "properties": {
+            "email": {
+              "type": "string",
+              "description": "Email address, e.g. user@example.com"
+            },
+            "name": {
+              "type": "string",
+              "description": "Display name (optional)"
+            }
+          },
+          "required": [
+            "email"
+          ]
+        }
+      },
+      "reply_all": {
+        "type": "boolean",
+        "description": "true: Reply to all original recipients (sender + to/cc). false: Reply only to sender."
+      },
+      "confirmation_token": {
+        "type": "string",
+        "description": "Confirmation token from error response. Only include after user explicitly approves the operation."
+      },
+      "attachments": {
+        "type": "array",
+        "description": "Attachments to include with reply",
+        "items": {
+          "type": "object",
+          "description": "Attachments to include with reply",
+          "properties": {
+            "filename": {
+              "type": "string",
+              "description": "Attachment filename with extension"
+            },
+            "content_type": {
+              "type": "string",
+              "description": "MIME type (e.g., 'application/pdf', 'image/jpeg')"
+            },
+            "content": {
+              "type": "string",
+              "description": "Base64-encoded file content"
+            },
+            "size": {
+              "type": "integer",
+              "description": "Original file size in bytes"
+            },
+            "sha1": {
+              "type": "string",
+              "description": "SHA-1 hash of original file content (hex, 40 chars)"
+            }
+          },
+          "required": [
+            "filename",
+            "content_type",
+            "content",
+            "size",
+            "sha1"
+          ]
+        }
+      },
+      "file_refs": {
+        "type": "array",
+        "description": "File references from CLI upload.",
+        "items": {
+          "type": "object",
+          "description": "File references from CLI upload.",
+          "properties": {
+            "file_id": {
+              "type": "string",
+              "description": "File ID from UploadFile response (starts with 'file_'). This is a temporary upload reference, NOT a downloadable attachment ID."
+            }
+          },
+          "required": [
+            "file_id"
+          ]
+        }
+      },
+      "skip_confirmation": {
+        "type": "boolean",
+        "description": "Skip confirmation when explicitly authorized by the user."
+      }
+    },
+    "required": [
+      "message_id",
+      "body"
+    ]
+  },
+  "ForwardMessage": {
+    "type": "object",
+    "properties": {
+      "alias_id": {
+        "type": "string",
+        "description": "Usually not needed. The server defaults to the primary alias. Only provide to use a non-primary alias (starts with 'alias_')."
+      },
+      "message_id": {
+        "type": "string",
+        "description": "ID of message to forward (starts with 'msg_')"
+      },
+      "to": {
+        "type": "array",
+        "description": "Forward recipients (at least one required)",
+        "items": {
+          "type": "object",
+          "description": "Forward recipients (at least one required)",
+          "properties": {
+            "email": {
+              "type": "string",
+              "description": "Email address, e.g. user@example.com"
+            },
+            "name": {
+              "type": "string",
+              "description": "Display name (optional)"
+            }
+          },
+          "required": [
+            "email"
+          ]
+        }
+      },
+      "cc": {
+        "type": "array",
+        "description": "CC recipients",
+        "items": {
+          "type": "object",
+          "description": "CC recipients",
+          "properties": {
+            "email": {
+              "type": "string",
+              "description": "Email address, e.g. user@example.com"
+            },
+            "name": {
+              "type": "string",
+              "description": "Display name (optional)"
+            }
+          },
+          "required": [
+            "email"
+          ]
+        }
+      },
+      "bcc": {
+        "type": "array",
+        "description": "BCC recipients",
+        "items": {
+          "type": "object",
+          "description": "BCC recipients",
+          "properties": {
+            "email": {
+              "type": "string",
+              "description": "Email address, e.g. user@example.com"
+            },
+            "name": {
+              "type": "string",
+              "description": "Display name (optional)"
+            }
+          },
+          "required": [
+            "email"
+          ]
+        }
+      },
+      "body": {
+        "type": "string",
+        "description": "Optional forwarding note/comment added before the original message"
+      },
+      "body_format": {
+        "type": "string",
+        "enum_detail": "BODY_FORMAT_UNKNOWN(0), PLAIN(1), HTML(2), MARKDOWN(3)",
+        "description": "Format of your forwarding note: PLAIN or HTML",
+        "default_value": "PLAIN",
+        "enum": [
+          "PLAIN",
+          "HTML"
+        ]
+      },
+      "include_attachments": {
+        "type": "boolean",
+        "description": "true: Include original message attachments. false: Forward text only."
+      },
+      "confirmation_token": {
+        "type": "string",
+        "description": "Confirmation token from error response. Only include after user explicitly approves the operation."
+      },
+      "attachments": {
+        "type": "array",
+        "description": "Additional attachments beyond original message",
+        "items": {
+          "type": "object",
+          "description": "Additional attachments beyond original message",
+          "properties": {
+            "filename": {
+              "type": "string",
+              "description": "Attachment filename with extension"
+            },
+            "content_type": {
+              "type": "string",
+              "description": "MIME type (e.g., 'application/pdf', 'image/jpeg')"
+            },
+            "content": {
+              "type": "string",
+              "description": "Base64-encoded file content"
+            },
+            "size": {
+              "type": "integer",
+              "description": "Original file size in bytes"
+            },
+            "sha1": {
+              "type": "string",
+              "description": "SHA-1 hash of original file content (hex, 40 chars)"
+            }
+          },
+          "required": [
+            "filename",
+            "content_type",
+            "content",
+            "size",
+            "sha1"
+          ]
+        }
+      },
+      "file_refs": {
+        "type": "array",
+        "description": "File references from CLI upload.",
+        "items": {
+          "type": "object",
+          "description": "File references from CLI upload.",
+          "properties": {
+            "file_id": {
+              "type": "string",
+              "description": "File ID from UploadFile response (starts with 'file_'). This is a temporary upload reference, NOT a downloadable attachment ID."
+            }
+          },
+          "required": [
+            "file_id"
+          ]
+        }
+      },
+      "skip_confirmation": {
+        "type": "boolean",
+        "description": "Skip confirmation when explicitly authorized by the user."
+      }
+    },
+    "required": [
+      "message_id",
+      "to",
+      "body"
+    ]
+  }
+}
