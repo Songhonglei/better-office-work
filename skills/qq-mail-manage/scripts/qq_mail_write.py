@@ -15,8 +15,8 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from qq_mail import WRITE_TOOLS, CodexMail, decode_result, endpoint_error
-from mail_config import account, load_settings, private_dir, select_profile
+from qq_mail import WRITE_TOOLS, CodexMail, decode_result, endpoint_error, AuthenticationError
+from mail_config import account, load_settings, private_dir, select_profile, redact, contains_runtime_secret
 
 PENDING = None  # Test override; runtime state always lives outside the installed skill.
 
@@ -54,6 +54,8 @@ def validate_arguments(tool, arguments):
     if set(arguments) & {"confirmation_token", "skip_confirmation", "alias_id", "file_refs"}:
         raise ValueError("Caller-supplied tokens, aliases, skip flags, and file references are forbidden")
     validate(SCHEMAS[tool], arguments)
+    if contains_runtime_secret(arguments):
+        raise ValueError("Mail arguments must not contain runtime credentials")
     if tool in ("SendMessage", "ForwardMessage") and not arguments.get("to"):
         raise ValueError("At least one recipient is required")
     for field in ("to", "cc", "bcc"):
@@ -114,14 +116,14 @@ def save_new(record):
     private_dir(pending_dir())
     fd = os.open(state_path(record["request_id"]), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w") as stream:
-        json.dump(record, stream, ensure_ascii=False)
+        json.dump(redact(record), stream, ensure_ascii=False)
         stream.flush()
         os.fsync(stream.fileno())
 
 
 def update_locked(stream, record):
     stream.seek(0)
-    json.dump(record, stream, ensure_ascii=False)
+    json.dump(redact(record), stream, ensure_ascii=False)
     stream.truncate()
     stream.flush()
     os.fsync(stream.fileno())
@@ -167,11 +169,12 @@ async def prepare_on_client(mail, tool, arguments, preview):
             record.update({"state": "pending", "confirmation_token": challenge[0], "operation_summary": challenge[1], "created_at": time.time()})
             update_locked(stream, record)
             return public_prepared(record)
-        except BaseException:
+        except BaseException as error:
             if record["state"] == "preparing":
                 record["state"] = "unknown"
             update_locked(stream, record)
-            raise RuntimeError(f"Preparation outcome is {record['state']} (request {request_id}); reconcile mailbox state, do not automatically retry") from None
+            suffix = "; authorization rejected: securely update authorization and verify first" if isinstance(error, AuthenticationError) else ""
+            raise RuntimeError(f"Preparation outcome is {record['state']} (request {request_id}); reconcile mailbox state, do not automatically retry" + suffix) from None
 
 
 async def execute_authorized(tool, arguments, *, user_authorized=False, client=CodexMail):
@@ -210,11 +213,12 @@ async def execute_authorized(tool, arguments, *, user_authorized=False, client=C
                 record.pop("arguments", None)
                 update_locked(stream, record)
                 return {"state": "completed", "request_id": request_id, "result": payload}
-            except BaseException:
+            except BaseException as error:
                 if record["state"] == "submitting":
                     record["state"] = "unknown"
                 update_locked(stream, record)
-                raise RuntimeError(f"Write outcome is {record['state']} (request {request_id}); do not automatically retry") from None
+                suffix = "; authorization rejected: securely update authorization and verify first" if isinstance(error, AuthenticationError) else ""
+                raise RuntimeError(f"Write outcome is {record['state']} (request {request_id}); do not automatically retry" + suffix) from None
 
 
 async def prepare(tool, arguments, client=CodexMail):
@@ -476,12 +480,12 @@ async def main():
     else:
         indices = [int(i) for i in args.indices.split(",")] if args.indices else None
         result = await confirm_delete_batch(args.batch_id, indices=indices)
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print(json.dumps(redact(result), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except (RuntimeError, ValueError, OSError, asyncio.TimeoutError) as error:
-        print(str(error), file=sys.stderr)
+        print(redact(str(error)), file=sys.stderr)
         sys.exit(1)

@@ -75,3 +75,17 @@ python3 scripts/qq_mail_write.py batch-status --batch-id BATCH_ID
 ```
 
 输出编号、request_id、预览和状态，不输出令牌或正文/附件。此命令不访问邮箱也不重新提交；先核对 completed 的回执、unknown/submitting/preparing 的外部实际状态，再针对尚未执行且仍在原批准范围内的 pending 项选择 --indices。结果未知项即使当时尚未在垃圾箱显示，也不能直接当作未执行而自动重试。
+
+## 临时认证与失败处理
+
+具体写工具按 mail:send/mail:delete 检查，read_send 可以发送/回复/转发，不能删除。env_token 的 401/过期/撤销不是删除确认令牌的 40001：前者更新授权后重新 verify，不自动刷新或重发；后者仍只对已批准的相同删除范围执行状态核对与确认续期。
+
+发送返回授权错误或丢响应，保留 unknown 记录及 request_id，先查外部状态。所有结果、错误和回执会对登记的运行时 QQ token 做脱敏；包含运行时 token 的邮件参数在请求前被拒绝。不要开启会自行回显秘密的外部调试命令。
+
+完整分页示例：
+
+```bash
+python3 scripts/qq_mail.py --profile cloud search --query 发票 --subject-only --folder inbox --after '2026-10-13T15:00:00+08:00' --before '2026-10-20T15:00:00+08:00' --all-pages
+```
+
+时间仅为格式示例，实际执行时冻结新的结束时间并向前取七天。--all-pages 不与 --cursor 组合；--max-pages 默认 100（1..1000），达到上限或游标异常是失败，不返回完整成功。Python collect_pages 使用同样边界，latest_by_received 需要已确认的 received_at；不从列表顺序、发件 Date 或未经确认语义的 created_at 推测实际收件时间。

@@ -1,14 +1,14 @@
 # QQ Mail Manage
 
-Version: **1.0.1** · License: [MIT](LICENSE)
+Version: **1.1.0** · License: [MIT](LICENSE)
 
-通过真实 Codex CLI 和腾讯官方 MCP 管理 QQ 邮箱，账号可配置。支持多 profile、OAuth 初始化、列表/搜索/正文/附件，以及按用户具体指令发送、回复、转发；删除需先确认具体清单，执行移至垃圾箱。
+通过真实 Codex CLI 和腾讯官方 MCP 管理 QQ 邮箱，账号可配置。支持多 profile、OAuth/keyring 或环境变量认证初始化、列表/搜索/正文/附件，以及按用户具体指令发送、回复、转发；删除需先确认具体清单，执行移至垃圾箱。
 
 ## Install
 
 从本仓库复制整个 `skills/qq-mail-manage` 文件夹到 Codex 可发现的技能目录，例如 `~/.agents/skills/qq-mail-manage`，或该机器已使用的 `~/.codex/skills/qq-mail-manage`。不要只复制 SKILL.md；启动新会话后调用 `$qq-mail-manage`。
 
-依赖：Python 3.11+、真实 Codex CLI、网络和可用的系统安全凭据库，无第三方 Python 包。macOS 已实测；Linux/WSL 须配置安全凭据库并另行验收，原生 Windows 不支持。
+依赖：Python 3.11+、真实 Codex CLI 和网络；OAuth 需要系统安全凭据库，env_token 需要宿主安全注入官方 MCP access token，无第三方 Python 包。macOS 已实测；Linux/WSL 需按所选认证模式配置并另行验收，原生 Windows 不支持。
 
 ## Onboard
 
@@ -21,16 +21,29 @@ python3 scripts/onboard.py verify
 python3 scripts/qq_mail.py list --limit 1
 ```
 
-需要管理权限且用户授权后，使用 `--mode manage`。多账号使用子命令前的 `--profile NAME`；每台新电脑独立完成腾讯官方 OAuth，不复制令牌。dot 必须具备在已连接电脑上发现并执行这些本地脚本的能力；同机验证不等于 dot 或另一台电脑已验收。
+仅发信使用 `--mode read_send`，需要删除且用户授权后使用 `--mode manage`。多账号使用子命令前的 `--profile NAME`；oauth_keyring 在新电脑独立完成腾讯官方 OAuth，不复制令牌。dot 必须具备在已连接电脑上发现并执行这些本地脚本的能力；同机验证不等于 dot 或另一台电脑已验收。
+
+## Temporary cloud authentication
+
+先由用户或宿主另行确认官方 MCP access token 的安全取得和注入；以下只填写变量名，不填写值：
+
+```bash
+python3 scripts/onboard.py --profile cloud doctor --auth-mode env_token --token-env-var QQ_MAIL_ACCESS_TOKEN
+python3 scripts/onboard.py --profile cloud init --account YOUR@qq.com --mode read_send --auth-mode env_token --token-env-var QQ_MAIL_ACCESS_TOKEN
+python3 scripts/onboard.py --profile cloud verify
+```
+
+env_token 跳过 OAuth 登录及钥匙串要求，通过 bearer_token_env_var 向真正调用 MCP 的 app-server 提供变量名；profile 不存值。需要的是 QQ 官方 MCP access token，不是邮箱密码、IMAP 授权码或 refresh token。变量存在不等于成功，GetMe 必须核对实际邮箱和 scopes。401/过期/撤销时停止，不刷新、不重发、不回退其他身份。环境变量不保证云端重建后仍可用，不提交 .env、不从 Mac 导出令牌。
 
 ## Operations
 
 - [技能指令](SKILL.md)：工作流与用户授权边界。
 - [初始化与跨机使用](references/onboarding.md)：权限、profile、复用本机授权及恢复。
 - [操作参考](references/operations.md)：发送/回复/转发、批量删除、续期及写后核验。
+- [云端发票转发验收](references/cloud-acceptance.md)：固定七天范围、全分页、实际收件时间、发票字段及 QQ/Gmail 双端核验。
 - [版本记录](CHANGELOG.md)。
 
-OAuth 只由真实 Codex 保存到安全凭据库。账号配置、邮件、附件和操作回执放在技能目录外，不随本包分发。不支持恢复、永久删除或清空垃圾箱。`queued=true` 仅代表入队；空响应、超时或结果未知时不自动重试。
+原 OAuth 仍由真实 Codex 保存到安全凭据库；env_token 只从宿主注入变量读取。账号配置、邮件、附件和操作回执放在技能目录外，不随本包分发。不支持恢复、永久删除或清空垃圾箱。`queued=true` 仅代表入队；空响应、超时或结果未知时不自动重试。
 
 ## Validation
 
@@ -38,4 +51,4 @@ OAuth 只由真实 Codex 保存到安全凭据库。账号配置、邮件、附�
 python3 -m unittest discover -s tests -v
 ```
 
-29 项离线回归涵盖账号隔离、别名校验、授权范围、单次写入、未知结果不重试、删除续期和独立进程 onboard。不会自动发送或删除真实测试邮件。实际腾讯账号可获得的范围、完整历史、刷新和撤销行为仍需分别验收。
+57 项离线回归（含原有 29 项）涵盖账号隔离、别名校验、授权范围、单次写入、未知结果不重试、删除续期和独立进程 onboard。不会自动发送或删除真实测试邮件。实际腾讯账号可获得的范围、完整历史、刷新和撤销行为仍需分别验收。

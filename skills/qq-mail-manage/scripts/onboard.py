@@ -9,30 +9,52 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
-from mail_config import (MODES, codex_binary, data_home, load_settings, overrides,
-                         profile_name, profile_path, select_profile, settings_from, write_private)
+from mail_config import (MODES, AUTH_MODES, DEFAULT_TOKEN_ENV, codex_binary, data_home, load_settings, overrides,
+                         profile_name, profile_path, select_profile, settings_from, write_private,
+                         validate_token_env_var, subprocess_env, redact)
 
 
-def doctor():
+def doctor(settings=None, *, auth_mode=None, token_env_var=None):
+    if settings is None and profile_path().exists():
+        settings = load_settings()
+    mode = auth_mode or (settings.auth_mode if settings else "oauth_keyring")
+    name = token_env_var if token_env_var is not None else (settings.token_env_var if settings and settings.auth_mode == mode else None)
+    if mode == "env_token":
+        name = validate_token_env_var(DEFAULT_TOKEN_ENV if name is None else name)
+    elif name is not None:
+        raise ValueError("token_env_var is only valid in env_token mode")
+    env = subprocess_env(settings, extra_names=(name,))
     binary = codex_binary()
     try:
-        version = subprocess.run([binary, "--version"], capture_output=True, text=True, timeout=15, check=True)
-        help_result = subprocess.run([binary, "app-server", "--help"], capture_output=True, text=True, timeout=15, check=True)
-    except (OSError, subprocess.SubprocessError) as error:
-        raise RuntimeError("Codex CLI could not report its version/app-server capabilities") from error
+        version = subprocess.run([binary, "--version"], env=env, capture_output=True, text=True, timeout=15, check=True)
+        help_result = subprocess.run([binary, "app-server", "--help"], env=env, capture_output=True, text=True, timeout=15, check=True)
+    except (OSError, subprocess.SubprocessError):
+        raise RuntimeError("Codex CLI could not report its version/app-server capabilities") from None
     if "--listen" not in help_result.stdout:
         raise RuntimeError("Codex app-server lacks --listen; use a compatible Codex CLI")
-    return {"platform": platform.system(), "python": platform.python_version(), "codex": version.stdout.strip(),
+    last_verified = None
+    if settings and profile_path().exists():
+        last_verified = json.loads(profile_path().read_text()).get("verified_at")
+    return {"platform": platform.system(), "python": platform.python_version(), "codex": redact(version.stdout.strip()),
             "profile": profile_name(), "profile_exists": profile_path().exists(), "data_home": str(data_home()),
-            "transport": "stdio", "credentials": "Codex secure keyring (availability confirmed at OAuth/verify)"}
+            "transport": "stdio", "auth_mode": mode, "token_env_var": name,
+            "token_variable_present": bool(name and name in os.environ),
+            "token_variable_nonempty": bool(name and os.environ.get(name, "").strip()),
+            "credentials": "runtime access-token variable" if mode == "env_token" else "Codex secure keyring",
+            "credential_status": "previously_verified" if last_verified else "unverified",
+            "last_verified_at": last_verified, "currently_verified": False}
 
 
-def configure(account, mode="read", server=None):
+def configure(account, mode="read", server=None, auth_mode=None, token_env_var=None):
     name = profile_name()
     path = profile_path()
     previous = load_settings() if path.exists() else None
-    settings = settings_from({"profile": name, "account": account, "mode": mode,
-                              "server": server or (previous.server if previous else "qq-mail-" + name)})
+    chosen_auth = auth_mode or (previous.auth_mode if previous else "oauth_keyring")
+    chosen_var = token_env_var
+    if chosen_auth == "env_token" and chosen_var is None:
+        chosen_var = previous.token_env_var if previous and previous.auth_mode == "env_token" else DEFAULT_TOKEN_ENV
+    settings = settings_from({"profile": name, "account": account, "mode": mode, "auth_mode": chosen_auth,
+                              "token_env_var": chosen_var, "server": server or (previous.server if previous else "qq-mail-" + name)})
     if path.exists():
         if previous.account != settings.account or previous.server != settings.server:
             raise ValueError("An existing profile cannot be rebound to a different account/server; choose a new profile")
@@ -63,25 +85,31 @@ async def verify():
 
 
 def login(settings):
+    if settings.auth_mode != "oauth_keyring":
+        raise RuntimeError("env_token never starts OAuth login; securely update the access-token variable, then run verify")
     # Inherit the terminal for the real Codex authorization flow. Never capture tokens.
     command = [codex_binary(), "mcp", "login", settings.server,
                "--scopes", ",".join(settings.scopes), *overrides(settings)]
     try:
-        subprocess.run(command, check=True, timeout=600)
-    except (OSError, subprocess.SubprocessError) as error:
-        raise RuntimeError("Official Codex OAuth did not complete; profile remains unverified") from error
+        subprocess.run(command, env=subprocess_env(settings), check=True, timeout=600)
+    except (OSError, subprocess.SubprocessError):
+        raise RuntimeError("Official Codex OAuth did not complete; profile remains unverified") from None
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", help="Local mailbox profile; default: QQ_MAIL_PROFILE or default")
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("doctor", help="Check runtime without starting OAuth or accessing mail")
+    diagnostic = commands.add_parser("doctor", help="Check runtime without starting OAuth or accessing mail")
+    diagnostic.add_argument("--auth-mode", choices=AUTH_MODES)
+    diagnostic.add_argument("--token-env-var", help="Variable name only, never its value")
     commands.add_parser("verify", help="Read GetMe and verify exact account and granted scopes")
     commands.add_parser("login", help="Reauthorize the selected configured profile and verify it")
     init = commands.add_parser("init")
     init.add_argument("--account", required=True, help="Intended QQ Mail or Foxmail alias")
     init.add_argument("--mode", choices=MODES, default="read")
+    init.add_argument("--auth-mode", choices=AUTH_MODES, help="Defaults to existing profile mode or oauth_keyring")
+    init.add_argument("--token-env-var", help="Name of the injected official MCP access-token variable; never its value")
     init.add_argument("--server", help="Use an existing real Codex MCP name when migrating; otherwise profile-specific")
     group = init.add_mutually_exclusive_group()
     group.add_argument("--reuse-auth", action="store_true", help="Reuse this machine's existing official authorization; still verify GetMe")
@@ -89,23 +117,24 @@ def main():
     args = parser.parse_args()
     if args.profile:
         select_profile(args.profile)
-    runtime = doctor()
     if args.command == "doctor":
-        result = runtime
+        result = doctor(auth_mode=args.auth_mode, token_env_var=args.token_env_var)
     elif args.command == "verify":
+        doctor()
         result = asyncio.run(verify())
     elif args.command == "login":
         login(load_settings())
         result = asyncio.run(verify())
     else:
-        settings = configure(args.account, args.mode, args.server)
+        settings = configure(args.account, args.mode, args.server, args.auth_mode, args.token_env_var)
+        doctor(settings)
         if args.configure_only:
-            result = {"state": "configured_not_verified", **settings.as_dict(), "next": "onboard.py login"}
+            result = {"state": "configured_not_verified", **settings.as_dict(), "next": "onboard.py verify" if settings.auth_mode == "env_token" else "onboard.py login"}
         else:
-            if not args.reuse_auth:
+            if settings.auth_mode == "oauth_keyring" and not args.reuse_auth:
                 login(settings)
             result = asyncio.run(verify())
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    print(json.dumps(redact(result), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
@@ -114,5 +143,5 @@ if __name__ == "__main__":
     try:
         main()
     except (RuntimeError, ValueError, OSError, subprocess.SubprocessError, asyncio.TimeoutError) as error:
-        print(f"Onboarding incomplete: {error}", file=sys.stderr)
+        print(redact(f"Onboarding incomplete: {error}"), file=sys.stderr)
         sys.exit(1)
