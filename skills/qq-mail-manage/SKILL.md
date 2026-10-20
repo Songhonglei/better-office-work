@@ -6,7 +6,7 @@ description: >
 
 # QQ 邮箱管理
 
-- **Version**: 1.1.0
+- **Version**: 1.1.1
 - **License**: MIT
 - **Author**: Evan Song · [github.com/Songhonglei](https://github.com/Songhonglei)
 - **Repository**: https://github.com/Songhonglei/better-office-work-flow

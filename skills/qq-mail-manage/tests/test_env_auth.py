@@ -161,6 +161,22 @@ class EnvAuthTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn(TOKEN, str(caught.exception))
         self.assertFalse(config.profile_path().exists())
 
+    async def test_runtime_logging_variable_is_rejected_before_profile_or_child(self):
+        # The MCP child forces RUST_LOG=off; accepting it would replace the bearer.
+        with patch.dict(os.environ, {"RUST_LOG": TOKEN}):
+            with self.assertRaisesRegex(ValueError, "Invalid token environment"):
+                self.configure(token_env_var="RUST_LOG")
+            self.assertFalse(config.profile_path().exists())
+            # Loading a manually edited profile must reject the same collision.
+            config.write_private(config.profile_path(), {
+                "profile": "cloud", "account": "target@qq.com", "server": "qq-mail-cloud",
+                "mode": "read_send", "auth_mode": "env_token", "token_env_var": "RUST_LOG"})
+            with self.assertRaisesRegex(ValueError, "Invalid token environment"):
+                async with bridge.CodexMail():
+                    self.fail("A reserved credential variable must not start a client")
+            self.assertFalse(self.events.exists())
+            self.assert_no_secret_files()
+
     def test_matching_auth_variable_only_and_no_arbitrary_headers(self):
         path = config.codex_home() / "config.toml"
         path.parent.mkdir()

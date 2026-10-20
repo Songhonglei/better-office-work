@@ -21,7 +21,7 @@ _runtime_secrets = set()
 
 def validate_token_env_var(name):
     if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name) or name in {
-        "PATH", "HOME", "CODEX_HOME", "QQ_MAIL_HOME", "QQ_MAIL_PROFILE", "PYTHONPATH", "LD_PRELOAD"}:
+        "PATH", "HOME", "CODEX_HOME", "QQ_MAIL_HOME", "QQ_MAIL_PROFILE", "PYTHONPATH", "LD_PRELOAD", "RUST_LOG"}:
         raise ValueError("Invalid token environment variable name; use a dedicated credential variable")
     _known_token_names.add(name)
     return name

@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 发布范围为 GitHub 仓库更新，不包含 ClawHub 发布或平台申诉；不代表账号恢复或审核通过。
 
 ### Added
+- **qq-mail-manage** v1.1.1 — GLIC 复核修复 RUST_LOG 作为认证变量时被运行时覆盖的问题，增加初始化及配置加载拒绝测试；58 项离线回归。
 - **qq-mail-manage** v1.1.0 — 新增 env_token 临时云端认证与 read_send 权限模式；保留 OAuth/keyring，增加令牌隔离脱敏、固定范围完整分页和 Ela 发票转发验收交接协议，57 项假令牌/模拟服务回归。真实云端授权和送达验收待注入后执行。
 - **qq-mail-manage** v1.0.1 — QQ 邮箱管理：真实 Codex + 腾讯官方 MCP，可配置账号与多 profile，OAuth 初始化、邮件及附件读写、确认后移至垃圾箱；包含写入状态持久化、结果未知不重试、删除续期与 29 项离线回归测试。首版加入本仓库（2026-10-20）。
 - **macos-power-control** v1.0.0 — macOS 合盖与电源设置：一句话需求解析、执行前确认、目标 Mac 环境检查、临时防休眠电源范围匹配、管理员密码交接、验证和恢复流程。首版公开发布（2026-10-13）。

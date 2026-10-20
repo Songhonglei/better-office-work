@@ -1,6 +1,6 @@
 # QQ Mail Manage
 
-Version: **1.1.0** · License: [MIT](LICENSE)
+Version: **1.1.1** · License: [MIT](LICENSE)
 
 通过真实 Codex CLI 和腾讯官方 MCP 管理 QQ 邮箱，账号可配置。支持多 profile、OAuth/keyring 或环境变量认证初始化、列表/搜索/正文/附件，以及按用户具体指令发送、回复、转发；删除需先确认具体清单，执行移至垃圾箱。
 
@@ -51,4 +51,4 @@ env_token 跳过 OAuth 登录及钥匙串要求，通过 bearer_token_env_var �
 python3 -m unittest discover -s tests -v
 ```
 
-57 项离线回归（含原有 29 项）涵盖账号隔离、别名校验、授权范围、单次写入、未知结果不重试、删除续期和独立进程 onboard。不会自动发送或删除真实测试邮件。实际腾讯账号可获得的范围、完整历史、刷新和撤销行为仍需分别验收。
+58 项离线回归（含原有 29 项）涵盖账号隔离、别名校验、授权范围、单次写入、未知结果不重试、删除续期和独立进程 onboard。不会自动发送或删除真实测试邮件。实际腾讯账号可获得的范围、完整历史、刷新和撤销行为仍需分别验收。

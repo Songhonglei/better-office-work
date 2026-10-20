@@ -58,7 +58,7 @@ python3 scripts/onboard.py init --account YOUR@qq.com --mode manage --server qq-
 
 ## env_token：临时云端模式
 
-通过 --auth-mode env_token 和 --token-env-var VARIABLE_NAME 选择认证，默认变量名 QQ_MAIL_ACCESS_TOKEN。变量名按 shell 环境变量规则校验，不能使用 PATH/HOME 等运行时配置变量。profile 只保存 auth_mode 和 token_env_var，不保存值；旧 profile 缺 auth_mode 时按 oauth_keyring 处理。
+通过 --auth-mode env_token 和 --token-env-var VARIABLE_NAME 选择认证，默认变量名 QQ_MAIL_ACCESS_TOKEN。变量名按 shell 环境变量规则校验，不能使用 PATH/HOME 等运行时配置变量；RUST_LOG 由桥接层固定关闭调试，也不能用作令牌变量，配置及加载时都会拒绝。profile 只保存 auth_mode 和 token_env_var，不保存值；旧 profile 缺 auth_mode 时按 oauth_keyring 处理。
 
 真实值必须由用户认可的官方令牌取得途径及云端 secret manager/运行时注入提供，另行确认，不在聊天、命令行、参数 JSON、.env 或仓库中传递。这里需要 QQ 官方 MCP access token，不是邮箱密码、IMAP 授权码或 refresh token。不要读取或导出 Mac 钥匙串，不借用其他客户端身份或令牌。
 
