@@ -10,6 +10,7 @@ import subprocess
 import sys
 import traceback
 import unittest
+from http.client import HTTPSConnection
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 from urllib.error import HTTPError
@@ -436,7 +437,10 @@ class WireTests(unittest.TestCase):
         def context(*args,**kwargs):
             seen.append(os.environ.get("SSL_CERT_FILE")); return factory(*args,**kwargs)
         def transport(handler,request):
-            calls.append((request.host,getattr(request,"_tunnel_host",None),request.full_url,handler._context))
+            # HTTPSConnection creates Python 3.11's lazy default TLS context;
+            # construction opens no socket and reuses newer urllib contexts.
+            tls = HTTPSConnection(request.host, context=handler._context)._context
+            calls.append((request.host,getattr(request,"_tunnel_host",None),request.full_url,tls))
             body=json.dumps({"jsonrpc":"2.0","id":"synthetic-id","result":{}}).encode()
             response=addinfourl(io.BytesIO(body),{"Content-Type":"application/json","Location":"https://synthetic-attacker.example"},request.full_url,status)
             response.msg="synthetic"; return response

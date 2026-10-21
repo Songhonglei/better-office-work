@@ -6,6 +6,7 @@ import ssl
 import subprocess
 import traceback
 import unittest
+from http.client import HTTPSConnection
 from unittest.mock import patch
 from urllib.error import URLError
 from urllib.request import getproxies_environment, proxy_bypass_environment
@@ -31,10 +32,13 @@ class NetworkAndDurabilityTests(unittest.TestCase):
         def transport(handler, request):
             # Exercise the real opener, default ProxyHandler, request processing,
             # SSLContext creation and redirect/error chain; replace sockets only.
+            # Python 3.11 creates the default context in HTTPSConnection;
+            # newer urllib creates it in HTTPSHandler. Construct without sockets.
+            context = HTTPSConnection(request.host, context=handler._context)._context
             calls.append({"host": request.host, "tunnel": getattr(request, "_tunnel_host", None),
                           "url": request.full_url, "body": request.data,
-                          "verify_mode": handler._context.verify_mode,
-                          "check_hostname": handler._context.check_hostname,
+                          "verify_mode": context.verify_mode,
+                          "check_hostname": context.check_hostname,
                           "ca_file": os.environ.get("SSL_CERT_FILE"),
                           "ca_dir": os.environ.get("SSL_CERT_DIR")})
             if error:
