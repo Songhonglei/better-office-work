@@ -15,6 +15,7 @@ WRITE_TOOLS = ("SendMessage", "ReplyMessage", "ForwardMessage", "DeleteMessage")
 MODES = {"read": ("mail:read",), "read_send": ("mail:read", "mail:send"), "manage": ("mail:read", "mail:send", "mail:delete")}
 AUTH_MODES = ("oauth_keyring", "env_token")
 BACKENDS = ("codex", "direct_http")
+HTTP_PROTOCOLS = ("auto", "2026-07-28", "2025-03-26", "2025-06-18", "2025-11-25")
 DEFAULT_TOKEN_ENV = "QQ_MAIL_ACCESS_TOKEN"
 _known_token_names = {DEFAULT_TOKEN_ENV}
 _known_secret_names = {DEFAULT_TOKEN_ENV, "QQ_MAIL_REFRESH_TOKEN", "QQ_MAIL_CLIENT_SECRET"}
@@ -169,6 +170,7 @@ class Settings:
     allow_extra_delete_scope: bool = False
     credential_state_dir: str | None = None
     backend: str = "codex"
+    http_protocol: str = "auto"
 
     @property
     def scopes(self):
@@ -183,6 +185,7 @@ class Settings:
                   "mode": self.mode, "auth_mode": self.auth_mode,
                   "allow_extra_delete_scope": self.allow_extra_delete_scope}
         result["backend"] = self.backend
+        result["http_protocol"] = self.http_protocol
         if self.auth_mode == "env_token":
             result["token_env_var"] = self.token_env_var
             result.update(credential_source=self.credential_source, credential_env_vars=self.credential_env_vars,
@@ -212,6 +215,9 @@ def settings_from(data):
     backend = data.get("backend", "codex")
     if backend not in BACKENDS or (backend == "direct_http" and auth_mode != "env_token"):
         raise ValueError("direct_http requires explicit env_token credentials; backend must be codex or direct_http")
+    http_protocol = data.get("http_protocol", "auto")
+    if http_protocol not in HTTP_PROTOCOLS:
+        raise ValueError("Unknown direct HTTP protocol selection")
     token_env_var = data.get("token_env_var")
     if auth_mode == "env_token":
         token_env_var = validate_token_env_var(DEFAULT_TOKEN_ENV if token_env_var is None else token_env_var)
@@ -257,7 +263,7 @@ def settings_from(data):
     if auth_mode != "env_token" and (source != "env" or mapping or policy != "host" or method is not None):
         raise ValueError("Credential source and refresh options require env_token mode")
     return Settings(name, account, server, data["mode"], auth_mode, token_env_var, source, mapping,
-                    credential_file, command, policy, method, skew, allow_extra_delete_scope, state_dir, backend)
+                    credential_file, command, policy, method, skew, allow_extra_delete_scope, state_dir, backend, http_protocol)
 
 
 def load_settings():

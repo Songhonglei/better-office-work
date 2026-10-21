@@ -3,21 +3,22 @@ name: qq-mail-manage
 description: >
   通过真实 Codex 或显式 direct HTTP 后端和腾讯官方 MCP 管理 QQ 邮箱：初始化账号与 OAuth/环境变量认证、查询邮件和附件、按用户指令发送回复转发、确认后移至垃圾箱。支持可配置邮箱及多 profile，适用于具备本地执行能力的 Codex 或 dot；不支持恢复或永久删除。
 metadata:
-  version: 1.3.1
+  version: 1.4.0
+  python_optional: [jsonschema, referencing]
 ---
 
 # QQ 邮箱管理
 
-- **Version**: 1.3.1
+- **Version**: 1.4.0
 - **License**: MIT
 - **Author**: Evan Song · [github.com/Songhonglei](https://github.com/Songhonglei)
 - **Repository**: https://github.com/Songhonglei/better-office-work-flow
 
 版本记录见 [CHANGELOG.md](CHANGELOG.md)。
 
-可选直接后端的内部传输实现为 [scripts/direct_http.py](scripts/direct_http.py)，通过现有 onboard/qq_mail 命令选择，不直接传入令牌调用该脚本。
+可选直接后端的内部传输实现为 [scripts/direct_http.py](scripts/direct_http.py)，通过现有 onboard/qq_mail 命令选择，不直接传入令牌调用该脚本。modern 协议与 schema 参数头校验实现在 [scripts/modern_protocol.py](scripts/modern_protocol.py)。
 
-运行命令时以本技能实际安装目录为工作目录，使用包内 `scripts/`；不依赖原作者电脑的路径或账号。默认由真实 `codex app-server` 调用 `https://api.mail.qq.com/mcp`，默认 OAuth 由 Codex 安全凭据库管理；云端可选 env_token，优先由宿主安全注入官方 MCP 凭据；自动刷新需显式配置原子凭据存储。桥接层不导出令牌、不额外调用推理模型。无法启动嵌套 Codex 的宿主可显式选择 `--backend direct_http`，直接连接同一官方端点，不依赖 Codex 子进程；协议、配置与可靠错误回执见 [直接 HTTP MCP](references/direct-http.md)，不自动切换后端。
+运行命令时以本技能实际安装目录为工作目录，使用包内 `scripts/`；不依赖原作者电脑的路径或账号。默认由真实 `codex app-server` 调用 `https://api.mail.qq.com/mcp`，默认 OAuth 由 Codex 安全凭据库管理；云端可选 env_token，优先由宿主安全注入官方 MCP 凭据；自动刷新需显式配置原子凭据存储。桥接层不导出令牌、不额外调用推理模型。无法启动嵌套 Codex 的宿主可显式选择 `--backend direct_http`，直接连接同一官方端点，不依赖 Codex 子进程；协议、配置与可靠错误回执见 [直接 HTTP MCP](references/direct-http.md)，不自动切换后端。direct_http 默认 auto 发现后优先选择原生实现的 2026-07-28；可用 --http-protocol 显式固定协议，不能以更换版号代替新生命周期。
 
 ## 首次使用与换机器
 
@@ -87,7 +88,7 @@ python3 scripts/qq_mail_write.py execute-authorized --tool SendMessage --argumen
 
 ## 依赖与验证边界
 
-Python 3.11+ 和网络；默认 codex 后端需要真实 Codex CLI，显式 direct_http 后端无需 Codex；oauth_keyring 需要可用系统安全凭据库，env_token 需要宿主注入官方凭据或显式配置凭据适配器；无第三方 Python 依赖；显式 credential_state_dir 模式额外需要 Git 做只读分类。当前实现使用 POSIX 文件锁，面向 macOS/Linux；Windows 使用 WSL（OAuth 另需凭据库），原生 Windows 尚不支持。app-server 为实验性接口，已实测 CLI 0.162.1；版本变化后运行 doctor 和 verify。
+Python 3.11+ 和网络；默认 codex 后端需要真实 Codex CLI，显式 direct_http 后端无需 Codex；oauth_keyring 需要可用系统安全凭据库，env_token 需要宿主注入官方凭据或显式配置凭据适配器；Codex/显式 legacy HTTP 无第三方 Python 依赖；HTTP auto/2026-07-28 需先安装 requirements.txt 中的 jsonschema；显式 credential_state_dir 模式额外需要 Git 做只读分类。当前实现使用 POSIX 文件锁，面向 macOS/Linux；Windows 使用 WSL（OAuth 另需凭据库），原生 Windows 尚不支持。app-server 为实验性接口，已实测 CLI 0.162.1；版本变化后运行 doctor 和 verify。
 
 dot 必须能在已连接电脑上发现技能并执行脚本，同一系统用户可以复用该机授权；仅安装云端指令不构成本地执行入口。另一台机器必须在那台机器初始化与验收。不能将本机测试说成所有 dot 或其他电脑均已验收。
 

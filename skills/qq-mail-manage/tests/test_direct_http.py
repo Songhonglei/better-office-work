@@ -19,6 +19,7 @@ from urllib.response import addinfourl
 import test_refresh as fixtures
 import qq_mail_write as flow
 import direct_http as http
+import modern_protocol as modern
 
 config, onboard, bridge = fixtures.config, fixtures.onboard, fixtures.bridge
 SESSION = "synthetic-mcp-session-DO-NOT-USE"
@@ -50,6 +51,10 @@ class FakeServer:
         self.scopes = ["mail:read", "mail:send", "mail:delete"]
         self.account = "target@qq.com"
         self.attach = b"synthetic invoice bytes"
+        self.supported = [modern.MODERN, "2025-03-26"]
+        self.schemas = {}
+        self.output_schemas = {}
+        self.epoch = "legacy"
     def open(self, request, timeout):
         assert request.full_url == config.ENDPOINT
         assert timeout == http.IO_SECONDS
@@ -57,31 +62,46 @@ class FakeServer:
         message = json.loads(request.data)
         self.requests.append((message, dict(request.header_items())))
         method = message.get("method")
-        if method != "initialize":
+        is_modern = request.get_header("Mcp-protocol-version") == modern.MODERN
+        if is_modern:
+            assert method not in ("initialize", "notifications/initialized")
+            assert message["params"]["_meta"] == modern.metadata()
+            assert request.get_header("Mcp-method") == method
+            assert request.get_header("Mcp-session-id") is None
+            if method == "tools/call": assert request.get_header("Mcp-name") == modern.header_value(message["params"]["name"])
+        elif method != "initialize":
             assert request.get_header("Mcp-protocol-version") == self.protocol
             if self.session: assert request.get_header("Mcp-session-id") == self.session
         if self.case == "redirect" or (self.case == "send401" and message.get("params",{}).get("name") == "SendMessage"):
             status = 307 if self.case == "redirect" else 401
             raise HTTPError(config.ENDPOINT, status, fixtures.A+SESSION, {"Location":"https://synthetic-attacker.example"}, io.BytesIO(fixtures.R.encode()))
-        if method == "initialize":
+        if self.case == "send_version_error" and message.get("params",{}).get("name")=="SendMessage":
+            raise HTTPError(config.ENDPOINT,400,fixtures.A,{},io.BytesIO(json.dumps({"jsonrpc":"2.0","id":message["id"],"error":{"code":-32022,"message":fixtures.R,"data":{"supported":["2025-03-26"]}}}).encode()))
+        if method == "server/discover":
+            result = {"supportedVersions":self.supported,"capabilities":{"tools":{}},"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"synthetic","version":"1"}}}
+        elif method == "initialize":
             result = {"protocolVersion":self.protocol, "capabilities":{"tools":{}}, "serverInfo":{"name":"synthetic","version":"1"}}
         elif method == "notifications/initialized":
             return Response(status=202, body=b"")
         elif method == "tools/list":
             cursor = message.get("params",{}).get("cursor")
             names = self.tools[:3] if self.pages and not cursor else self.tools[3:] if self.pages else self.tools
-            result = {"tools":[{"name":name,"inputSchema":{"type":"object"}} for name in names]}
+            result = {"tools":[{"name":name,"inputSchema":self.schemas.get(name,{"type":"object"}),
+                     **({"outputSchema":self.output_schemas[name]} if name in self.output_schemas else {})} for name in names]}
             if self.pages and not cursor: result["nextCursor"] = "synthetic-cursor"
             if self.case == "cursor_loop": result["nextCursor"] = "synthetic-cursor"
             if self.case == "bad_catalog": result = {"tools":None}
+            if self.case == "empty_cursor":
+                result = {"tools":result["tools"] if "cursor" in message.get("params",{}) else [],
+                          "nextCursor":None if "cursor" in message.get("params",{}) else ""}
         elif method == "tools/call":
             tool = message["params"]["name"]
             if self.case == "send_timeout" and tool == "SendMessage": raise TimeoutError(fixtures.A+SESSION)
             if self.case == "session404" and tool != "GetMe":
                 raise HTTPError(config.ENDPOINT,404,SESSION,{},io.BytesIO())
             if tool == "GetMe":
-                data = {"scopes":self.scopes, "aliases":[{"email":self.account,"alias_id":"synthetic-alias"}],"_hints":{"echo":fixtures.A+SESSION}}
-            elif tool == "SendMessage": data = {"queued":True,"_hints":{"echo":fixtures.A+SESSION}}
+                data = {"scopes":self.scopes, "aliases":[{"email":self.account,"alias_id":"synthetic-alias"}],"_hints":{"echo":fixtures.A+(self.session or "")}}
+            elif tool == "SendMessage": data = {"queued":True,"_hints":{"echo":fixtures.A+(self.session or "")}}
             elif tool == "DownloadAttachment":
                 data = {"content":base64.b64encode(self.attach).decode(),"size":len(self.attach),"sha1":hashlib.sha1(self.attach).hexdigest()}
             elif tool == "ListAttachments": data = {"attachments":[{"filename":"invoice.pdf","size":len(self.attach),"sha1":hashlib.sha1(self.attach).hexdigest()}]}
@@ -91,6 +111,12 @@ class FakeServer:
                 result = {"isError":True,"structuredContent":{"error":{"code":401,"message":fixtures.A}}}
         elif "result" in message: return Response(status=202,body=b"")
         else: raise AssertionError(method)
+        if is_modern:
+            result["resultType"]="complete"
+            if self.case == "input_required" and message.get("params",{}).get("name")=="SendMessage":
+                result={"resultType":"input_required","inputRequests":{"untrusted":fixtures.R}}
+            if self.case == "missing_result_type": result.pop("resultType")
+            if self.case == "bad_result_type": result["resultType"]="input_required"
         envelope = {"jsonrpc":"2.0","id":message["id"],"result":result}
         if self.case == "empty_initialize" and method == "initialize":
             envelope = {"jsonrpc":"2.0","id":message["id"]}
@@ -100,7 +126,7 @@ class FakeServer:
             notifications = ': keepalive\r\nid: synthetic-event\r\ndata:\r\n\r\ndata: {"jsonrpc":"2.0","method":"notifications/progress","params":{"ignored":"text"}}\r\n\r\n'
             return Response(kind="text/event-stream",session=self.session if method=="initialize" else None,
                 body=(notifications+'event: message\r\ndata: '+json.dumps(envelope)+'\r\n\r\n').encode(),chunk=7)
-        return Response(envelope,session=self.session if method=="initialize" else None)
+        return Response(envelope,session=SESSION if self.case=="modern_session" else self.session if method=="initialize" else None)
     def worker(self, command, **kwargs):
         assert command[-1] == "--http-worker"
         assert "codex" not in command
@@ -127,7 +153,8 @@ class DirectHTTPTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.fixture = fixtures.RefreshTests(); self.fixture.setUp()
         self.settings = self.fixture.changed(backend="direct_http",allow_extra_delete_scope=True,
-            credential_source="env",credential_file=None,refresh_policy="host",client_auth_method=None)
+            credential_source="env",credential_file=None,refresh_policy="host",client_auth_method=None,
+            http_protocol="2025-03-26")
         config.write_private(config.profile_path(),self.settings.as_dict())
         os.environ.update(QQ_MAIL_ACCESS_TOKEN=fixtures.A,QQ_MAIL_REFRESH_TOKEN=fixtures.R)
         self.server = FakeServer()
@@ -161,8 +188,9 @@ class DirectHTTPTests(unittest.IsolatedAsyncioTestCase):
     async def test_protocol_version_negotiation_supported_versions(self):
         for version in http.VERSIONS:
             self.server.protocol=version
+            config.write_private(config.profile_path(),{**self.settings.as_dict(),"http_protocol":version})
             async with bridge.CodexMail() as mail: self.assertEqual(mail.direct.protocol,version)
-    async def test_default_proposes_qq_declared_implemented_legacy_version(self):
+    async def test_explicit_legacy_proposes_qq_declared_implemented_version(self):
         async with bridge.CodexMail() as mail:
             self.assertEqual(mail.direct.protocol,"2025-03-26")
         self.assertEqual(self.server.requests[0][0]["params"]["protocolVersion"],"2025-03-26")
@@ -287,7 +315,7 @@ class DirectHTTPTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(r.get("phase")=="credential_unavailable" for r in self.records()))
         self.assertFalse(self.server.requests)
     async def test_private_provider_refreshes_once_then_checks_account_before_mail(self):
-        self.settings=self.fixture.changed(backend="direct_http",allow_extra_delete_scope=True)
+        self.settings=self.fixture.changed(backend="direct_http",allow_extra_delete_scope=True,http_protocol="2025-03-26")
         config.write_private(config.profile_path(),self.settings.as_dict())
         self.server.account="other@qq.com"
         with patch.object(fixtures.creds,"exchange",return_value=self.fixture.reply) as exchange:

@@ -3,13 +3,14 @@
 import argparse
 import asyncio
 import json
+import importlib.util
 import os
 import platform
 import subprocess
 import sys
 from datetime import datetime, timezone
 
-from mail_config import (MODES, AUTH_MODES, BACKENDS, DEFAULT_TOKEN_ENV, codex_binary, data_home, load_settings, overrides,
+from mail_config import (MODES, AUTH_MODES, BACKENDS, HTTP_PROTOCOLS, DEFAULT_TOKEN_ENV, codex_binary, data_home, load_settings, overrides,
                          profile_name, profile_path, select_profile, settings_from, write_private,
                          validate_token_env_var, subprocess_env, redact)
 from mail_credentials import SOURCES, POLICIES, CLIENT_AUTH, ENV_FIELDS
@@ -56,6 +57,8 @@ def doctor(settings=None, *, auth_mode=None, token_env_var=None, **credential_op
     return {"platform": platform.system(), "python": platform.python_version(), "codex": version_string,
             "profile": profile_name(), "profile_exists": profile_path().exists(), "data_home": str(data_home()),
             "backend": diagnostic.backend, "transport": "streamable_http" if diagnostic.backend == "direct_http" else "stdio",
+            "http_protocol": diagnostic.http_protocol,
+            "modern_schema_dependency_available": importlib.util.find_spec("jsonschema") is not None if diagnostic.backend == "direct_http" and diagnostic.http_protocol in ("auto", "2026-07-28") else None,
             "auth_mode": mode, "token_env_var": name,
             "token_variable_present": bool(name and name in os.environ),
             "token_variable_nonempty": bool(name and os.environ.get(name, "").strip()),
@@ -143,6 +146,7 @@ def main():
     init.add_argument("--token-env-var", help="Name of the injected official MCP access-token variable; never its value")
     for command in (init, diagnostic):
         command.add_argument("--backend", choices=BACKENDS, help="Explicit transport choice; default/preserved: codex")
+        command.add_argument("--http-protocol", choices=HTTP_PROTOCOLS, help="auto discovers supported versions; explicit legacy version uses initialize")
         command.add_argument("--allow-extra-delete-scope", action=argparse.BooleanOptionalAction, default=None,
                              help="Explicitly accept existing mail:delete credential scope in read_send; never enables deletion")
         command.add_argument("--credential-source", choices=SOURCES)
@@ -162,7 +166,7 @@ def main():
         select_profile(args.profile)
     options = {}
     if args.command in ("init", "doctor"):
-        options = {key: getattr(args, key) for key in ("backend", "credential_source", "credential_file", "credential_state_dir", "credential_command",
+        options = {key: getattr(args, key) for key in ("backend", "http_protocol", "credential_source", "credential_file", "credential_state_dir", "credential_command",
                    "refresh_policy", "client_auth_method", "refresh_skew", "allow_extra_delete_scope")}
         if args.credential_env is not None:
             try:

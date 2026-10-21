@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 发布范围为 GitHub 仓库更新，不包含 ClawHub 发布或平台申诉；不代表账号恢复或审核通过。
 
 ### Added
+- **qq-mail-manage** v1.4.0 — 原生2026-07-28无initialize HTTP后端，自动发现与显式协议选择、完整元数据/请求头、schema及参数头校验，保留Codex/legacy兼容与未知结果不重发；179项离线回归，真实发布版验收待云端执行。
 - **qq-mail-manage** v1.3.1 — 根据 QQ 官方真实公开协议声明优先使用已实现的 2025-03-26，补齐入站批响应并严格拒绝空壳/未实现新版；Codex 路径保留，区分执行环境阻断与QQ账号验收，159项离线回归。
 - **qq-mail-manage** v1.3.0 — 显式直接 HTTP MCP 后端，无需嵌套 Codex，保留凭据刷新与完整读发保障；协议/会话/分页/有界 JSON+SSE、持久脱敏错误回执及并发认证停止，154 项离线测试，真实云端验收待执行。
 - **qq-mail-manage** v1.2.3 — 显式独立私有状态目录，核实沙箱空 .git 占位，保持实际仓库与路径安全保护；状态不随代码升级覆盖，126 项离线测试。

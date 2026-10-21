@@ -82,4 +82,4 @@ QQ_MAIL_HOME 的配置和操作回执须在包与仓库外的私有持久位置�
 
 ## 可选直接 HTTP 后端
 
-宿主无法启动嵌套 Codex 时，显式选择 `--backend direct_http --auth-mode env_token`，不需要 Codex CLI、全局配置或钥匙串。省略 backend 的旧 profile 仍使用 codex，已有 profile 再初始化保留所选后端；不会在失败后自动切换。凭据来源、原签发客户端认证和独立状态目录配置复用原方案，刷新后仍必须 GetMe。配置、协议限制、持久脱敏错误回执及调用方式见 [直接 HTTP MCP](direct-http.md)。这不会修复平台启动器或挂载，实际目标云端需单独验收。
+宿主无法启动嵌套 Codex 时，显式选择 `--backend direct_http --auth-mode env_token`，不需要 Codex CLI、全局配置或钥匙串。HTTP默认auto优先modern；在宿主选定Python/venv安装 requirements.txt，并用 --http-protocol auto 或 --http-protocol 2026-07-28 配置；显式legacy版本可保持无第三方依赖。省略 backend 的旧 profile 仍使用 codex，已有 profile 再初始化保留所选后端；不会在失败后自动切换。凭据来源、原签发客户端认证和独立状态目录配置复用原方案，刷新后仍必须 GetMe。配置、协议限制、持久脱敏错误回执及调用方式见 [直接 HTTP MCP](direct-http.md)。这不会修复平台启动器或挂载，实际目标云端需单独验收。

@@ -1,0 +1,3 @@
+# Required for direct_http auto/2026-07-28. Codex and explicit legacy stay stdlib-only.
+jsonschema==4.25.1
+referencing==0.37.0

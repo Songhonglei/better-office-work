@@ -16,10 +16,10 @@ from urllib.request import Request, build_opener
 
 from mail_config import ENDPOINT, _runtime_secrets, private_dir, redact, subprocess_env, token_value
 from mail_credentials import NoRedirect, atomic_record
+from modern_protocol import (MODERN, CLIENT_INFO, metadata, header_specs, parameter_headers,
+                             request_headers, schema_validator, validated_catalog)
 
-# QQ's observed server/discover contract advertises 2025-03-26 and 2026-07-28.
-# Prefer the implemented legacy version. 2026 is a different lifecycle, not an
-# alternative version string for initialize; never negotiate it here.
+# Legacy lifecycles remain explicit choices; auto discovers the supported era.
 VERSIONS = ("2025-03-26", "2025-11-25", "2025-06-18")
 MAX_BYTES = 8 * 1024 * 1024
 WORKER_SECONDS = 60
@@ -54,14 +54,16 @@ def strict_json(value):
     return json.loads(value, parse_constant=invalid, object_pairs_hook=pairs)
 
 
-def rpc_response(message, expected):
+def rpc_response(message, expected, *, modern=False):
     if not isinstance(message, dict) or message.get("jsonrpc") != "2.0":
         raise WireFailure("invalid_jsonrpc")
     if "method" in message:
+        if "result" in message or "error" in message:
+            raise WireFailure("invalid_jsonrpc")
         if not isinstance(message["method"], str):
             raise WireFailure("invalid_jsonrpc")
         if "id" in message:
-            if message["method"] == "ping" and type(message["id"]) in (str, int):
+            if not modern and message["method"] == "ping" and type(message["id"]) in (str, int):
                 return "ping"
             raise WireFailure("unsupported_server_request")
         if not message["method"].startswith("notifications/"):
@@ -80,6 +82,8 @@ def rpc_response(message, expected):
         raise WireFailure("rpc_rejected", code=error["code"])
     if not isinstance(message["result"], dict):
         raise WireFailure("invalid_result")
+    if modern and (message["result"].get("resultType") != "complete" or any(k in message["result"] for k in ("inputRequests", "requestState"))):
+        raise WireFailure("unsupported_result_type")
     return "response"
 
 
@@ -138,11 +142,25 @@ def wire(payload, *, ping_budget=8):
         protocol = message.get("params", {}).get("protocolVersion")
     if protocol:
         headers["MCP-Protocol-Version"] = protocol
+    if protocol == MODERN:
+        if payload.get("session"):
+            raise WireFailure("unexpected_session_header")
+        try:
+            headers.update(request_headers(message, protocol, payload.get("parameter_headers", {})))
+        except (ValueError, TypeError, UnicodeError):
+            raise WireFailure("invalid_modern_request") from None
+        if message.get("method") == "tools/call":
+            try:
+                schema_validator(payload["input_schema"]).validate(message["params"]["arguments"])
+            except Exception:
+                raise WireFailure("invalid_tool_arguments") from None
     request = Request(ENDPOINT, data=body, headers=headers, method="POST")
     try:
         # Keep default host proxy/CA, certificate and hostname verification.
         with build_opener(NoRedirect()).open(request, timeout=IO_SECONDS) as response:
             session = response.headers.get("MCP-Session-Id")
+            if protocol == MODERN and session is not None:
+                raise WireFailure("unexpected_session_header")
             if session is not None and (not session or len(session) > 4096 or any(not 0x21 <= ord(c) <= 0x7e for c in session)):
                 raise WireFailure("invalid_session_header")
             if message.get("method") != "initialize" and session not in (None, payload.get("session")):
@@ -177,7 +195,7 @@ def wire(payload, *, ping_budget=8):
                     incoming_messages = frame
                 else:
                     incoming_messages = [frame]
-                actions = [rpc_response(incoming, message["id"]) for incoming in incoming_messages]
+                actions = [rpc_response(incoming, message["id"], modern=protocol == MODERN) for incoming in incoming_messages]
                 if actions.count("response") > 1:
                     raise WireFailure("invalid_jsonrpc")
                 result = None
@@ -191,7 +209,24 @@ def wire(payload, *, ping_budget=8):
                         wire({**payload, "session": session or payload.get("session"), "protocol": protocol,
                               "message": {"jsonrpc": "2.0", "id": incoming["id"], "result": {}}}, ping_budget=0)
                 if result is not None:
-                    return {"ok": True, "message": result, "session": session}
+                    extra = {}
+                    if protocol == MODERN:
+                        value = result["result"]
+                        if message["method"] == "tools/list":
+                            try:
+                                value["tools"], extra["catalog_names"] = validated_catalog(value.get("tools"))
+                            except Exception:
+                                raise WireFailure("invalid_tool_catalog") from None
+                        if message["method"] == "tools/call":
+                            if "isError" in value and type(value["isError"]) is not bool:
+                                raise WireFailure("invalid_result")
+                            if payload.get("output_schema") is not None and not value.get("isError"):
+                                try:
+                                    if "structuredContent" not in value: raise ValueError("missing content")
+                                    schema_validator(payload["output_schema"]).validate(value["structuredContent"])
+                                except Exception:
+                                    raise WireFailure("invalid_tool_output") from None
+                    return {"ok": True, "message": result, "session": session, **extra}
             raise WireFailure("response_lost")
     except HTTPError as error:
         try:
@@ -223,6 +258,9 @@ class DirectMCP:
         self.lock = threading.Lock()
         self.last_receipt_id = None
         self.deadline = None
+        self.tool_headers = {}
+        self.tool_schemas = {}
+        self.catalog_names = set()
 
     def receipt(self, record):
         try:
@@ -238,7 +276,7 @@ class DirectMCP:
         self.receipt(record)
         return record["receipt_id"]
 
-    def request(self, method, params=None, *, notification=False):
+    def request(self, method, params=None, *, notification=False, parameter_headers=None):
         if self.closed:
             raise DirectMCPError("client_closed", self.last_receipt_id)
         request_id = uuid.uuid4().hex
@@ -253,12 +291,18 @@ class DirectMCP:
             self.closed = True
             raise
         message = {"jsonrpc": "2.0", "method": method}
+        if self.protocol == MODERN:
+            params = {**(params or {}), "_meta": metadata()}
         if params is not None:
             message["params"] = params
         if not notification:
             message["id"] = request_id
         try:
-            payload = {"message": message, "token": self.token, "session": self.session, "protocol": self.protocol}
+            payload = {"message": message, "token": self.token, "session": self.session, "protocol": self.protocol,
+                       "parameter_headers": parameter_headers or {}}
+            if self.protocol == MODERN and method == "tools/call":
+                schema = self.tool_schemas[params["name"]]
+                payload.update(input_schema=schema["inputSchema"], output_schema=schema.get("outputSchema"))
             timeout = min(WORKER_SECONDS, self.deadline-time.monotonic()) if self.deadline else WORKER_SECONDS
             if timeout <= 0:
                 raise DirectMCPError("startup_timeout")
@@ -277,7 +321,9 @@ class DirectMCP:
                     "response_id_mismatch", "rpc_rejected", "invalid_result", "response_too_large", "request_too_large",
                     "invalid_session_header", "unexpected_session_change", "invalid_notification_ack", "unexpected_http_status",
                     "unsupported_content_encoding", "unsupported_content_type", "too_many_server_requests", "response_lost",
-                    "authorization_rejected", "session_expired", "http_rejected", "network_or_protocol_failure"}:
+                    "authorization_rejected", "session_expired", "http_rejected", "network_or_protocol_failure",
+                    "unexpected_session_header", "invalid_modern_request", "unsupported_result_type",
+                    "invalid_tool_arguments", "invalid_tool_output", "invalid_tool_catalog"}:
                     reason = "invalid_worker_result"
                 for key in ("status", "code"):
                     if type(reply.get(key)) is int:
@@ -287,9 +333,14 @@ class DirectMCP:
                 self.session = reply.get("session")
             value = reply["message"]
             if not notification:
-                if rpc_response(value, request_id) != "response":
+                if rpc_response(value, request_id, modern=self.protocol == MODERN) != "response":
                     raise DirectMCPError("invalid_worker_result")
                 value = redact(value["result"])
+                if self.protocol == MODERN and method == "tools/list":
+                    catalog = reply.get("catalog_names")
+                    if not isinstance(catalog, list) or any(not isinstance(n,str) or not 1 <= len(n) <= 128 for n in catalog) or len(set(catalog)) != len(catalog) or self.catalog_names.intersection(catalog) or len(self.catalog_names.union(catalog)) > 1000:
+                        raise DirectMCPError("invalid_tool_catalog")
+                    self.catalog_names.update(catalog)
             record["state"] = "completed"  # RPC receipt, not a mail-delivery claim.
             self.receipt(record)
             return value
@@ -303,39 +354,66 @@ class DirectMCP:
 
     def connect(self):
         self.deadline = time.monotonic() + STARTUP_SECONDS
+        if self.settings.http_protocol in ("auto", MODERN):
+            try:
+                import jsonschema  # noqa: F401 - no credentials consumed on missing dependency
+            except ImportError:
+                self.closed = True
+                raise DirectMCPError("modern_dependency_missing", self.record_failure("dependency_check")) from None
         try:
             self.token = token_value(self.settings)  # Refresh once, before any MCP session.
         except BaseException:
             identifier = self.record_failure("credential_unavailable")
             self.closed = True
             raise DirectMCPError("credential_unavailable", identifier) from None
-        result = self.request("initialize", {"protocolVersion": VERSIONS[0], "capabilities": {},
-            "clientInfo": {"name": "qq_mail_manage_direct", "version": "1.3.1"}})
-        version = result.get("protocolVersion")
-        if version not in VERSIONS or not isinstance(result.get("capabilities"), dict) or not isinstance(result["capabilities"].get("tools"), dict):
-            self.closed = True
-            raise DirectMCPError("unsupported_protocol_or_tools", self.record_failure("capability_negotiation"))
-        self.protocol = version
-        self.request("notifications/initialized", notification=True)
+        choice = self.settings.http_protocol
+        advertised = None
+        if choice in ("auto", MODERN):
+            self.protocol = MODERN
+            discovery = self.request("server/discover", {})
+            advertised = discovery.get("supportedVersions")
+            if not isinstance(advertised, list) or not 1 <= len(advertised) <= 100 or any(not isinstance(v, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", v) for v in advertised) or len(set(advertised)) != len(advertised) or not isinstance(discovery.get("capabilities"), dict) or not isinstance(discovery["capabilities"].get("tools"), dict):
+                self.closed = True
+                raise DirectMCPError("invalid_discovery", self.record_failure("capability_negotiation"))
+            options = (MODERN,) if choice == MODERN else (MODERN, *VERSIONS)
+            choice = next((v for v in options if v in advertised), None)
+            if choice is None:
+                self.closed = True
+                raise DirectMCPError("unsupported_protocol_or_tools", self.record_failure("capability_negotiation"))
+        if choice in VERSIONS:
+            self.protocol = choice
+            result = self.request("initialize", {"protocolVersion": choice, "capabilities": {}, "clientInfo": CLIENT_INFO})
+            version = result.get("protocolVersion")
+            if version not in VERSIONS or (advertised is not None and version not in advertised) or (self.settings.http_protocol in VERSIONS and version != choice) or not isinstance(result.get("capabilities"), dict) or not isinstance(result["capabilities"].get("tools"), dict):
+                self.closed = True
+                raise DirectMCPError("unsupported_protocol_or_tools", self.record_failure("capability_negotiation"))
+            self.protocol = version
+            self.request("notifications/initialized", notification=True)
         seen, names, cursor = set(), set(), None
         for _ in range(100):
-            page = self.request("tools/list", {"cursor": cursor} if cursor else {})
+            page = self.request("tools/list", {"cursor": cursor} if cursor is not None else {})
             if not isinstance(page.get("tools"), list) or len(page["tools"]) > 1000:
                 break
             for tool in page["tools"]:
-                if not isinstance(tool, dict) or not isinstance(tool.get("name"), str) or tool["name"] in names or not isinstance(tool.get("inputSchema"), dict):
+                if not isinstance(tool, dict) or not isinstance(tool.get("name"), str) or not 1 <= len(tool["name"]) <= 128 or tool["name"] in names or not isinstance(tool.get("inputSchema"), dict):
                     raise DirectMCPError("invalid_tool_catalog", self.record_failure("tool_discovery"))
                 names.add(tool["name"])
+                if self.protocol == MODERN:
+                    try:
+                        self.tool_headers[tool["name"]] = header_specs(tool["inputSchema"])
+                        self.tool_schemas[tool["name"]] = tool
+                    except (ValueError, TypeError, RecursionError):
+                        self.record_failure("invalid_tool_schema")
             if len(names) > 1000:
                 break
-            if "nextCursor" not in page:
-                self.available_tools = frozenset(names & self.allowed_tools)
+            if "nextCursor" not in page or (self.protocol == MODERN and page["nextCursor"] is None):
+                self.available_tools = frozenset(names & self.allowed_tools & (self.tool_headers.keys() if self.protocol == MODERN else names))
                 if "GetMe" in self.available_tools and self.allowed_tools <= self.available_tools:
                     self.deadline = None
                     return
                 raise DirectMCPError("required_tools_unavailable", self.record_failure("tool_discovery"))
             cursor = page["nextCursor"]
-            if not isinstance(cursor, str) or not cursor or cursor in seen:
+            if not isinstance(cursor, str) or (not cursor and self.protocol != MODERN) or cursor in seen:
                 break
             seen.add(cursor)
         raise DirectMCPError("incomplete_tool_catalog", self.record_failure("tool_discovery"))
@@ -344,7 +422,11 @@ class DirectMCP:
         with self.lock:
             if name not in self.allowed_tools or name not in self.available_tools or (name == "DeleteMessage" and "mail:delete" not in self.settings.scopes):
                 raise DirectMCPError("tool_not_enabled")
-            return self.request("tools/call", {"name": name, "arguments": arguments})
+            try:
+                projected = parameter_headers(self.tool_headers[name], arguments) if self.protocol == MODERN else {}
+            except (ValueError, TypeError, UnicodeError):
+                raise DirectMCPError("invalid_projected_arguments", self.record_failure("tool_header_projection")) from None
+            return self.request("tools/call", {"name": name, "arguments": arguments}, parameter_headers=projected)
 
     def close(self):
         self.closed = True

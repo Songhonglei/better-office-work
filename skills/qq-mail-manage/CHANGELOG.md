@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.4.0] - 2026-10-21
+
+### Added
+
+- 正式实现2026-07-28无initialize生命周期；direct_http默认auto通过server/discover选共同版本，优先modern，显式http_protocol可固定modern或legacy；Codex后端保留，不在写调用失败后换协议或重放。
+- 每个modern请求携带完整_meta与MCP-Protocol-Version/Mcp-Method，tools/call带Mcp-Name；严格ID/resultType/目录与分页校验，支持空字符串游标，拒绝会话头、批响应及未声明的服务端交互。
+- modern采用jsonschema4.25.1校验目录/参数/结构化输出，禁止外部schema抓取；实现properties-only参数头映射、安全整数、ASCII/base64编码和大小限制，全部重计算仍受worker总超时约束。Codex及显式legacy仍无第三方依赖。
+- 复用原凭据、state_dir、read_send禁删、GetMe账号权限门槛、完整正文附件与持久回执。401、输入补充请求、版本拒绝及未知发送结果停止，不触发刷新、自动重试或后台回退。
+
+### Validation
+
+- 全部179项假token离线回归通过（原159项+新增20项）；正常合成发送仅检验结构、来源正文和全部附件，不发送真实邮件。无本机凭据读取/续期/导出，也无真实收发。
+- 父任务已在云端用有效access-only诊断通过modern discovery、tools/list和GetMe；这是协议证据，不等于本发布版功能验收。本发布版真实HTTP验收由父任务继续；Codex云端执行环境阻断仍单独记录。
+
 ## [1.3.1] - 2026-10-21
 
 ### Fixed

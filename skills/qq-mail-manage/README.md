@@ -1,6 +1,6 @@
 # QQ Mail Manage
 
-Version: **1.3.1** · License: [MIT](LICENSE)
+Version: **1.4.0** · License: [MIT](LICENSE)
 
 通过真实 Codex CLI 或显式直接 HTTP 后端和腾讯官方 MCP 管理 QQ 邮箱，账号可配置。支持多 profile、OAuth/keyring 或环境变量认证初始化、列表/搜索/正文/附件，以及按用户具体指令发送、回复、转发；删除需先确认具体清单，执行移至垃圾箱。
 
@@ -8,7 +8,7 @@ Version: **1.3.1** · License: [MIT](LICENSE)
 
 从本仓库复制整个 `skills/qq-mail-manage` 文件夹到 Codex 可发现的技能目录，例如 `~/.agents/skills/qq-mail-manage`，或该机器已使用的 `~/.codex/skills/qq-mail-manage`。不要只复制 SKILL.md；启动新会话后调用 `$qq-mail-manage`。
 
-依赖：Python 3.11+ 和网络，默认 codex 后端另需真实 Codex CLI；OAuth 需要系统安全凭据库，env_token 需要宿主安全注入官方 MCP access token，无第三方 Python 包。macOS 已实测；Linux/WSL 需按所选认证模式配置并另行验收，原生 Windows 不支持。
+依赖：Python 3.11+ 和网络，默认 codex 后端另需真实 Codex CLI；OAuth 需要系统安全凭据库，env_token 需要宿主安全注入官方 MCP access token，Codex 与显式 legacy HTTP 无第三方 Python 包；HTTP auto/2026-07-28 需 `python3 -m pip install -r requirements.txt`（在宿主选定的 Python/venv 内）。macOS 已实测；Linux/WSL 需按所选认证模式配置并另行验收，原生 Windows 不支持。
 
 ## Onboard
 
@@ -48,7 +48,7 @@ python3 scripts/onboard.py --profile cloud init --account YOUR@qq.com --mode rea
 
 默认关闭；用 `--no-allow-extra-delete-scope` 显式关闭。这里只接受已有凭据额外的 mail:delete，不会降低 token 本身权限或改写原始 scope；GetMe 仍核对账号、必需权限和未知 scopes。mode 和请求 scopes 保持 read_send/read+send，删除工具始终禁止。真实 verify 仍由目标环境在授权范围内执行。
 
-无法启动嵌套 Codex 的宿主可显式配置 `--backend direct_http --auth-mode env_token`，无需 Codex CLI，不更改平台限制，不自动回退。完整协议、配置命令、时限及持久错误回执见 [直接 HTTP MCP](references/direct-http.md)。
+无法启动嵌套 Codex 的宿主可显式配置 `--backend direct_http --auth-mode env_token`，无需 Codex CLI，不更改平台限制，不自动回退。默认 --http-protocol auto 通过 server/discover 选择双方版本，优先2026-07-28无initialize请求；也可显式固定2026或三个legacy版本。完整协议、配置命令、时限及持久错误回执见 [直接 HTTP MCP](references/direct-http.md)。
 
 ## Operations
 
@@ -67,4 +67,4 @@ python3 scripts/onboard.py --profile cloud init --account YOUR@qq.com --mode rea
 python3 -m unittest discover -s tests -v
 ```
 
-159 项离线回归（保留原有 154 项）涵盖账号隔离、别名校验、授权范围、单次写入、未知结果不重试、删除续期和独立进程 onboard。不会自动发送或删除真实测试邮件。实际腾讯账号可获得的范围、完整历史、真实刷新和撤销行为仍需分别验收。
+179 项离线回归（保留原有 159 项）涵盖账号隔离、别名校验、授权范围、单次写入、未知结果不重试、删除续期和独立进程 onboard。不会自动发送或删除真实测试邮件。实际腾讯账号可获得的范围、完整历史、真实刷新和撤销行为仍需分别验收。

@@ -26,17 +26,18 @@ doctor 的存在性和历史时间不是认证成功；verify 必须本次实际
 
 ## 直接 HTTP 后端验收
 
-已配置凭据来源的 profile 可运行以下非秘密更新；省略存储/刷新参数会保留原值。仅在用户明确复用额外 mail:delete 时添加兼容选项：
+在宿主选定Python/venv先安装requirements.txt（jsonschema4.25.1）；已配置凭据来源的 profile 可运行以下非秘密更新，省略来源/state_dir会保留原值。本轮用户只验正常功能，显式refresh-policy host，不续期，临近到期停止并由宿主另行处理。仅在用户明确复用额外 mail:delete 时添加兼容选项：
 
 ```bash
 python3 scripts/onboard.py --profile cloud init --account YOUR@qq.com --mode read_send \
-  --auth-mode env_token --backend direct_http --allow-extra-delete-scope --configure-only
+  --auth-mode env_token --backend direct_http --http-protocol auto \
+  --allow-extra-delete-scope --refresh-policy host --configure-only
 python3 scripts/onboard.py --profile cloud doctor
 python3 scripts/onboard.py --profile cloud verify
 python3 scripts/qq_mail.py --profile cloud list --limit 1
 ```
 
-协议限制及持久错误回执见 [直接 HTTP MCP](direct-http.md)。记录所选 backend、协商结果及本次 verify 身份；不记录 session header 或 token。v1.3.1 优先请求已声明支持的 2025-03-26；公开 server/discover 和初始化/JSON/SSE/分页的离线模拟都不证明账号实时可用，必须本次 initialize 返回合法 result、确认协议及 tools capability，再经 GetMe 核验。空壳响应或2026新版协商均停止，不自动回退重试。失败读取独立 transport 回执，保留 submitting/unknown 并核对外部状态，不重试写入、自动刷新或切换 Codex；本节通过后仍须完整执行下述查询、附件、改主题发送及双端核验。
+协议限制及持久错误回执见 [直接 HTTP MCP](direct-http.md)。记录所选 backend、协商结果及本次 verify 身份；不记录 session header 或 token。v1.4.0默认auto通过合法server/discover选共同协议，优先原生2026-07-28，无initialize；每个请求必须完整_meta及匹配HTTP头，resultType必须complete。仅显式legacy或发现后选legacy时才核验initialize。先前云端access-only现代只读诊断通过不等于本发布版验收，离线JSON/SSE/分页测试也不证明账号实时可用；必须本次GetMe核验，空壳响应始终失败，不自动回退重试。失败读取独立 transport 回执，保留 submitting/unknown 并核对外部状态，不重试写入、自动刷新或切换 Codex；本节通过后仍须完整执行下述查询、附件、改主题发送及双端核验。
 
 ## 凭据生命周期验收（用户确认后执行）
 
