@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.4.2] - 2026-10-21
+
+### Fixed
+
+- 仅为 ListAttachments 兼容官方 MCP text 内 JSON 数组，严格验证唯一附件 ID、整数大小和可选字段后规范化为 attachments 对象；保留已有对象形状和其他工具的对象检查，错误或未知形状不当作空列表。
+- 兼容 DownloadAttachment 只返回 Base64、filename、content_type 的实际响应；下载前用 GetMessage 精确核对 message_id、attachment_id 与元数据 size，再校验解码长度及所有已提供的摘要。
+- 缺少服务端摘要时计算本地 SHA-1，回执明确摘要来源及校验级别，不伪称服务端摘要核验；严格 Base64、1 MiB、600 文件、原子不覆盖及 fsync 失败停止继续保留。
+
+### Validation boundary
+
+- 全部 210 项离线回归通过（192 项原测试 + 18 项附件兼容测试），并扩充 modern/legacy 独立 CLI 首次初始化、列表和下载路径。新增真实响应形状的合成字节回归，包含摘要缺失/冲突、ID/大小绑定、边界、路径、写盘失败及发送附件字段验证；无真实邮件或凭据读取、刷新、收发。
+- 官方公开工具目录未提供附件 outputSchema；有凭据的发布版验收由云端另行执行。仅 created_at 而无实际收件时间语义依据时继续停止选择最新邮件。
+
 ## [1.4.1] - 2026-10-21
 
 ### Integration

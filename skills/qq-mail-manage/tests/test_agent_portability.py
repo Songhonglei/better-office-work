@@ -120,9 +120,17 @@ class AgentPortabilityTests(unittest.IsolatedAsyncioTestCase):
         return content, {"content": base64.b64encode(content).decode(), "size": len(content),
                          "sha1": hashlib.sha1(content).hexdigest()}
 
+    def download_mail(self, payload):
+        async def call(tool, arguments):
+            if tool == "GetMessage":
+                content, _ = self.attachment()
+                return {"message_id": "msg_fixture", "attachments": [{"attachment_id":"att_fixture", "size":len(content)}]}
+            return payload
+        return type("Mail", (), {"alias_id":"fixture", "call":AsyncMock(side_effect=call)})()
+
     async def test_download_verifies_private_file_without_exposing_base64(self):
         content, payload = self.attachment()
-        mail = type("Mail", (), {"alias_id": "fixture", "call": AsyncMock(return_value=payload)})()
+        mail = self.download_mail(payload)
         output = self.root / "invoice.pdf"
         result = await bridge.download_attachment(mail, "msg_fixture", "att_fixture", output)
         self.assertEqual(output.read_bytes(), content)
@@ -135,10 +143,10 @@ class AgentPortabilityTests(unittest.IsolatedAsyncioTestCase):
         _, payload = self.attachment()
         bad = [{**payload, "sha1": "0" * 40}, {**payload, "size": payload["size"] + 1},
                {**payload, "content": "bad-base64!"}, {**payload, "size": 1048577},
-               {"content": payload["content"]}]
+               {**payload,"size":None}]
         for number, value in enumerate(bad):
             output = self.root / (str(number) + ".pdf")
-            mail = type("Mail", (), {"alias_id": "fixture", "call": AsyncMock(return_value=value)})()
+            mail = self.download_mail(value)
             with self.assertRaises(ValueError):
                 await bridge.download_attachment(mail, "msg_fixture", "att_fixture", output)
             self.assertFalse(output.exists())
@@ -160,7 +168,10 @@ class AgentPortabilityTests(unittest.IsolatedAsyncioTestCase):
         _, payload = self.attachment()
         output = self.root / "raced.pdf"
 
-        async def race(*_):
+        async def race(tool, _arguments):
+            if tool == "GetMessage":
+                content, _ = self.attachment()
+                return {"message_id": "msg_fixture", "attachments":[{"attachment_id":"att_fixture","size":len(content)}]}
             output.write_bytes(b"other process won")
             return payload
 
@@ -172,7 +183,7 @@ class AgentPortabilityTests(unittest.IsolatedAsyncioTestCase):
 
 
 DIRECT_CLI_FIXTURE = r'''
-import json,os,runpy,subprocess,sys
+import base64,json,os,runpy,subprocess,sys
 from pathlib import Path
 sys.path.insert(0,sys.argv[1])
 import direct_http as h
@@ -201,8 +212,18 @@ def worker(command,**kw):
                 assert args['body']=='fixture body' and args['alias_id']=='fixture-alias' and args['skip_confirmation'] is True
                 with Path(os.environ['FIXTURE_SENDS']).open('a') as f:f.write('send\n')
                 data={'queued':True}
+            elif name in ('GetMessage','ListAttachments','DownloadAttachment'):
+                args=message['params']['arguments']
+                assert args['message_id']=='msg_fixture' and args['alias_id']=='fixture-alias'
+                content=b'synthetic attachment bytes'
+                items=[{'attachment_id':'att_fixture','filename':'fixture.pdf','content_type':'application/pdf','size':len(content)}]
+                if name=='GetMessage': data={'message_id':'msg_fixture','attachments':items,'attachment_count':1}
+                elif name=='ListAttachments': data=items
+                else:
+                    assert args['attachment_id']=='att_fixture'
+                    data={'filename':'fixture.pdf','content_type':'application/pdf','content':base64.b64encode(content).decode()}
             else: raise AssertionError(name)
-            value={'structuredContent':data}
+            value={'content':[{'type':'text','text':json.dumps(data)}]} if name=='ListAttachments' else {'structuredContent':data}
         else: raise AssertionError(method)
         if modern: value={'resultType':'complete',**value}
         response={'jsonrpc':'2.0','id':message['id'],'result':value}
@@ -250,6 +271,13 @@ class StandaloneCLITests(unittest.TestCase):
             self.assertEqual(diagnostic["http_protocol"], protocol)
             verified = run("onboard.py", "verify", simulated=True)
             self.assertEqual(verified["state"], "verified")
+            listed = run("qq_mail.py", "attachments", "--message-id", "msg_fixture", simulated=True)
+            self.assertEqual(listed["attachments"][0]["attachment_id"], "att_fixture")
+            downloaded = run("qq_mail.py", "download", "--message-id", "msg_fixture",
+                             "--attachment-id", "att_fixture", "--output", str(root / "fixture.pdf"), simulated=True)
+            self.assertEqual((root / "fixture.pdf").read_bytes(), b"synthetic attachment bytes")
+            self.assertEqual(downloaded["verification"]["metadata_source"], "GetMessage")
+            self.assertEqual(downloaded["verification"]["level"], "metadata_size_and_local_digest")
             arguments = {"to": [{"email": "fixture@example.com"}], "subject": "fixture", "body": "fixture body"}
             sent = run("qq_mail_write.py", "execute-authorized", "--tool", "SendMessage",
                        "--arguments-file", "-", "--user-authorized", simulated=True, content=json.dumps(arguments))

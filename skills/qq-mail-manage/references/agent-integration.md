@@ -66,7 +66,7 @@ python3 scripts/qq_mail_write.py --profile personal batch-status --batch-id BATC
 ## 在目标环境验收
 
 1. 运行 doctor、configure-only、verify，确认 direct_http、正确账号、实际权限及可持久写入的包外状态目录。
-2. 查询限定范围内少量邮件，再读取用户指定邮件；需附件时下载无敏感内容的小附件并核对大小/摘要。
+2. 查询限定范围内少量邮件，再读取用户指定邮件；需附件时下载无敏感内容的小附件，核对绑定元数据的大小，并检查 verification 中的摘要来源；本地计算的摘要不称为服务端摘要。
 3. 写入仅在用户明确指定目标和内容后执行，提交一次并核对 QQ 对应文件夹；queued 不算送达。
 4. 有显式自动刷新配置时单独验证正常续期和撤销；unknown/pending 不自动重试。说明状态和 secret 在容器重建后能否保留。
 

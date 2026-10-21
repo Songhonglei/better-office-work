@@ -107,7 +107,7 @@ class CodexMail:
         self.sequence = 0
         try:
             await self.rpc("initialize", {
-                "clientInfo": {"name": "qq_mail_manage_bridge", "title": "QQ Mail Manage Bridge", "version": "1.4.1"},
+                "clientInfo": {"name": "qq_mail_manage_bridge", "title": "QQ Mail Manage Bridge", "version": "1.4.2"},
                 "capabilities": {"experimentalApi": True},
             })
             await self.send({"method": "initialized", "params": {}})
@@ -260,6 +260,8 @@ class CodexMail:
         payload = decode_result(result, tool)
         if result.get("isError") or endpoint_error(payload):
             raise ToolError(result)
+        if tool == "ListAttachments":
+            payload = normalize_attachment_list(payload)
         if not isinstance(payload, dict):
             raise RuntimeError("Unexpected QQ Mail response shape; do not treat this as an empty success")
         return payload
@@ -385,6 +387,77 @@ def latest_by_received(messages, after, before, subject_contains):
     return candidates[0][1]
 
 
+def attachment_integrity(record):
+    """Validate optional service digests; never treat an absent digest as verified."""
+    digests = {}
+    for key, length in (("sha1", 40), ("sha256", 64), ("md5", 32)):
+        if key in record:
+            value = record[key]
+            if not isinstance(value, str) or not re.fullmatch(r"[0-9a-fA-F]{"+str(length)+"}", value):
+                raise ValueError("Attachment service digest is invalid")
+            digests[key] = value.lower()
+    if any(key in record for key in ("digest", "checksum", "hash")):
+        raise ValueError("Attachment service digest format is unsupported; stop for contract review")
+    return digests
+
+
+def normalize_attachment_list(payload):
+    """Normalize only the observed ListAttachments array and supported envelope."""
+    if isinstance(payload, list):
+        payload = {"attachments": payload}
+    if not isinstance(payload, dict) or not isinstance(payload.get("attachments"), list):
+        raise RuntimeError("Unexpected attachment list response; stop without assuming an empty list")
+    items = payload["attachments"]
+    if len(items) > 1000:
+        raise RuntimeError("Attachment list exceeds the safety limit")
+    ids = set()
+    for item in items:
+        if (not isinstance(item, dict) or endpoint_error(item)
+                or not isinstance(item.get("attachment_id"), str) or not item["attachment_id"]
+                or item["attachment_id"] in ids or type(item.get("size")) is not int or item["size"] < 0):
+            raise RuntimeError("Attachment list has invalid or ambiguous ID/size metadata")
+        ids.add(item["attachment_id"])
+        for key in ("filename", "content_type"):
+            if key in item and (not isinstance(item[key], str) or not item[key]):
+                raise RuntimeError("Attachment list has invalid filename or MIME metadata")
+        attachment_integrity(item)
+    return payload
+
+
+def bound_attachment_metadata(payload, message_id, attachment_id, alias_id):
+    if not isinstance(payload, dict) or not isinstance(payload.get("attachments"), list):
+        raise ValueError("Attachment metadata list is missing; cannot bind download to an attachment ID")
+    if payload.get("message_id") != message_id:
+        raise ValueError("Attachment metadata belongs to a different message or has no message ID")
+    if "alias_id" in payload and payload["alias_id"] != alias_id:
+        raise ValueError("Attachment metadata belongs to a different message or mailbox")
+    attachments = payload["attachments"]
+    if len(attachments) > 1000:
+        raise ValueError("Attachment metadata list exceeds the safety limit")
+    ids, selected = set(), None
+    for item in attachments:
+        if not isinstance(item, dict) or not isinstance(item.get("attachment_id"), str) or not item["attachment_id"] or item["attachment_id"] in ids:
+            raise ValueError("Attachment metadata IDs are missing or ambiguous")
+        ids.add(item["attachment_id"])
+        if item["attachment_id"] == attachment_id:
+            selected = item
+    if selected is None:
+        raise ValueError("Requested attachment ID is not present in this message metadata")
+    for key, expected in (("message_id", message_id), ("alias_id", alias_id)):
+        if key in selected and selected[key] != expected:
+            raise ValueError("Attachment metadata belongs to a different message or mailbox")
+    size = selected.get("size")
+    if type(size) is not int or not 0 <= size <= MAX_ATTACHMENT_BYTES:
+        raise ValueError("Attachment metadata size is missing or exceeds the supported 1 MiB limit")
+    descriptors = {}
+    for key in ("filename", "content_type"):
+        if key in selected:
+            if not isinstance(selected[key], str) or not selected[key]:
+                raise ValueError("Attachment metadata filename or MIME type is invalid")
+            descriptors[key] = selected[key]
+    return size, attachment_integrity(selected), descriptors
+
+
 async def download_attachment(mail, message_id, attachment_id, output):
     """Save only verified bytes to an explicit, new private file; never print Base64."""
     output = Path(output).expanduser().absolute()
@@ -397,23 +470,43 @@ async def download_attachment(mail, message_id, attachment_id, output):
         raise ValueError("Choose an existing, user-owned output directory without group/world write access")
     if os.path.lexists(output):
         raise ValueError("Attachment output already exists; choose a new filename")
+    if not isinstance(message_id, str) or not message_id or not isinstance(attachment_id, str) or not attachment_id:
+        raise ValueError("Explicit message and attachment IDs are required")
+    metadata = await mail.call("GetMessage", {"alias_id": mail.alias_id, "message_id": message_id})
+    size, metadata_digests, descriptors = bound_attachment_metadata(metadata, message_id, attachment_id, mail.alias_id)
     payload = await mail.call("DownloadAttachment", {
         "alias_id": mail.alias_id, "message_id": message_id, "attachment_id": attachment_id})
     if not isinstance(payload, dict) or not isinstance(payload.get("content"), str):
         raise RuntimeError("Attachment response has no Base64 content")
-    size, digest = payload.get("size"), payload.get("sha1")
-    if type(size) is not int or not 0 <= size <= MAX_ATTACHMENT_BYTES:
-        raise ValueError("Attachment size is missing or exceeds the supported 1 MiB limit")
-    if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", digest):
-        raise ValueError("Attachment SHA-1 is missing or invalid")
+    for key, expected in (("attachment_id", attachment_id), ("message_id", message_id), ("alias_id", mail.alias_id)):
+        if key in payload and payload[key] != expected:
+            raise ValueError("Attachment response identity does not match the requested metadata")
+    if "size" in payload and (type(payload["size"]) is not int or payload["size"] != size):
+        raise ValueError("Attachment response size does not match the bound metadata")
+    for key, expected in descriptors.items():
+        if key in payload:
+            value = payload[key]
+            if not isinstance(value, str) or (value.casefold() if key == "content_type" else value) != (expected.casefold() if key == "content_type" else expected):
+                raise ValueError("Attachment response filename or MIME type conflicts with its metadata")
+    response_digests = attachment_integrity(payload)
     if len(payload["content"]) > 4 * ((MAX_ATTACHMENT_BYTES + 2) // 3):
         raise ValueError("Attachment exceeds the supported 1 MiB limit")
     try:
         content = base64.b64decode(payload["content"], validate=True)
     except (ValueError, binascii.Error):
         raise ValueError("Attachment content is not valid Base64") from None
-    if len(content) != size or hashlib.sha1(content).hexdigest() != digest.lower():
-        raise ValueError("Attachment size or SHA-1 does not match its content")
+    if base64.b64encode(content).decode("ascii") != payload["content"]:
+        raise ValueError("Attachment content is not canonical Base64")
+    if len(content) > MAX_ATTACHMENT_BYTES or len(content) != size:
+        raise ValueError("Attachment decoded size does not match its metadata or exceeds 1 MiB")
+    digest = hashlib.sha1(content).hexdigest()
+    verified = []
+    for source, expected in (("GetMessage", metadata_digests), ("DownloadAttachment", response_digests)):
+        for algorithm, value in expected.items():
+            actual = hashlib.new(algorithm, content, usedforsecurity=False).hexdigest()
+            if actual != value:
+                raise ValueError("Attachment service digest does not match its content")
+            verified.append(source+"."+algorithm)
     fd, temporary = tempfile.mkstemp(prefix=".qq-attachment-", dir=output.parent)
     try:
         with os.fdopen(fd, "wb") as stream:
@@ -425,7 +518,11 @@ async def download_attachment(mail, message_id, attachment_id, output):
         sync_directory(output.parent)
     finally:
         Path(temporary).unlink(missing_ok=True)
-    return {"state": "downloaded", "path": str(output), "size": size, "sha1": digest.lower()}
+    return {"state": "downloaded", "path": str(output), "size": len(content), "sha1": digest,
+            "verification": {"message_id": message_id, "attachment_id": attachment_id,
+                "metadata_source": "GetMessage", "size_verified": True,
+                "sha1_source": "local_computed", "server_digests_verified": verified,
+                "level": "server_digest_and_metadata_size" if verified else "metadata_size_and_local_digest"}}
 
 
 async def main():

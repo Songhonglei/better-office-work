@@ -20,7 +20,7 @@ python3 scripts/qq_mail_write.py execute-authorized --tool SendMessage --argumen
 
 ReplyMessage：message_id、body，默认 reply_all=false。ForwardMessage：message_id、to、body，默认 include_attachments=false。确认是否包含原附件需依据用户指令；用户已要求带原附件时直接包含，不重复问。原生 ForwardMessage 不支持新主题，定制主题时用 SendMessage 发送用户指定的原正文和附件。
 
-附件字段：filename、content_type、size、sha1、content（Base64）。核验返回的大小/SHA-1，再校验实际发送字节。当前已验证限制：最多 3 个，单个 1 MiB、合计 3 MiB；超限停止说明，不擅自上传第三方链接或删附件。
+SendMessage 输入附件字段：filename、content_type、size、sha1、content（Base64）。size 与 sha1 必须根据已核验的实际发送字节生成；不能假称下载服务总会提供这两个字段。当前已验证限制：最多 3 个，单个 1 MiB、合计 3 MiB；超限停止说明，不擅自上传第三方链接或删附件。
 
 ## 附件命令
 
@@ -29,7 +29,11 @@ python3 scripts/qq_mail.py --profile personal attachments --message-id MESSAGE_I
 python3 scripts/qq_mail.py --profile personal download --message-id MESSAGE_ID --attachment-id ATTACHMENT_ID --output /absolute/private-directory/invoice.pdf
 ```
 
-先列出元数据确认 ID；下载校验返回的字节数和 SHA-1，最多 1 MiB，不输出 Base64。输出目录须已存在、当前用户所有且无组/其他用户写权限，不能位于技能目录。新文件为 600；已存在的文件或链接及并发抢占目标均不会被覆盖。字段缺失、超限或摘要不符时不保存附件。下载接口返回的摘要仍应与邮件元数据核对；无可核实的字段时停止。
+ListAttachments 的官方 text JSON 数组及已有 attachments 对象均规范化为 {"attachments":[...]}，逐项验证唯一 attachment_id、非负整数 size 与可选字段；未知或错误响应停止，不按空列表处理。列表可以展示超限附件，下载仍拒绝超过 1 MiB。
+
+下载先用 GetMessage 读取同一邮件的附件元数据，先核对返回的 message_id，再以精确 attachment_id 唯一匹配并取得 size，再调用 DownloadAttachment。下载响应可以只有 content、filename、content_type；size/sha1 不是必需返回字段。Base64 必须严格且规范，解码字节数须与绑定元数据相等且最多 1 MiB。双方均提供的文件名/MIME 不得矛盾。服务端任一已提供的 sha1/sha256/md5 都必须校验，未知摘要格式或错误值停止。缺少服务端摘要时允许本地计算 SHA-1，回执 verification.sha1_source=local_computed、level=metadata_size_and_local_digest、server_digests_verified=[]；这表示元数据长度核验及本地摘要，不代表服务端摘要核验。已校验服务端摘要则列明字段来源，level=server_digest_and_metadata_size。不输出 Base64。
+
+输出目录须已存在、当前用户所有且无组/其他用户写权限，不能位于技能目录或含符号链接。新文件为 600；已存在的文件或链接及并发抢占目标均不会被覆盖。缺少元数据 ID/大小、身份冲突、超限或摘要不符时不保存。写入后 fsync 和目录同步失败不得报告成功；若文件已可见，先核对文件而非覆盖重写。
 
 ## 用户主动要求发前预览
 

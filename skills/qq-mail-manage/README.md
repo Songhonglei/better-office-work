@@ -1,6 +1,6 @@
 # QQ Mail Manage
 
-Version: **1.4.1** · License: [MIT](LICENSE)
+Version: **1.4.2** · License: [MIT](LICENSE)
 
 通过真实 Codex CLI 或显式直接 HTTP 后端和腾讯官方 MCP 管理 QQ 邮箱，账号可配置。支持多 profile、OAuth/keyring 或环境变量认证初始化、列表/搜索/正文/附件，以及按用户具体指令发送、回复、转发；删除需先确认具体清单，执行移至垃圾箱。
 
@@ -82,5 +82,7 @@ python3 -m unittest discover -s tests -v
 ```
 
 192 项离线回归（保留远端 179 项并加入通用性 13 项）涵盖账号隔离、别名校验、授权范围、单次写入、未知结果不重试、删除续期和独立进程 onboard。不会自动发送或删除真实测试邮件。实际腾讯账号可获得的范围、完整历史、真实刷新和撤销行为仍需分别验收。
+
+附件列表严格兼容官方 text JSON 数组；附件下载兼容只有 Base64/文件名/MIME 的响应：先绑定 GetMessage 的邮件/附件 ID 和大小，核对解码长度；可选服务端摘要必须验证，缺失时明确标注本地 SHA-1 及校验级别。
 
 新增独立进程在空 PATH、重定位目录下完成 direct_http 配置/模拟验证/模拟单次发送；覆盖确认令牌与 OAuth 区分、续期中断状态、附件不覆盖/摘要失败、stdin 和安全回执查询。GitHub Actions 配置 Ubuntu Python 3.11/3.13 与 macOS Python 3.13 的离线测试矩阵；本地结果不代表 CI 已执行。
