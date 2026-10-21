@@ -138,7 +138,7 @@ class AttachmentContractTests(unittest.IsolatedAsyncioTestCase):
         for value in (None, True, "105571", -1, 1048577):
             metadata = {"message_id": "msg_fixture", "attachments": [{"attachment_id": "att_fixture", "size": value}]}
             mail = self.mail(metadata=metadata)
-            with self.assertRaisesRegex(ValueError, "metadata size"):
+            with self.assertRaisesRegex(ValueError, "size"):
                 await self.download(mail)
             self.assertEqual(mail.call.await_count, 1)
 

@@ -107,7 +107,7 @@ class CodexMail:
         self.sequence = 0
         try:
             await self.rpc("initialize", {
-                "clientInfo": {"name": "qq_mail_manage_bridge", "title": "QQ Mail Manage Bridge", "version": "1.4.2"},
+                "clientInfo": {"name": "qq_mail_manage_bridge", "title": "QQ Mail Manage Bridge", "version": "1.5.0"},
                 "capabilities": {"experimentalApi": True},
             })
             await self.send({"method": "initialized", "params": {}})
@@ -387,6 +387,13 @@ def latest_by_received(messages, after, before, subject_contains):
     return candidates[0][1]
 
 
+def preflight_attachment(size, encoded=None):
+    if type(size) is not int or not 0 <= size <= MAX_ATTACHMENT_BYTES:
+        raise ValueError("Attachment size is missing or exceeds the supported 1 MiB limit")
+    if encoded is not None and (not isinstance(encoded, str) or len(encoded) > 4*((MAX_ATTACHMENT_BYTES+2)//3)):
+        raise ValueError("Attachment exceeds the supported 1 MiB limit")
+
+
 def attachment_integrity(record):
     """Validate optional service digests; never treat an absent digest as verified."""
     digests = {}
@@ -447,8 +454,7 @@ def bound_attachment_metadata(payload, message_id, attachment_id, alias_id):
         if key in selected and selected[key] != expected:
             raise ValueError("Attachment metadata belongs to a different message or mailbox")
     size = selected.get("size")
-    if type(size) is not int or not 0 <= size <= MAX_ATTACHMENT_BYTES:
-        raise ValueError("Attachment metadata size is missing or exceeds the supported 1 MiB limit")
+    preflight_attachment(size)
     descriptors = {}
     for key in ("filename", "content_type"):
         if key in selected:
@@ -489,8 +495,7 @@ async def download_attachment(mail, message_id, attachment_id, output):
             if not isinstance(value, str) or (value.casefold() if key == "content_type" else value) != (expected.casefold() if key == "content_type" else expected):
                 raise ValueError("Attachment response filename or MIME type conflicts with its metadata")
     response_digests = attachment_integrity(payload)
-    if len(payload["content"]) > 4 * ((MAX_ATTACHMENT_BYTES + 2) // 3):
-        raise ValueError("Attachment exceeds the supported 1 MiB limit")
+    preflight_attachment(size, payload["content"])
     try:
         content = base64.b64decode(payload["content"], validate=True)
     except (ValueError, binascii.Error):
@@ -555,8 +560,10 @@ async def main():
     if options.profile:
         select_profile(options.profile)
     if options.command in ("list", "search"):
+        if options.cursor is not None and (not options.cursor or not options.after or not options.before):
+            parser.error("Manual --cursor requires the original --after and --before from the previous query_window")
         after, before = query_window(options.after, options.before)
-        if options.all_pages and options.cursor:
+        if options.all_pages and options.cursor is not None:
             parser.error("--all-pages cannot start at an intermediate cursor")
     async with CodexMail() as mail:
         if options.command == "status":
@@ -580,6 +587,9 @@ async def main():
                 if options.subject_only:
                     arguments["search_in"] = "SEARCH_IN_SUBJECT"
             result = await collect_pages(mail, tool, arguments, options.max_pages) if options.all_pages else await mail.call(tool, arguments)
+            result["query_window"] = {"after": after, "before": before, "folder": options.folder}
+            result["selection"] = {"status": "candidates", "received_at_available": all(isinstance(x.get("received_at"), str) for x in result.get("data", [])),
+                                   "note": "No latest selection implied; created_at is not receipt time"}
         print(json.dumps(redact(result), ensure_ascii=False, indent=2))
 
 
