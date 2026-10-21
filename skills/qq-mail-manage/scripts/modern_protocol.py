@@ -6,7 +6,7 @@ import base64
 import re
 
 MODERN = "2026-07-28"
-CLIENT_INFO = {"name": "qq_mail_manage_direct", "version": "1.4.0"}
+CLIENT_INFO = {"name": "qq_mail_manage_direct", "version": "1.4.1"}
 TOKEN = re.compile(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+")
 
 

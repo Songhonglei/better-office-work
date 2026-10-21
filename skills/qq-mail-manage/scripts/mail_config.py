@@ -1,6 +1,13 @@
 """Portable profiles: official OAuth/keyring or an injected MCP access-token variable."""
-import json
 import os
+import sys
+
+if sys.version_info < (3, 11):
+    raise SystemExit("qq-mail-manage requires Python 3.11+; run with a supported python3")
+if os.name != "posix":
+    raise SystemExit("qq-mail-manage requires macOS/Linux or WSL; native Windows is not supported")
+
+import json
 import re
 import shutil
 import tempfile

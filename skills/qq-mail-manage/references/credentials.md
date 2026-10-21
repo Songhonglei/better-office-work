@@ -19,7 +19,7 @@
 | client_id | QQ_MAIL_CLIENT_ID | 原签发客户端的注册 ID；不猜测 |
 | token_type | QQ_MAIL_TOKEN_TYPE | Bearer |
 | scope | QQ_MAIL_SCOPE | 空格分隔的已授予范围；仍以 GetMe 核验为准 |
-| expires_at | QQ_MAIL_EXPIRES_AT | 正数 UTC Unix 秒；不是 expires_in 或 ISO 字符串 |
+| expires_at | QQ_MAIL_EXPIRES_AT | 正数 UTC Unix 秒；不是 expires_in、毫秒或 ISO 字符串 |
 | client_secret | QQ_MAIL_CLIENT_SECRET | 仅原机密客户端需要；不传给 MCP |
 
 `--token-env-var NAME` 保留 access token 自定义变量兼容；其他字段用 `--credential-env refresh_token=YOUR_REFRESH_VAR` 等重复参数，只能传变量名。所有字段变量必须互不重复，不能选 RUST_LOG/PATH/HOME 等运行变量。版本/帮助/登录及宿主适配器子进程剥离登记的 QQ 凭据变量，MCP 子进程仅重新加入所选 access token；日志和回执脱敏 access/refresh/client secret，保留 scope/type 等公开元数据供核验。
