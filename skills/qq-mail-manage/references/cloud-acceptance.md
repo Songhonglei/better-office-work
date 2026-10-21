@@ -4,7 +4,7 @@
 
 ## 入口与认证
 
-确认目标环境安装真实 Codex CLI、Python 3.11+，可以访问腾讯官方 MCP。OAuth 模式依旧需要凭据库；此案例使用 env_token 和 read_send，不需要删除权限或钥匙串。优先由宿主安全保存并注入完整 bundle（含 QQ_MAIL_ACCESS_TOKEN、QQ_MAIL_REFRESH_TOKEN、原签发 client_id、token_type、scope、expires_at），操作者不打印、不复制到参数文件或 .env，不从另一台电脑导出令牌。
+确认目标环境具备 Python 3.11+，可以访问腾讯官方 MCP。默认 codex 后端需要真实 Codex CLI；嵌套 Codex 被平台限制时，显式选择 direct_http，无需 Codex CLI，不调整平台限制。OAuth 模式依旧需要凭据库；此案例使用 env_token 和 read_send，不需要删除权限或钥匙串。优先由宿主安全保存并注入完整 bundle（含 QQ_MAIL_ACCESS_TOKEN、QQ_MAIL_REFRESH_TOKEN、原签发 client_id、token_type、scope、expires_at），操作者不打印、不复制到参数文件或 .env，不从另一台电脑导出令牌。
 
 在技能根目录：
 
@@ -15,6 +15,20 @@ python3 scripts/onboard.py --profile cloud verify
 ```
 
 doctor 的存在性和历史时间不是认证成功；verify 必须本次实际通过 GetMe，账号别名精确匹配、scopes 包含 mail:read/mail:send；默认不得含 mail:delete。用户明确复用已有广权限凭据时，须先在 read_send profile 显式启用 `--allow-extra-delete-scope`，只接受该额外 scope；DeleteMessage 仍禁止，未知 scopes 仍拒绝，不能称 token 已降权。记录真实 scopes 及兼容选项值。失败停止，更新授权后再验证，不回退 OAuth，不在 401 后刷新并重放邮件。默认 env + host 由宿主负责续期；本技能自动刷新必须先显式配置可原子保存的 host_command 或 private_file，见 [凭据与刷新](credentials.md)。环境变量不等于持久存储。
+
+## 直接 HTTP 后端验收
+
+已配置凭据来源的 profile 可运行以下非秘密更新；省略存储/刷新参数会保留原值。仅在用户明确复用额外 mail:delete 时添加兼容选项：
+
+```bash
+python3 scripts/onboard.py --profile cloud init --account YOUR@qq.com --mode read_send \
+  --auth-mode env_token --backend direct_http --allow-extra-delete-scope --configure-only
+python3 scripts/onboard.py --profile cloud doctor
+python3 scripts/onboard.py --profile cloud verify
+python3 scripts/qq_mail.py --profile cloud list --limit 1
+```
+
+协议限制及持久错误回执见 [直接 HTTP MCP](direct-http.md)。记录所选 backend、协商结果及本次 verify 身份；不记录 session header 或 token。初始化/JSON/SSE/分页的离线模拟不证明 QQ 官方实时兼容。失败读取独立 transport 回执，保留 submitting/unknown 并核对外部状态，不重试写入、自动刷新或切换 Codex；本节通过后仍须完整执行下述查询、附件、改主题发送及双端核验。
 
 ## 凭据生命周期验收（用户确认后执行）
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Manage a configured QQ mailbox through real Codex and its official OAuth store."""
+"""Manage a configured QQ mailbox through Codex or explicit direct HTTP MCP."""
 import argparse
 import asyncio
 import json
@@ -17,8 +17,9 @@ from mail_config import (READ_TOOLS as TOOLS, WRITE_TOOLS, load_settings, codex_
 
 
 class AuthenticationError(RuntimeError):
-    def __init__(self):
-        super().__init__("Official QQ MCP authorization failed or expired/revoked; securely update authorization and run verify; no reactive refresh or automatic resend")
+    def __init__(self, receipt_id=None):
+        super().__init__("Official QQ MCP authorization failed or expired/revoked; securely update authorization and run verify; no reactive refresh or automatic resend" +
+                         (" (transport receipt " + receipt_id + ")" if receipt_id else ""))
 
 
 def authentication_failure(payload):
@@ -49,8 +50,24 @@ class CodexMail:
         self.allowed_tools = TOOLS + ((write_tool,) if write_tool else ())
         self.last_call = 0
         self.authorization_failed = False
+        self.call_lock = asyncio.Lock()
 
     async def __aenter__(self):
+        if self.settings.backend == "direct_http":
+            from direct_http import DirectMCP
+            self.direct = DirectMCP(self.settings, self.allowed_tools)
+            try:
+                await asyncio.to_thread(self.direct.connect)
+                context = await self.call("GetMe", {})
+                try:
+                    self.verify_context(context)
+                except (RuntimeError, ValueError):
+                    self.direct.record_failure("account_scope_verification")
+                    raise
+                return self
+            except BaseException:
+                self.direct.close()
+                raise
         # Only the genuine MCP-calling child receives the chosen token variable.
         child_env = subprocess_env(self.settings, for_mcp=True)
         if self.settings.auth_mode == "env_token":
@@ -67,7 +84,7 @@ class CodexMail:
         self.sequence = 0
         try:
             await self.rpc("initialize", {
-                "clientInfo": {"name": "qq_mail_manage_bridge", "title": "QQ Mail Manage Bridge", "version": "1.2.3"},
+                "clientInfo": {"name": "qq_mail_manage_bridge", "title": "QQ Mail Manage Bridge", "version": "1.3.0"},
                 "capabilities": {"experimentalApi": True},
             })
             await self.send({"method": "initialized", "params": {}})
@@ -110,8 +127,15 @@ class CodexMail:
                        "scopes": scopes, "is_primary_alias": aliases[0].get("is_primary"),
                        "missing_scopes": sorted(set(self.settings.scopes) - set(scopes)),
                        "route": "local real Codex -> official QQ Mail MCP"}
+        self.status["backend"] = self.settings.backend
+        if self.settings.backend == "direct_http":
+            self.status["route"] = "direct HTTPS -> official QQ Mail MCP"
+            self.status["protocol_version"] = self.direct.protocol
 
     async def __aexit__(self, *_):
+        if self.settings.backend == "direct_http":
+            self.direct.close()
+            return
         if self.process.returncode is None:
             try:
                 self.process.terminate()
@@ -153,6 +177,12 @@ class CodexMail:
                     return message["result"]
 
     async def raw_call(self, tool, arguments):
+        # Keep auth checks, pacing, submission and error decoding in one critical
+        # section: an already queued call must observe an earlier auth failure.
+        async with self.call_lock:
+            return await self._raw_call(tool, arguments)
+
+    async def _raw_call(self, tool, arguments):
         if self.authorization_failed:
             raise AuthenticationError()
         if contains_runtime_secret(arguments):
@@ -172,13 +202,32 @@ class CodexMail:
                 raise RuntimeError("Direct sending requires an explicit user instruction")
         # Coordinate the advertised 10/min limit across local bridge processes.
         await reserve_call_slot()
-        raw = redact(await self.rpc("mcpServer/tool/call", {
-            "threadId": self.thread_id, "server": self.settings.server, "tool": tool, "arguments": arguments,
-        }))
-        payload = decode_result(raw)
+        if self.settings.backend == "direct_http":
+            from direct_http import DirectMCPError
+            try:
+                raw = redact(await asyncio.to_thread(self.direct.call_tool, tool, arguments))
+            except DirectMCPError as error:
+                if error.reason == "authorization_rejected":
+                    self.authorization_failed = True
+                    raise AuthenticationError(error.receipt_id) from None
+                raise
+        else:
+            raw = redact(await self.rpc("mcpServer/tool/call", {
+                "threadId": self.thread_id, "server": self.settings.server, "tool": tool, "arguments": arguments,
+            }))
+        try:
+            payload = decode_result(raw)
+        except (RuntimeError, ValueError, TypeError, KeyError):
+            if self.settings.backend == "direct_http":
+                identifier = self.direct.record_failure("invalid_tool_result")
+                raise RuntimeError("Invalid QQ tool result (transport receipt " + identifier + "); stop without replay") from None
+            raise
+        receipt_id = None
+        if self.settings.backend == "direct_http" and (raw.get("isError") or endpoint_error(payload)):
+            receipt_id = self.direct.record_failure("tool_response_error")
         if (raw.get("isError") or endpoint_error(payload)) and authentication_failure(payload):
             self.authorization_failed = True
-            raise AuthenticationError()
+            raise AuthenticationError(receipt_id)
         return raw
 
     async def call(self, tool, arguments):

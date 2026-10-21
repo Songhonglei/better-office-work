@@ -9,7 +9,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
-from mail_config import (MODES, AUTH_MODES, DEFAULT_TOKEN_ENV, codex_binary, data_home, load_settings, overrides,
+from mail_config import (MODES, AUTH_MODES, BACKENDS, DEFAULT_TOKEN_ENV, codex_binary, data_home, load_settings, overrides,
                          profile_name, profile_path, select_profile, settings_from, write_private,
                          validate_token_env_var, subprocess_env, redact)
 from mail_credentials import SOURCES, POLICIES, CLIENT_AUTH, ENV_FIELDS
@@ -38,21 +38,25 @@ def doctor(settings=None, *, auth_mode=None, token_env_var=None, **credential_op
     apply_credential_options(diagnostic_data, credential_options)
     diagnostic = settings_from(diagnostic_data)
     env = subprocess_env(diagnostic, extra_names=(name,))
-    binary = codex_binary()
-    try:
-        version = subprocess.run([binary, "--version"], env=env, capture_output=True, text=True, timeout=15, check=True)
-        help_result = subprocess.run([binary, "app-server", "--help"], env=env, capture_output=True, text=True, timeout=15, check=True)
-    except (OSError, subprocess.SubprocessError):
-        raise RuntimeError("Codex CLI could not report its version/app-server capabilities") from None
-    if "--listen" not in help_result.stdout:
-        raise RuntimeError("Codex app-server lacks --listen; use a compatible Codex CLI")
+    version_string = None
+    if diagnostic.backend == "codex":
+        binary = codex_binary()
+        try:
+            version = subprocess.run([binary, "--version"], env=env, capture_output=True, text=True, timeout=15, check=True)
+            help_result = subprocess.run([binary, "app-server", "--help"], env=env, capture_output=True, text=True, timeout=15, check=True)
+        except (OSError, subprocess.SubprocessError):
+            raise RuntimeError("Codex CLI could not report its version/app-server capabilities") from None
+        if "--listen" not in help_result.stdout:
+            raise RuntimeError("Codex app-server lacks --listen; use a compatible Codex CLI")
+        version_string = redact(version.stdout.strip())
     last_verified = None
     if settings and profile_path().exists():
         last_verified = json.loads(profile_path().read_text()).get("verified_at")
     mapping = {**ENV_FIELDS, **diagnostic.credential_env_vars, "access_token": name}
-    return {"platform": platform.system(), "python": platform.python_version(), "codex": redact(version.stdout.strip()),
+    return {"platform": platform.system(), "python": platform.python_version(), "codex": version_string,
             "profile": profile_name(), "profile_exists": profile_path().exists(), "data_home": str(data_home()),
-            "transport": "stdio", "auth_mode": mode, "token_env_var": name,
+            "backend": diagnostic.backend, "transport": "streamable_http" if diagnostic.backend == "direct_http" else "stdio",
+            "auth_mode": mode, "token_env_var": name,
             "token_variable_present": bool(name and name in os.environ),
             "token_variable_nonempty": bool(name and os.environ.get(name, "").strip()),
             "credentials": "runtime access-token variable" if mode == "env_token" else "Codex secure keyring",
@@ -92,7 +96,8 @@ def configure(account, mode="read", server=None, auth_mode=None, token_env_var=N
             if item.get("server") == settings.server:
                 raise ValueError("Each profile requires its own MCP server name; credentials must not be shared implicitly")
     # Validate inherited transport/auth before even persisting the new profile.
-    overrides(settings)
+    if settings.backend == "codex":
+        overrides(settings)
     # A local non-secret profile; no global Codex config or OAuth files are edited.
     write_private(path, settings.as_dict())
     return settings
@@ -137,6 +142,7 @@ def main():
     init.add_argument("--auth-mode", choices=AUTH_MODES, help="Defaults to existing profile mode or oauth_keyring")
     init.add_argument("--token-env-var", help="Name of the injected official MCP access-token variable; never its value")
     for command in (init, diagnostic):
+        command.add_argument("--backend", choices=BACKENDS, help="Explicit transport choice; default/preserved: codex")
         command.add_argument("--allow-extra-delete-scope", action=argparse.BooleanOptionalAction, default=None,
                              help="Explicitly accept existing mail:delete credential scope in read_send; never enables deletion")
         command.add_argument("--credential-source", choices=SOURCES)
@@ -156,7 +162,7 @@ def main():
         select_profile(args.profile)
     options = {}
     if args.command in ("init", "doctor"):
-        options = {key: getattr(args, key) for key in ("credential_source", "credential_file", "credential_state_dir", "credential_command",
+        options = {key: getattr(args, key) for key in ("backend", "credential_source", "credential_file", "credential_state_dir", "credential_command",
                    "refresh_policy", "client_auth_method", "refresh_skew", "allow_extra_delete_scope")}
         if args.credential_env is not None:
             try:

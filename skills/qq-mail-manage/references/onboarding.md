@@ -6,7 +6,7 @@
 
 包内仅包含技能指令、运行脚本、参数 schema 和离线测试，不应包含 profiles、pending、reviews、邮箱正文、附件或任何 OAuth 凭据。
 
-依赖 Python 3.11+ 和真实 Codex CLI；无需安装 Python 包。安装 Codex 后先确认 `codex --version`、`codex app-server --help` 可用。oauth_keyring：macOS 需允许 Codex 使用系统钥匙串，Linux/WSL 需先有可用安全凭据库服务；不可用时停止，不自动改用明文存储。env_token：不要求钥匙串，使用宿主安全注入的官方 MCP access token。
+默认 codex 后端依赖 Python 3.11+ 和真实 Codex CLI；无需安装 Python 包。安装 Codex 后先确认 `codex --version`、`codex app-server --help` 可用。oauth_keyring：macOS 需允许 Codex 使用系统钥匙串，Linux/WSL 需先有可用安全凭据库服务；不可用时停止，不自动改用明文存储。env_token：不要求钥匙串，使用宿主安全注入的官方 MCP access token。
 
 以下命令均以技能根目录为工作目录。路径有空格时使用 shell 引号，或由执行工具显式指定 workdir。
 
@@ -72,10 +72,14 @@ init 默认 env + host：宿主负责轮换、原子保存完整 bundle 并重�
 
 doctor 支持与 init 相同的凭据来源/刷新参数，只显示变量名、存在性、策略和历史时间；可校验路径元数据和 Git 分类，但不会读取凭据内容、调用宿主适配器或刷新。`currently_verified=false`，`store_inspected=false`；变量存在或历史 verified_at 均不能证明本次身份有效。`--configure-only` 只保存非秘密配置，之后仍须 verify。
 
-仅真正调用 MCP 的 app-server 接收 access token。版本检查、帮助、OAuth 登录和宿主凭据适配器均移除登记的 QQ 凭据变量，包括 refresh token/client secret；refresh token 不进入 MCP。环境变量名须专用，RUST_LOG/PATH/HOME 等运行时变量被拒绝；RUST_LOG 在 MCP 子进程固定关闭。仅固定官方 MCP 端点、通过 bearer_token_env_var 引用 access token，拒绝同名 server 中冲突认证配置，不修改 Codex 配置。
+codex 后端仅真正调用 MCP 的 app-server 接收 access token；direct_http 后端仅通过 Python HTTP worker 的 stdin 传入本次 access token/session，不放入 argv 或环境变量。版本检查、帮助、OAuth 登录和宿主凭据适配器均移除登记的 QQ 凭据变量，包括 refresh token/client secret；refresh token 不进入 MCP。环境变量名须专用，RUST_LOG/PATH/HOME 等运行时变量被拒绝；RUST_LOG 在 MCP 子进程固定关闭。两种后端都固定官方 MCP 端点；codex 后端通过 bearer_token_env_var 引用 access token，拒绝同名 server 中冲突认证配置。direct_http 不读取全局 Codex 配置；两者均不修改 Codex 配置。
 
 单次连接在使用 token 前按到期时间刷新一次，锁内重读并持久化 pending；临近到期默认 120 秒。成功后整体原子保存新 access token、到期时间及轮换 refresh token；GetMe 精确校验账号及 read_send 权限后才可操作邮件。连接期间出现 401、撤销或超时不会触发响应式刷新或邮件重放。refresh 结果未知及 pending 恢复由凭据所有者处理，不重试旧 refresh token、不回退浏览器。
 
 QQ_MAIL_HOME 的配置和操作回执须在包与仓库外的私有持久位置。云端重建可能同时丢失凭据、pending 屏障和邮件回执；先恢复可靠状态再运行。发送结果不明时核对 QQ 已发送和收件方，不能重建后新建请求重发。默认实际 scopes 超过 read_send（例如包含 mail:delete）也停止。用户明确复用已有广权限 token 时，可用 `init --mode read_send --allow-extra-delete-scope --configure-only` 更新非秘密 profile；省略原来源参数会保留存储配置，用 `--no-allow-extra-delete-scope` 关闭。此项仅接受额外 mail:delete，不启用删除或接受未知 scope；配置模式不会给高权限 token 降权，原始 scope 保留。
 
 目标环境按 [云端验收](cloud-acceptance.md) 单独确认；本地测试不代替真实身份、轮换或送达验收。
+
+## 可选直接 HTTP 后端
+
+宿主无法启动嵌套 Codex 时，显式选择 `--backend direct_http --auth-mode env_token`，不需要 Codex CLI、全局配置或钥匙串。省略 backend 的旧 profile 仍使用 codex，已有 profile 再初始化保留所选后端；不会在失败后自动切换。凭据来源、原签发客户端认证和独立状态目录配置复用原方案，刷新后仍必须 GetMe。配置、协议限制、持久脱敏错误回执及调用方式见 [直接 HTTP MCP](direct-http.md)。这不会修复平台启动器或挂载，实际目标云端需单独验收。
