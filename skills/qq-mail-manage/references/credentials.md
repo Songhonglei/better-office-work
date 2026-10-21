@@ -56,7 +56,7 @@ python3 scripts/onboard.py --profile cloud verify
 
 `none` 仅适用于原注册为 public client 的客户端。原机密客户端必须显式选择 `client_secret_basic` 或 `client_secret_post`，并由来源提供原 client_secret；不得从失败反推、自动尝试其他方法或改 client_id。QQ 公开元数据没有声明所有客户端共用的认证方式，必须依据原授权/注册记录确定。
 
-`refresh_policy=auto` 默认在 expires_at 前 120 秒刷新；`--refresh-skew 0..3600` 可调。不允许 env + auto 或缺少显式 client_auth_method。doctor 支持上述同名参数，只检查非秘密配置、变量存在性和 Codex 能力，不打开存储、不刷新；verify 才会走凭据与 GetMe。
+`refresh_policy=auto` 默认在 expires_at 前 120 秒刷新；`--refresh-skew 0..3600` 可调。不允许 env + auto 或缺少显式 client_auth_method。doctor 支持上述同名参数，可核对路径元数据/Git 分类、非秘密配置、变量存在性和 Codex 能力，不读取凭据内容、不刷新；verify 才会走凭据与 GetMe。
 
 宿主暂不支持适配器时，可显式启用文件：
 
@@ -68,6 +68,30 @@ python3 scripts/onboard.py --profile cloud init --account YOUR@qq.com --mode rea
 ```
 
 该文件**未加密，生命周期不保证**。宿主负责在技能和任何 Git 仓库外安全创建完整记录，不通过聊天或 shell 参数传真实值。直接父目录必须为当前用户所有、权限严格 700；文件为当前用户所有、严格 600、单硬链接；拒绝符号链接（包括路径祖先）、不自动 chmod 修复不安全文件。不支持自动从环境变量落盘，不探测 Mac 钥匙串或其他客户端凭据。`credential-file` 路径旁创建同为 600 的 `.lock`；最终提交期间另有不含秘密、权限 600 的 `.pending` 持久标记，出现时阻止读取凭据继续操作。其他写入者也必须遵守同一锁、标记与 CAS。不要配置到会被清理的 /tmp 或临时容器层。
+
+### 显式独立状态目录与空 Git 占位
+
+默认未设置 `credential_state_dir` 时，仍拒绝所有祖先 `.git` 标记，包括空目录。部分沙箱把空的只读 `.git` 挂载作为占位，Git 本身并不认为它是仓库。此时可由用户明确选择**独立、绝对、当前用户所有**的状态根，再配置 `--credential-state-dir`；该路径不得在技能代码内，也不得包含技能代码目录。凭据文件必须严格位于该根内，根到文件父目录每级都须为 700，已有文件须为 600、单硬链接；目录需由宿主在获授权的可写位置预先准备，脚本不自动创建凭据目录、不修复权限。
+
+示例路径须替换为用户批准的位置；只准备目录和非秘密配置，不在 shell 中传入真实 token：
+
+```bash
+install -d -m 700 /absolute/private-state /absolute/private-state/credentials /absolute/private-state/runtime
+QQ_MAIL_HOME=/absolute/private-state/runtime python3 scripts/onboard.py --profile cloud init \
+  --account YOUR@qq.com --mode read_send --auth-mode env_token \
+  --credential-source private_file \
+  --credential-state-dir /absolute/private-state \
+  --credential-file /absolute/private-state/credentials/bundle.json \
+  --configure-only
+```
+
+QQ_MAIL_HOME 是非秘密 profile/邮件回执位置，credential_state_dir 是凭据文件的边界，两者都与技能代码分开；后续命令继续使用同一个 QQ_MAIL_HOME。已配置的原客户端认证及刷新策略在来源不变时保留；新配置默认 host，由宿主续期，自动刷新仍需明确原客户端方法及 auto，不能猜测。
+
+这不是跳过仓库保护的开关。仅接受真实目录形式、可读取且确认为空的 `.git`，并扫描**所有祖先**，拒绝实际仓库、worktree 的 `.git` 文件、bare/不完整 Git 结构、非空或链接标记。随后使用 Git 做隔离、只读的 rev-parse 探测，仅接受明确“不是 Git 仓库”的正常诊断；缺 Git、超时、权限或其他错误、无法分类的输出均停止，不能把任意失败当作非仓库。探测前后复查标记，配置、读取、加锁和写入应用相同策略，不能用空标记遮住上层真实仓库。不会修改沙箱设置、挂载、Git 配置或 `.git` 内容。
+
+显式模式需要 Git。路径元数据和 Git 分类可能在 configure/doctor 时检查，但不会打开凭据内容；不存在的 bundle 可等待宿主安全导入。状态目录/文件的链接、越界与权限检查在实际操作时复核，原有锁、CAS、fsync 和 pending 屏障保持有效。
+
+独立路径可避免技能代码升级覆盖，**不代表工作区秘密隔离或持久存储保证**：文件未加密，宿主工作区快照可能包含它，云环境重建/清理可能丢失它及 pending、操作回执。必须向用户披露并取得其对所选位置的同意；未知发送结果仍不能因重建而重发。没有自动 /tmp 回退；真实仓库或只读错误不授权修改受保护目录。新 profile 可不设置此字段继续使用默认严格模式；切换到其他来源时清除该字段。
 
 文件与宿主记录使用相同 JSON 数据结构（仅占位示例，真实值由宿主提供）：
 

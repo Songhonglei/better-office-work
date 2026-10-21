@@ -68,9 +68,9 @@ python3 scripts/onboard.py --profile cloud verify
 
 init 默认 env + host：宿主负责轮换、原子保存完整 bundle 并重新注入；本技能不在不可持久保存的环境变量上直接消费 refresh token。环境变量不等于持久存储，不保证跨进程或容器重建保留；仅更新当前进程 `os.environ` 无法保证下次启动读到新令牌。
 
-若需要本技能自动刷新，选择明确的原子存储来源。推荐宿主 `host_command`；可显式启用未加密、生命周期不保证的 `private_file`（目录 700、文件 600、当前用户所有、包与仓库外）。全部字段、命令、权限和恢复流程见 [凭据与刷新](credentials.md)。profile 只存来源引用、变量名与非秘密刷新策略；旧 profile 缺 auth_mode 时仍按 oauth_keyring 处理，再初始化会保留已有来源与刷新配置。
+若需要本技能自动刷新，选择明确的原子存储来源。推荐宿主 `host_command`；可显式启用未加密、生命周期不保证的 `private_file`（目录 700、文件 600、当前用户所有、包与仓库外）。沙箱空 .git 占位时可显式设置独立绝对 `--credential-state-dir`（需 Git），只对已核实空占位兼容；真实仓库、链接和不安全权限仍拒绝。目录须预先存在并为当前用户所有、700，bundle 在其内部且为 600；独立工作区状态可能被快照捕获或在重建后丢失，需用户同意，代码升级不会覆盖它。全部字段、命令、权限和恢复流程见 [凭据与刷新](credentials.md)。profile 只存来源引用、变量名与非秘密刷新策略；旧 profile 缺 auth_mode 时仍按 oauth_keyring 处理，再初始化会保留已有来源与刷新配置。
 
-doctor 支持与 init 相同的凭据来源/刷新参数，只显示变量名、存在性、策略和历史时间；不会打开凭据文件、调用宿主适配器或刷新。`currently_verified=false`，`store_inspected=false`；变量存在或历史 verified_at 均不能证明本次身份有效。`--configure-only` 只保存非秘密配置，之后仍须 verify。
+doctor 支持与 init 相同的凭据来源/刷新参数，只显示变量名、存在性、策略和历史时间；可校验路径元数据和 Git 分类，但不会读取凭据内容、调用宿主适配器或刷新。`currently_verified=false`，`store_inspected=false`；变量存在或历史 verified_at 均不能证明本次身份有效。`--configure-only` 只保存非秘密配置，之后仍须 verify。
 
 仅真正调用 MCP 的 app-server 接收 access token。版本检查、帮助、OAuth 登录和宿主凭据适配器均移除登记的 QQ 凭据变量，包括 refresh token/client secret；refresh token 不进入 MCP。环境变量名须专用，RUST_LOG/PATH/HOME 等运行时变量被拒绝；RUST_LOG 在 MCP 子进程固定关闭。仅固定官方 MCP 端点、通过 bearer_token_env_var 引用 access token，拒绝同名 server 中冲突认证配置，不修改 Codex 配置。
 

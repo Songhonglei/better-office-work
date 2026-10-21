@@ -11,6 +11,7 @@ import http.client
 import json
 import math
 import os
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -108,11 +109,79 @@ def private_path(path, *, directory=False):
     return path
 
 
-def outside_package(path):
-    path = Path(path).expanduser().absolute()
-    skill = Path(__file__).resolve().parent.parent
-    if path.is_relative_to(skill) or any((parent / ".git").exists() for parent in (path.parent, *path.parents)):
+def absolute_unlinked(path):
+    path = Path(path).expanduser()
+    if not path.is_absolute() or ".." in path.parts or ".git" in path.parts:
+        raise ValueError("Credential paths must be explicit absolute paths without traversal or .git components")
+    if path != path.resolve():
+        fail("Credential paths must not contain symlinks")
+    return path
+
+
+def repository_markers(path, *, allow_empty=False):
+    """Classify every ancestor; never let an empty marker hide a real repository."""
+    for parent in path.parents:
+        marker = parent / ".git"
+        if os.path.lexists(marker):
+            try:
+                info = marker.lstat()
+                if not allow_empty or not stat.S_ISDIR(info.st_mode) or any(marker.iterdir()):
+                    raise ValueError("Credential file must be outside the skill and any repository; nonempty or unclassified .git")
+            except OSError:
+                fail("Cannot classify .git marker; refusing credential path")
+        # Bare repositories have no .git entry. Corrupt/partial Git structures
+        # also remain rejected rather than being treated as sandbox placeholders.
+        if os.path.lexists(parent / "HEAD") or (os.path.lexists(parent / "objects") and os.path.lexists(parent / "refs")):
+            raise ValueError("Credential file must be outside the skill and any repository; bare or unclassified Git structure")
+
+
+def confirm_not_repository(directory):
+    """A failed rev-parse alone is insufficient: require known not-a-repo output.
+
+    Structural marker checks run both before and after this read-only probe.
+    No hooks, credential helpers, global Git config or QQ secrets are needed.
+    """
+    from mail_config import subprocess_env
+    binary = shutil.which("git")
+    if not binary:
+        fail("Git is required to verify an explicit credential state directory")
+    env = {key: value for key, value in subprocess_env().items() if not key.startswith("GIT_")}
+    env.update(LC_ALL="C", LANG="C", GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_SYSTEM=os.devnull,
+               GIT_CONFIG_GLOBAL=os.devnull, GIT_OPTIONAL_LOCKS="0", GIT_DISCOVERY_ACROSS_FILESYSTEM="1")
+    try:
+        result = subprocess.run([binary, "-C", str(directory), "rev-parse", "--absolute-git-dir"],
+                                capture_output=True, text=True, timeout=5, check=False, env=env)
+    except (OSError, subprocess.SubprocessError, UnicodeError):
+        fail("Git repository check failed; refusing credential path")
+    if result.returncode == 0:
         raise ValueError("Credential file must be outside the skill and any repository")
+    if (result.returncode != 128 or not isinstance(result.stdout, str) or not isinstance(result.stderr, str) or result.stdout.strip() or
+            result.stderr.strip() != "fatal: not a git repository (or any of the parent directories): .git"):
+        fail("Git repository check is unclassified; refusing credential path")
+
+
+def outside_package(path, state_dir=None):
+    path = absolute_unlinked(path)
+    skill = Path(__file__).resolve().parent.parent
+    if path.is_relative_to(skill):
+        raise ValueError("Credential file must be outside the skill and any repository")
+    if state_dir is None:
+        repository_markers(path)
+    else:
+        root = absolute_unlinked(state_dir)
+        if root.is_relative_to(skill) or skill.is_relative_to(root) or not path.is_relative_to(root) or path == root:
+            raise ValueError("Credential file must be contained in an independent state directory outside skill code")
+        # The host explicitly creates these private directories. No automatic
+        # creation, chmod, sandbox edits or temporary-directory fallback.
+        for directory in (path.parent, *path.parent.parents):
+            private_path(directory, directory=True)
+            if directory == root:
+                break
+        if os.path.lexists(path):
+            private_path(path)
+        repository_markers(path, allow_empty=True)
+        confirm_not_repository(path.parent)
+        repository_markers(path, allow_empty=True)
     return path
 
 
@@ -157,11 +226,25 @@ def atomic_record(path, record):
 
 
 class FileStore:
-    def __init__(self, path):
-        self.path = outside_package(path)
+    def __init__(self, path, state_dir=None):
+        self.state_dir = state_dir
+        self.path = outside_package(path, state_dir)
         private_path(self.path.parent, directory=True)
 
+    def validate_location(self):
+        outside_package(self.path, self.state_dir)
+        private_path(self.path.parent, directory=True)
+
+    def write_record(self, path, record):
+        if path not in (self.path, self.commit_guard_path):
+            raise ValueError("FileStore can only write its configured record or pending guard")
+        self.validate_location()
+        if os.path.lexists(path):
+            private_path(path)
+        atomic_record(path, record)
+
     def load(self):
+        self.validate_location()
         if os.path.lexists(self.commit_guard_path):
             private_path(self.commit_guard_path)
             fail("Credential file persistence is pending; visible records are not a durable acknowledgement")
@@ -180,9 +263,10 @@ class FileStore:
             if finalizing:
                 # Durable, non-secret guard survives a visible-but-not-durable
                 # final rename. A restart must not mistake that record for success.
-                atomic_record(self.commit_guard_path, {"revision": previous["revision"]})
-            atomic_record(self.path, replacement)
+                self.write_record(self.commit_guard_path, {"revision": previous["revision"]})
+            self.write_record(self.path, replacement)
             if finalizing:
+                self.validate_location()
                 self.commit_guard_path.unlink()
                 sync_directory(self.path.parent)
         except OSError:
@@ -192,6 +276,7 @@ class FileStore:
 
     @property
     def lock_path(self):
+        self.validate_location()
         return self.path.with_name(self.path.name + ".lock")
 
 
@@ -329,7 +414,7 @@ def access_token(settings):
         if "expires_at" in record and record["expires_at"] <= time.time() + settings.refresh_skew:
             fail("Injected credential is near expiry; host must atomically refresh, persist and reinject the complete bundle")
         return record["access_token"]
-    store = FileStore(settings.credential_file) if settings.credential_source == "private_file" else HostStore(settings.credential_command)
+    store = FileStore(settings.credential_file, settings.credential_state_dir) if settings.credential_source == "private_file" else HostStore(settings.credential_command)
     with store_lock(store):
         # Always reread under the common source lock; no stale in-memory overwrite.
         record = validate_record(store.load(), complete=settings.refresh_policy == "auto")

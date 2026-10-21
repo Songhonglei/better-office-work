@@ -3,12 +3,12 @@ name: qq-mail-manage
 description: >
   通过真实 Codex 和腾讯官方 MCP 管理 QQ 邮箱：初始化账号与 OAuth/环境变量认证、查询邮件和附件、按用户指令发送回复转发、确认后移至垃圾箱。支持可配置邮箱及多 profile，适用于具备本地执行能力的 Codex 或 dot；不支持恢复或永久删除。
 metadata:
-  version: 1.2.2
+  version: 1.2.3
 ---
 
 # QQ 邮箱管理
 
-- **Version**: 1.2.2
+- **Version**: 1.2.3
 - **License**: MIT
 - **Author**: Evan Song · [github.com/Songhonglei](https://github.com/Songhonglei)
 - **Repository**: https://github.com/Songhonglei/better-office-work-flow
@@ -36,7 +36,7 @@ python3 scripts/onboard.py --profile cloud doctor --auth-mode env_token --token-
 python3 scripts/onboard.py --profile cloud init --account YOUR@qq.com --mode read_send --auth-mode env_token --token-env-var QQ_MAIL_ACCESS_TOKEN
 ```
 
-示例只引用变量名。MCP 使用官方 access token，refresh token 仅供原签发客户端续期，不能当作 MCP bearer。凭据来源与刷新策略独立：默认 env + host，由宿主注入并负责持久保存与续期；环境变量不等于持久存储。支持 access_token、refresh_token、原签发 client_id、token_type、scope、expires_at，变量名及宿主适配器协议见 [凭据与刷新](references/credentials.md)。自动刷新优先接入宿主原子存储；可显式启用未加密私有文件适配器（目录 700、文件 600，生命周期不保证），不得放入技能或仓库。profile 只保存引用和非秘密策略。变量缺失、凭据状态不明或 401 时停止，不自动重试或回退浏览器登录。刷新后仍先通过 GetMe 的账号与权限校验再操作邮件；doctor 不刷新、不访问凭据存储，不证明当前授权有效。
+示例只引用变量名。MCP 使用官方 access token，refresh token 仅供原签发客户端续期，不能当作 MCP bearer。凭据来源与刷新策略独立：默认 env + host，由宿主注入并负责持久保存与续期；环境变量不等于持久存储。支持 access_token、refresh_token、原签发 client_id、token_type、scope、expires_at，变量名及宿主适配器协议见 [凭据与刷新](references/credentials.md)。自动刷新优先接入宿主原子存储；可显式启用未加密私有文件适配器（目录 700、文件 600，生命周期不保证），不得放入技能或仓库。沙箱存在空 `.git` 占位时，可显式指定独立 `--credential-state-dir`，经私有目录、空标记和 Git 非仓库核验后使用；实际仓库仍拒绝，无跳过保护开关。工作区文件可能进入宿主快照，重建后不保证保留，详见凭据说明。profile 只保存引用和非秘密策略。变量缺失、凭据状态不明或 401 时停止，不自动重试或回退浏览器登录。刷新后仍先通过 GetMe 的账号与权限校验再操作邮件；doctor 不刷新、不读取凭据内容（可校验路径元数据及 Git 分类），不证明当前授权有效。
 
 read/read_send/manage 分别允许 read、read+send、read+send+delete。默认拒绝实际 scopes 过宽或不足；用户明确选择复用现有广权限 token 时，可仅在 read_send 显式设置 `--allow-extra-delete-scope`，允许凭据额外含 mail:delete，不接受其他未知 scope。配置不会给 token 降权，原始 scope 元数据保留；请求范围仍为 read/send，DeleteMessage 的暴露、构造与执行继续被拦截。启用及关闭方法见 [凭据与刷新](references/credentials.md)。旧 profile 默认不开此选项，仍自动按 oauth_keyring 读取。
 
@@ -85,7 +85,7 @@ python3 scripts/qq_mail_write.py execute-authorized --tool SendMessage --argumen
 
 ## 依赖与验证边界
 
-Python 3.11+、真实 Codex CLI 和网络；oauth_keyring 需要可用系统安全凭据库，env_token 需要宿主注入官方凭据或显式配置凭据适配器；无第三方 Python 依赖。当前实现使用 POSIX 文件锁，面向 macOS/Linux；Windows 使用 WSL（OAuth 另需凭据库），原生 Windows 尚不支持。app-server 为实验性接口，已实测 CLI 0.162.1；版本变化后运行 doctor 和 verify。
+Python 3.11+、真实 Codex CLI 和网络；oauth_keyring 需要可用系统安全凭据库，env_token 需要宿主注入官方凭据或显式配置凭据适配器；无第三方 Python 依赖；显式 credential_state_dir 模式额外需要 Git 做只读分类。当前实现使用 POSIX 文件锁，面向 macOS/Linux；Windows 使用 WSL（OAuth 另需凭据库），原生 Windows 尚不支持。app-server 为实验性接口，已实测 CLI 0.162.1；版本变化后运行 doctor 和 verify。
 
 dot 必须能在已连接电脑上发现技能并执行脚本，同一系统用户可以复用该机授权；仅安装云端指令不构成本地执行入口。另一台机器必须在那台机器初始化与验收。不能将本机测试说成所有 dot 或其他电脑均已验收。
 

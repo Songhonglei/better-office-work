@@ -166,6 +166,7 @@ class Settings:
     client_auth_method: str | None = None
     refresh_skew: int = 120
     allow_extra_delete_scope: bool = False
+    credential_state_dir: str | None = None
 
     @property
     def scopes(self):
@@ -183,7 +184,7 @@ class Settings:
             result["token_env_var"] = self.token_env_var
             result.update(credential_source=self.credential_source, credential_env_vars=self.credential_env_vars,
                           refresh_policy=self.refresh_policy, refresh_skew=self.refresh_skew)
-            for key in ("credential_file", "credential_command", "client_auth_method"):
+            for key in ("credential_file", "credential_command", "client_auth_method", "credential_state_dir"):
                 if getattr(self, key) is not None:
                     result[key] = getattr(self, key)
         return result
@@ -215,6 +216,7 @@ def settings_from(data):
     policy = data.get("refresh_policy", "host")
     mapping = data.get("credential_env_vars", {})
     credential_file = data.get("credential_file")
+    state_dir = data.get("credential_state_dir")
     command = data.get("credential_command")
     method = data.get("client_auth_method")
     skew = data.get("refresh_skew", 120)
@@ -236,9 +238,11 @@ def settings_from(data):
     if source == "private_file":
         if not isinstance(credential_file, str) or not Path(credential_file).is_absolute():
             raise ValueError("private_file needs an explicit absolute credential_file")
-        outside_package(credential_file)
-    elif credential_file is not None:
-        raise ValueError("credential_file requires explicit private_file source")
+        if state_dir is not None and (not isinstance(state_dir, str) or not Path(state_dir).is_absolute()):
+            raise ValueError("credential_state_dir must be an explicit absolute directory")
+        outside_package(credential_file, state_dir)
+    elif credential_file is not None or state_dir is not None:
+        raise ValueError("credential_file/credential_state_dir require explicit private_file source")
     if source == "host_command":
         if not isinstance(command, str) or not Path(command).is_absolute():
             raise ValueError("host_command needs an explicit absolute executable credential_command")
@@ -247,7 +251,7 @@ def settings_from(data):
     if auth_mode != "env_token" and (source != "env" or mapping or policy != "host" or method is not None):
         raise ValueError("Credential source and refresh options require env_token mode")
     return Settings(name, account, server, data["mode"], auth_mode, token_env_var, source, mapping,
-                    credential_file, command, policy, method, skew, allow_extra_delete_scope)
+                    credential_file, command, policy, method, skew, allow_extra_delete_scope, state_dir)
 
 
 def load_settings():

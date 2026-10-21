@@ -18,7 +18,7 @@ from mail_credentials import SOURCES, POLICIES, CLIENT_AUTH, ENV_FIELDS
 def apply_credential_options(data, options):
     source = options.get("credential_source")
     if source is not None and source != data.get("credential_source", "env"):
-        for key in ("credential_file", "credential_command", "refresh_policy", "client_auth_method"):
+        for key in ("credential_file", "credential_state_dir", "credential_command", "refresh_policy", "client_auth_method"):
             data.pop(key, None)
     data.update({key: value for key, value in options.items() if value is not None})
 
@@ -59,6 +59,7 @@ def doctor(settings=None, *, auth_mode=None, token_env_var=None, **credential_op
             "credential_source": diagnostic.credential_source if mode == "env_token" else "Codex keyring",
             "refresh_policy": diagnostic.refresh_policy, "client_auth_method": diagnostic.client_auth_method,
             "allow_extra_delete_scope": diagnostic.allow_extra_delete_scope,
+            "credential_state_dir": diagnostic.credential_state_dir,
             "credential_variables": {field: {"name": var, "present": bool(var and var in os.environ)}
                                      for field, var in mapping.items()} if mode == "env_token" else {},
             "persistence": "host responsibility; environment variables are not persistent storage",
@@ -140,6 +141,7 @@ def main():
                              help="Explicitly accept existing mail:delete credential scope in read_send; never enables deletion")
         command.add_argument("--credential-source", choices=SOURCES)
         command.add_argument("--credential-file", help="Explicit unencrypted private-file adapter; absolute path outside repositories")
+        command.add_argument("--credential-state-dir", help="Explicit independent private state directory; permits only verified empty .git placeholders")
         command.add_argument("--credential-command", help="Trusted host credential adapter executable (absolute path; no shell)")
         command.add_argument("--credential-env", action="append", metavar="FIELD=VARIABLE", help="Credential field to variable-name mapping; never values")
         command.add_argument("--refresh-policy", choices=POLICIES)
@@ -154,7 +156,7 @@ def main():
         select_profile(args.profile)
     options = {}
     if args.command in ("init", "doctor"):
-        options = {key: getattr(args, key) for key in ("credential_source", "credential_file", "credential_command",
+        options = {key: getattr(args, key) for key in ("credential_source", "credential_file", "credential_state_dir", "credential_command",
                    "refresh_policy", "client_auth_method", "refresh_skew", "allow_extra_delete_scope")}
         if args.credential_env is not None:
             try:
