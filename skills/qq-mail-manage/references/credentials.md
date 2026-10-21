@@ -24,6 +24,22 @@
 
 `--token-env-var NAME` 保留 access token 自定义变量兼容；其他字段用 `--credential-env refresh_token=YOUR_REFRESH_VAR` 等重复参数，只能传变量名。所有字段变量必须互不重复，不能选 RUST_LOG/PATH/HOME 等运行变量。版本/帮助/登录及宿主适配器子进程剥离登记的 QQ 凭据变量，MCP 子进程仅重新加入所选 access token；日志和回执脱敏 access/refresh/client secret，保留 scope/type 等公开元数据供核验。
 
+## 显式复用带额外删除 scope 的已有凭据
+
+默认 `allow_extra_delete_scope=false`，包括所有旧 profile。仅在用户明确要求复用既有广权限 token 时，可为 `mode=read_send` 启用：
+
+```bash
+python3 scripts/onboard.py --profile cloud init --account YOUR@qq.com --mode read_send \
+  --allow-extra-delete-scope --configure-only
+python3 scripts/onboard.py --profile cloud doctor
+```
+
+该选项只影响 GetMe 凭据范围核验：除 read/send 和原有 alias:read 外，额外允许 mail:delete；未知 scopes、必需权限缺失和账号不符仍拒绝。请求 scopes 仍为 mail:read/mail:send，read_send 模式下 DeleteMessage 的工具暴露、客户端构造和执行均拦截，不切换 manage。read/manage 不允许启用此兼容选项。
+
+**这是接受广权限凭据，不是令牌降权。** 原始 `scope` 字段、刷新返回的 scope 以及 GetMe 原始 `scopes` 均如实保留；status 另列 `requested_scopes`、`accepted_extra_scopes` 和选项值，不能把前者当作 token 的实际权限。既有 token 在技能以外仍拥有删除权限。省略选项保留原配置；`--no-allow-extra-delete-scope` 显式关闭后恢复默认严格拒绝。
+
+此设置不读取、导出或迁移凭据，`--configure-only` 不触发续期或邮件操作。来源/刷新配置省略时保留原值；需要真实 verify 时仍先完成目标宿主的凭据及运行入口准备。启动器只读报错不改变仓库外私有可写存储的要求，也不允许改受保护目录或回退 /tmp。
+
 ## 自动刷新配置
 
 宿主须先安装可信适配器并提供官方完整凭据，示例路径需替换：
@@ -87,7 +103,7 @@ python3 scripts/onboard.py --profile cloud init --account YOUR@qq.com --mode rea
 2. auto 将完整记录原子改为新 revision + pending，保存成功后才发一次 POST；CAS 冲突只安全重读，不重试 POST。此屏障不能丢失或手工清除。
 3. 仅向固定 `https://wx.mail.qq.com/oauth/token` 发 refresh_token grant，不请求扩大 scope、不重定向、不自动重试。网络沿用 Python/宿主既定代理（包含 https_proxy/HTTPS_PROXY、no_proxy/NO_PROXY）与默认 CA/TLS 信任配置（如 SSL_CERT_FILE/SSL_CERT_DIR）；不强制直连，不改代理、安全配置或证书验证，保留证书及主机名校验。认证方法取显式原客户端配置。
 4. 成功响应必须有有效 access_token、Bearer token_type、正数 expires_in；到期时间保守取请求开始时间加 expires_in。整体保存新 access token、到期时间、新 revision、ready 状态，以及轮换 refresh token。未返回 refresh_token 时保留旧值；返回空值则失败。未返回 scope 按 OAuth 语义保留原范围。
-5. 仅宿主最终 CAS 超时确认丢失时，读取宿主明确已持久提交的记录，核对与新记录完全相同，不重做刷新。文件 fsync/磁盘错误、宿主非零退出或显式错误一律停止，不能凭读回可见值判成功。文件在最终 rename 前先持久化 `.pending` 标记，最终文件及目录 fsync 成功后才移除并同步标记；失败或中断遗留标记则阻止下次使用。之后启动 MCP，先 GetMe 校验准确账号、别名及所需范围（read_send 不得含 mail:delete），再操作邮件。长连接中 401 不触发刷新重放。
+5. 仅宿主最终 CAS 超时确认丢失时，读取宿主明确已持久提交的记录，核对与新记录完全相同，不重做刷新。文件 fsync/磁盘错误、宿主非零退出或显式错误一律停止，不能凭读回可见值判成功。文件在最终 rename 前先持久化 `.pending` 标记，最终文件及目录 fsync 成功后才移除并同步标记；失败或中断遗留标记则阻止下次使用。之后启动 MCP，先 GetMe 校验准确账号、别名及所需范围（默认 read_send 不得含 mail:delete；明确启用上述兼容选项时只接受凭据中的该额外 scope，仍不允许删除），再操作邮件。长连接中 401 不触发刷新重放。
 
 超时、响应丢失、无效成功响应、invalid_grant、拒绝或进程中断可能留下 pending。宿主须核对官方/自身存储，若已保存新记录就恢复最新完整记录；若无法证明结果，取得新授权并原子替换完整 bundle/新 revision 后 verify。**不能简单把 pending 改 ready 后重试旧 refresh token**；丢失轮换响应可能无法恢复，应更换授权而非盲试。失败不输出请求、响应正文、异常里的凭据，不回退浏览器登录。
 

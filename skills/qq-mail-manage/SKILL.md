@@ -3,12 +3,12 @@ name: qq-mail-manage
 description: >
   通过真实 Codex 和腾讯官方 MCP 管理 QQ 邮箱：初始化账号与 OAuth/环境变量认证、查询邮件和附件、按用户指令发送回复转发、确认后移至垃圾箱。支持可配置邮箱及多 profile，适用于具备本地执行能力的 Codex 或 dot；不支持恢复或永久删除。
 metadata:
-  version: 1.2.1
+  version: 1.2.2
 ---
 
 # QQ 邮箱管理
 
-- **Version**: 1.2.1
+- **Version**: 1.2.2
 - **License**: MIT
 - **Author**: Evan Song · [github.com/Songhonglei](https://github.com/Songhonglei)
 - **Repository**: https://github.com/Songhonglei/better-office-work-flow
@@ -38,7 +38,7 @@ python3 scripts/onboard.py --profile cloud init --account YOUR@qq.com --mode rea
 
 示例只引用变量名。MCP 使用官方 access token，refresh token 仅供原签发客户端续期，不能当作 MCP bearer。凭据来源与刷新策略独立：默认 env + host，由宿主注入并负责持久保存与续期；环境变量不等于持久存储。支持 access_token、refresh_token、原签发 client_id、token_type、scope、expires_at，变量名及宿主适配器协议见 [凭据与刷新](references/credentials.md)。自动刷新优先接入宿主原子存储；可显式启用未加密私有文件适配器（目录 700、文件 600，生命周期不保证），不得放入技能或仓库。profile 只保存引用和非秘密策略。变量缺失、凭据状态不明或 401 时停止，不自动重试或回退浏览器登录。刷新后仍先通过 GetMe 的账号与权限校验再操作邮件；doctor 不刷新、不访问凭据存储，不证明当前授权有效。
 
-read/read_send/manage 分别允许 read、read+send、read+send+delete；配置不会给高权限 token 降权，实际 scopes 过宽或不足均停止。旧 profile 自动按 oauth_keyring 读取。
+read/read_send/manage 分别允许 read、read+send、read+send+delete。默认拒绝实际 scopes 过宽或不足；用户明确选择复用现有广权限 token 时，可仅在 read_send 显式设置 `--allow-extra-delete-scope`，允许凭据额外含 mail:delete，不接受其他未知 scope。配置不会给 token 降权，原始 scope 元数据保留；请求范围仍为 read/send，DeleteMessage 的暴露、构造与执行继续被拦截。启用及关闭方法见 [凭据与刷新](references/credentials.md)。旧 profile 默认不开此选项，仍自动按 oauth_keyring 读取。
 
 所有入口支持放在子命令之前的 `--profile NAME`；不指定时使用 `QQ_MAIL_PROFILE`，再默认 default。不同账号使用不同 profile 和 MCP 名，操作记录互相隔离。配置和操作状态放在技能目录外，可通过 `QQ_MAIL_HOME` 改位置；Codex 本身遵循 `CODEX_HOME`。
 

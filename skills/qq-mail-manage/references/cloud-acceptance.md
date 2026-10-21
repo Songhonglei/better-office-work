@@ -14,7 +14,7 @@ python3 scripts/onboard.py --profile cloud init --account YOUR@qq.com --mode rea
 python3 scripts/onboard.py --profile cloud verify
 ```
 
-doctor 的存在性和历史时间不是认证成功；verify 必须本次实际通过 GetMe，账号别名精确匹配、scopes 包含 mail:read/mail:send 且不含 mail:delete 等额外写权限。失败停止，更新授权后再验证，不回退 OAuth，不在 401 后刷新并重放邮件。默认 env + host 由宿主负责续期；本技能自动刷新必须先显式配置可原子保存的 host_command 或 private_file，见 [凭据与刷新](credentials.md)。环境变量不等于持久存储。
+doctor 的存在性和历史时间不是认证成功；verify 必须本次实际通过 GetMe，账号别名精确匹配、scopes 包含 mail:read/mail:send；默认不得含 mail:delete。用户明确复用已有广权限凭据时，须先在 read_send profile 显式启用 `--allow-extra-delete-scope`，只接受该额外 scope；DeleteMessage 仍禁止，未知 scopes 仍拒绝，不能称 token 已降权。记录真实 scopes 及兼容选项值。失败停止，更新授权后再验证，不回退 OAuth，不在 401 后刷新并重放邮件。默认 env + host 由宿主负责续期；本技能自动刷新必须先显式配置可原子保存的 host_command 或 private_file，见 [凭据与刷新](credentials.md)。环境变量不等于持久存储。
 
 ## 凭据生命周期验收（用户确认后执行）
 
@@ -23,7 +23,7 @@ doctor 的存在性和历史时间不是认证成功；verify 必须本次实际
 - 保留目标宿主的既定代理、no_proxy 与 CA/TLS 配置；不得为续期绕过代理或关闭证书校验。文件/目录 fsync 故障必须停止，即使能读回新值也不算成功；遗留 `.pending` 标记由凭据所有者完成持久化恢复后处理。
 - 离线验收先执行 `python3 -m unittest discover -s tests -v`。真实续期仅在父任务取得用户确认后，在目标云环境完成：到期前仅一次 POST、轮换结果整体保存、第二进程读取新版本且不再次刷新；无 refresh_token 返回时保留旧值。不得为了测试故意重放已消费的真实 refresh token。
 - 响应丢失、invalid_grant、保存失败或 pending 均停止，由宿主核对状态或替换新授权 bundle；不可直接清 pending 后重试旧值。容器重建必须恢复凭据、pending 与邮件回执，否则保持未验收。
-- 刷新后的首次邮件操作之前必须 GetMe 再核对账号与所需 read_send 权限，无 mail:delete；核验失败不读取或发送邮件。真实刷新未经执行时明确记录“未测试”。
+- 刷新后的首次邮件操作之前必须 GetMe 再核对账号与所需 read_send 权限；额外 mail:delete 仅在上述显式兼容选项启用时接受，原始 scope 不改写且删除工具始终禁止；核验失败不读取或发送邮件。真实刷新未经执行时明确记录“未测试”。
 
 ## 固定查询与完整选取
 

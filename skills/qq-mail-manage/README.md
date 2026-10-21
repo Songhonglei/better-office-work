@@ -1,6 +1,6 @@
 # QQ Mail Manage
 
-Version: **1.2.1** · License: [MIT](LICENSE)
+Version: **1.2.2** · License: [MIT](LICENSE)
 
 通过真实 Codex CLI 和腾讯官方 MCP 管理 QQ 邮箱，账号可配置。支持多 profile、OAuth/keyring 或环境变量认证初始化、列表/搜索/正文/附件，以及按用户具体指令发送、回复、转发；删除需先确认具体清单，执行移至垃圾箱。
 
@@ -39,6 +39,15 @@ env_token 跳过浏览器登录和钥匙串。默认宿主注入完整凭据：`
 
 单次刷新仅向已核实的 QQ 官方端点，遵循宿主既定代理与 CA/TLS 配置，不跟随重定向，按原签发客户端认证；轮换结果整体原子保存。响应丢失、invalid_grant 或中断会保留 pending 屏障，交给凭据所有者核对，禁止重试旧 refresh token。刷新后 GetMe 必须核对邮箱和权限；refresh token 不传给 MCP 子进程。邮件发送超时或结果未知仍不重发。
 
+已有 token 含 `mail:delete` 且用户明确要求复用时，可在现有 profile 上运行以下非秘密配置更新（省略凭据来源参数会保留原配置）：
+
+```bash
+python3 scripts/onboard.py --profile cloud init --account YOUR@qq.com --mode read_send \
+  --allow-extra-delete-scope --configure-only
+```
+
+默认关闭；用 `--no-allow-extra-delete-scope` 显式关闭。这里只接受已有凭据额外的 mail:delete，不会降低 token 本身权限或改写原始 scope；GetMe 仍核对账号、必需权限和未知 scopes。mode 和请求 scopes 保持 read_send/read+send，删除工具始终禁止。真实 verify 仍由目标环境在授权范围内执行。
+
 ## Operations
 
 - [技能指令](SKILL.md)：工作流与用户授权边界。
@@ -56,4 +65,4 @@ env_token 跳过浏览器登录和钥匙串。默认宿主注入完整凭据：`
 python3 -m unittest discover -s tests -v
 ```
 
-102 项离线回归（保留原有 58 项）涵盖账号隔离、别名校验、授权范围、单次写入、未知结果不重试、删除续期和独立进程 onboard。不会自动发送或删除真实测试邮件。实际腾讯账号可获得的范围、完整历史、真实刷新和撤销行为仍需分别验收。
+111 项离线回归（保留原有 58 项）涵盖账号隔离、别名校验、授权范围、单次写入、未知结果不重试、删除续期和独立进程 onboard。不会自动发送或删除真实测试邮件。实际腾讯账号可获得的范围、完整历史、真实刷新和撤销行为仍需分别验收。

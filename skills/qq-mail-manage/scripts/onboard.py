@@ -58,6 +58,7 @@ def doctor(settings=None, *, auth_mode=None, token_env_var=None, **credential_op
             "credentials": "runtime access-token variable" if mode == "env_token" else "Codex secure keyring",
             "credential_source": diagnostic.credential_source if mode == "env_token" else "Codex keyring",
             "refresh_policy": diagnostic.refresh_policy, "client_auth_method": diagnostic.client_auth_method,
+            "allow_extra_delete_scope": diagnostic.allow_extra_delete_scope,
             "credential_variables": {field: {"name": var, "present": bool(var and var in os.environ)}
                                      for field, var in mapping.items()} if mode == "env_token" else {},
             "persistence": "host responsibility; environment variables are not persistent storage",
@@ -135,6 +136,8 @@ def main():
     init.add_argument("--auth-mode", choices=AUTH_MODES, help="Defaults to existing profile mode or oauth_keyring")
     init.add_argument("--token-env-var", help="Name of the injected official MCP access-token variable; never its value")
     for command in (init, diagnostic):
+        command.add_argument("--allow-extra-delete-scope", action=argparse.BooleanOptionalAction, default=None,
+                             help="Explicitly accept existing mail:delete credential scope in read_send; never enables deletion")
         command.add_argument("--credential-source", choices=SOURCES)
         command.add_argument("--credential-file", help="Explicit unencrypted private-file adapter; absolute path outside repositories")
         command.add_argument("--credential-command", help="Trusted host credential adapter executable (absolute path; no shell)")
@@ -152,7 +155,7 @@ def main():
     options = {}
     if args.command in ("init", "doctor"):
         options = {key: getattr(args, key) for key in ("credential_source", "credential_file", "credential_command",
-                   "refresh_policy", "client_auth_method", "refresh_skew")}
+                   "refresh_policy", "client_auth_method", "refresh_skew", "allow_extra_delete_scope")}
         if args.credential_env is not None:
             try:
                 mapping = dict(item.split("=", 1) for item in args.credential_env)

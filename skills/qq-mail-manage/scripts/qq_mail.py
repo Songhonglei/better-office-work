@@ -67,7 +67,7 @@ class CodexMail:
         self.sequence = 0
         try:
             await self.rpc("initialize", {
-                "clientInfo": {"name": "qq_mail_manage_bridge", "title": "QQ Mail Manage Bridge", "version": "1.2.1"},
+                "clientInfo": {"name": "qq_mail_manage_bridge", "title": "QQ Mail Manage Bridge", "version": "1.2.2"},
                 "capabilities": {"experimentalApi": True},
             })
             await self.send({"method": "initialized", "params": {}})
@@ -85,7 +85,10 @@ class CodexMail:
 
     def verify_context(self, context):
         scopes = context.get("scopes", [])
-        if not isinstance(scopes, list) or any(not isinstance(s, str) for s in scopes) or "mail:read" not in scopes or set(scopes) - {*self.settings.scopes, "alias:read"}:
+        accepted = {*self.settings.scopes, "alias:read"}
+        if self.settings.mode == "read_send" and self.settings.allow_extra_delete_scope:
+            accepted.add("mail:delete")
+        if not isinstance(scopes, list) or any(not isinstance(s, str) for s in scopes) or "mail:read" not in scopes or set(scopes) - accepted:
             raise RuntimeError("Authorization scopes exceed the configured mode or omit mail:read; review authorization")
         if set(self.settings.scopes) - set(scopes):
             raise RuntimeError("Required permissions were not fully granted; select a matching capability mode or update authorization")
@@ -101,6 +104,9 @@ class CodexMail:
         self.alias_id = aliases[0]["alias_id"]
         self.status = {"profile": self.settings.profile, "account": self.account, "mode": self.settings.mode,
                        "auth_mode": self.settings.auth_mode,
+                       "allow_extra_delete_scope": self.settings.allow_extra_delete_scope,
+                       "requested_scopes": list(self.settings.scopes),
+                       "accepted_extra_scopes": sorted(set(scopes) - {*self.settings.scopes, "alias:read"}),
                        "scopes": scopes, "is_primary_alias": aliases[0].get("is_primary"),
                        "missing_scopes": sorted(set(self.settings.scopes) - set(scopes)),
                        "route": "local real Codex -> official QQ Mail MCP"}
@@ -151,6 +157,8 @@ class CodexMail:
             raise AuthenticationError()
         if contains_runtime_secret(arguments):
             raise RuntimeError("Mail request contains runtime credentials; refusing to transmit them as mail arguments")
+        if tool == "DeleteMessage" and "mail:delete" not in self.settings.scopes:
+            raise RuntimeError("Deletion requires mail:delete and manage mode")
         if tool not in self.allowed_tools:
             raise RuntimeError("Tool is not enabled for this operation")
         if "alias_id" in arguments and arguments["alias_id"] != getattr(self, "alias_id", None):

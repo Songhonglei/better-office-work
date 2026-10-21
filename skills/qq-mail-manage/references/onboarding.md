@@ -23,7 +23,7 @@ init 将非秘密配置写到 `${QQ_MAIL_HOME:-${CODEX_HOME:-~/.codex}/qq-mail-m
 
 用户在官方腾讯页面完成登录和权限确认。服务地址固定 `https://api.mail.qq.com/mcp`，不接受任意第三方 MCP 端点，不伪装其他客户端；网络代理与 CA 信任遵循宿主既定配置，不强制直连或关闭 TLS 验证。账号应能在授权后 `GetMe.aliases` 中唯一匹配，支持配置 QQ/Foxmail 邮箱别名；最终可用性以服务实际接受及 GetMe 为准。其他账号的真实授权尚未在本环境完成，不承诺所有账号都有同样能力。
 
-read 仅允许 mail:read；read_send 允许 mail:read、mail:send；manage 允许 mail:read、mail:send、mail:delete。OAuth 按所选模式请求范围，env_token 核对已有 token 的实际范围，不为其降权。实际权限超出所选模式则中止；服务不给所需权限也不称为完成初始化。
+read 仅允许 mail:read；read_send 允许 mail:read、mail:send；manage 允许 mail:read、mail:send、mail:delete。OAuth 按所选模式请求范围，env_token 核对已有 token 的实际范围，不为其降权。默认实际权限超出所选模式则中止；仅 read_send 可在用户明确要求复用现有广权限凭据时启用 `--allow-extra-delete-scope`，只额外接受 mail:delete，仍禁止删除工具及未知 scopes。服务不给所需权限也不称为完成初始化。
 
 ```bash
 python3 scripts/onboard.py --profile personal verify
@@ -76,6 +76,6 @@ doctor 支持与 init 相同的凭据来源/刷新参数，只显示变量名、
 
 单次连接在使用 token 前按到期时间刷新一次，锁内重读并持久化 pending；临近到期默认 120 秒。成功后整体原子保存新 access token、到期时间及轮换 refresh token；GetMe 精确校验账号及 read_send 权限后才可操作邮件。连接期间出现 401、撤销或超时不会触发响应式刷新或邮件重放。refresh 结果未知及 pending 恢复由凭据所有者处理，不重试旧 refresh token、不回退浏览器。
 
-QQ_MAIL_HOME 的配置和操作回执须在包与仓库外的私有持久位置。云端重建可能同时丢失凭据、pending 屏障和邮件回执；先恢复可靠状态再运行。发送结果不明时核对 QQ 已发送和收件方，不能重建后新建请求重发。实际 scopes 超过 read_send（例如包含 mail:delete）也停止；配置模式不会给高权限 token 降权。
+QQ_MAIL_HOME 的配置和操作回执须在包与仓库外的私有持久位置。云端重建可能同时丢失凭据、pending 屏障和邮件回执；先恢复可靠状态再运行。发送结果不明时核对 QQ 已发送和收件方，不能重建后新建请求重发。默认实际 scopes 超过 read_send（例如包含 mail:delete）也停止。用户明确复用已有广权限 token 时，可用 `init --mode read_send --allow-extra-delete-scope --configure-only` 更新非秘密 profile；省略原来源参数会保留存储配置，用 `--no-allow-extra-delete-scope` 关闭。此项仅接受额外 mail:delete，不启用删除或接受未知 scope；配置模式不会给高权限 token 降权，原始 scope 保留。
 
 目标环境按 [云端验收](cloud-acceptance.md) 单独确认；本地测试不代替真实身份、轮换或送达验收。

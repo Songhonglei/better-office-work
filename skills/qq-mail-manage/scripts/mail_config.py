@@ -165,6 +165,7 @@ class Settings:
     refresh_policy: str = "host"
     client_auth_method: str | None = None
     refresh_skew: int = 120
+    allow_extra_delete_scope: bool = False
 
     @property
     def scopes(self):
@@ -176,7 +177,8 @@ class Settings:
 
     def as_dict(self):
         result = {"version": 3, "profile": self.profile, "account": self.account, "server": self.server,
-                  "mode": self.mode, "auth_mode": self.auth_mode}
+                  "mode": self.mode, "auth_mode": self.auth_mode,
+                  "allow_extra_delete_scope": self.allow_extra_delete_scope}
         if self.auth_mode == "env_token":
             result["token_env_var"] = self.token_env_var
             result.update(credential_source=self.credential_source, credential_env_vars=self.credential_env_vars,
@@ -216,6 +218,9 @@ def settings_from(data):
     command = data.get("credential_command")
     method = data.get("client_auth_method")
     skew = data.get("refresh_skew", 120)
+    allow_extra_delete_scope = data.get("allow_extra_delete_scope", False)
+    if type(allow_extra_delete_scope) is not bool or (allow_extra_delete_scope and data["mode"] != "read_send"):
+        raise ValueError("allow_extra_delete_scope must be boolean and can only be enabled in read_send mode")
     if source not in SOURCES or policy not in POLICIES or type(skew) is not int or not 0 <= skew <= 3600:
         raise ValueError("Invalid credential source, refresh policy or refresh_skew (0..3600 seconds)")
     if not isinstance(mapping, dict) or set(mapping) - (ENV_FIELDS.keys() - {"access_token"}):
@@ -242,7 +247,7 @@ def settings_from(data):
     if auth_mode != "env_token" and (source != "env" or mapping or policy != "host" or method is not None):
         raise ValueError("Credential source and refresh options require env_token mode")
     return Settings(name, account, server, data["mode"], auth_mode, token_env_var, source, mapping,
-                    credential_file, command, policy, method, skew)
+                    credential_file, command, policy, method, skew, allow_extra_delete_scope)
 
 
 def load_settings():
@@ -276,6 +281,8 @@ def codex_binary():
 
 
 def overrides(settings, tools=READ_TOOLS, *, automatic=False):
+    if "DeleteMessage" in tools and "mail:delete" not in settings.scopes:
+        raise RuntimeError("Deletion requires mail:delete and manage mode")
     key = "mcp_servers." + settings.server
     values = [
         key + '.url=' + json.dumps(ENDPOINT),

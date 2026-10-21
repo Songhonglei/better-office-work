@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.2] - 2026-10-21
+
+### Fixed
+
+- 新增默认关闭的 allow_extra_delete_scope / --allow-extra-delete-scope，仅 read_send 可显式接受现有凭据额外的 mail:delete；--no-allow-extra-delete-scope 恢复默认严格核验。
+- mode 及请求 scopes 保持 read_send/read+send，DeleteMessage 暴露、客户端构造和执行全部拦截；未知 scope、账号不符与必需权限缺失仍拒绝。
+- 保留原始凭据 scope 和 GetMe scopes，明确接受广权限凭据不代表令牌降权；status/doctor 显示兼容选项，保留来源、刷新、仓库外存储及未知结果不重发保障。
+
+### Validation
+
+- 原有 102 项及新增 9 项离线回归全部通过，总计 111 项；覆盖默认拒绝、显式接受、未知 scope、删除拦截、CLI 开关与配置兼容、原 scope 保真及假 token 刷新后验证。未读取本机真实凭据，未执行真实续期或收发。
+
 ## [1.2.1] - 2026-10-20
 
 ### Fixed
