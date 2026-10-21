@@ -246,8 +246,8 @@ class DirectHTTPTests(unittest.IsolatedAsyncioTestCase):
         args={"to":[{"email":"recipient@example.com"}],"subject":"Item+Invoice+1.00","body":"original body; source message synthetic-source; CNY",
               "attachments":[{"filename":"invoice.pdf","content_type":"application/pdf","size":len(content),
                               "sha1":hashlib.sha1(content).hexdigest(),"content":base64.b64encode(content).decode()}]}
-        result=await flow.execute_authorized("SendMessage",args,user_authorized=True)
-        self.assertEqual(result["state"],"completed")
+        result=await flow.execute_authorized("SendMessage",args,user_authorized=True,operation_id="fixture-"+self.server.case)
+        self.assertEqual(result["state"],"accepted")
         calls=[m[0]["params"] for m in self.server.requests if m[0].get("params",{}).get("name")=="SendMessage"]
         self.assertEqual(len(calls),1)
         for key in ("subject","body","attachments"): self.assertEqual(calls[0]["arguments"][key],args[key])
@@ -261,7 +261,7 @@ class DirectHTTPTests(unittest.IsolatedAsyncioTestCase):
         for case in ("send_timeout","send401"):
             self.server.requests=[]; self.server.case=case
             with self.assertRaisesRegex(RuntimeError,"unknown"):
-                await flow.execute_authorized("SendMessage",args,user_authorized=True)
+                await flow.execute_authorized("SendMessage",args,user_authorized=True,operation_id="fixture-"+self.server.case)
             self.assertEqual(sum(x[0].get("params",{}).get("name")=="SendMessage" for x in self.server.requests),1)
         self.assertTrue(any(r.get("tool")=="SendMessage" and r["state"]=="unknown" for r in self.records()))
         self.assert_safe_records()

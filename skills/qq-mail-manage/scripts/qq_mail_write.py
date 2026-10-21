@@ -11,20 +11,22 @@ import re
 import sys
 import time
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from qq_mail import WRITE_TOOLS, CodexMail, decode_result, endpoint_error, AuthenticationError
+from qq_mail import WRITE_TOOLS, CodexMail, decode_result, endpoint_error, AuthenticationError, preflight_attachment, MAX_ATTACHMENT_BYTES
 from mail_config import account, load_settings, private_dir, select_profile, redact, contains_runtime_secret
-from mail_credentials import sync_directory
+from mail_credentials import sync_directory, atomic_record
 import fcntl
+import tempfile
+import stat
 
 PENDING = None  # Test override; runtime state always lives outside the installed skill.
 
 
 def pending_dir():
-    return PENDING if PENDING is not None else load_settings().state_dir / "pending"
+    return Path(PENDING).resolve() if PENDING is not None else load_settings().state_dir / "pending"
 
 
 SCHEMAS = json.loads((Path(__file__).parent / "write_schemas.json").read_text())
@@ -70,16 +72,17 @@ def validate_arguments(tool, arguments):
     attachments = arguments.get("attachments", [])
     if len(attachments) > 3:
         raise ValueError("Attachment count exceeds the verified service limit")
-    total = 0
+    total = sum(a["size"] for a in attachments)
+    if total > 3 * MAX_ATTACHMENT_BYTES:
+        raise ValueError("Total attachment size exceeds the verified 3 MiB limit")
     for attachment in attachments:
+        preflight_attachment(attachment["size"], attachment["content"])
         data = base64.b64decode(attachment["content"], validate=True)
         if len(data) != attachment["size"] or hashlib.sha1(data).hexdigest() != attachment["sha1"].lower():
             raise ValueError("Attachment size or SHA-1 does not match its content")
         if len(data) > 1048576:
             raise ValueError("Attachment exceeds the verified 1 MiB limit")
-        total += len(data)
-    if total > 3145728:
-        raise ValueError("Total attachment size exceeds the verified 3 MiB limit")
+
 
 
 def fingerprint(tool, arguments):
@@ -114,22 +117,97 @@ def state_path(request_id):
     return pending_dir() / (request_id + ".json")
 
 
+@contextmanager
+def receipt_lock(request_id):
+    """Lock a stable inode; receipt JSON may be atomically replaced underneath it."""
+    private_dir(pending_dir())
+    path = state_path(request_id).with_suffix(".lock")
+    fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "r+") as lock:
+        info = os.fstat(lock.fileno())
+        if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600 or not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise RuntimeError("Unsafe operation lock")
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise RuntimeError("Operation is already being handled; query the original receipt, never resubmit") from None
+        yield lock
+
+
+def read_receipt(request_id):
+    path = state_path(request_id)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(fd) as stream:
+        info = os.fstat(stream.fileno())
+        if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600 or not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise RuntimeError("Unsafe operation receipt")
+        try:
+            record = json.load(stream)
+        except (ValueError, UnicodeError):
+            raise RuntimeError("Unreadable operation receipt; reconcile externally without resubmitting") from None
+    if not isinstance(record, dict) or record.get("account") != account() or record.get("request_id") != request_id:
+        raise ValueError("Invalid operation receipt identity")
+    return record
+
+
 def save_new(record):
     private_dir(pending_dir())
-    fd = os.open(state_path(record["request_id"]), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "w") as stream:
-        json.dump(redact(record), stream, ensure_ascii=False)
-        stream.flush()
-        os.fsync(stream.fileno())
-    sync_directory(pending_dir())
+    fd, temporary = tempfile.mkstemp(prefix=".operation-", dir=pending_dir())
+    try:
+        with os.fdopen(fd, "w") as stream:
+            json.dump(redact(record), stream, ensure_ascii=False)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.link(temporary, state_path(record["request_id"]))
+        sync_directory(pending_dir())
+    finally:
+        Path(temporary).unlink(missing_ok=True)
 
 
 def update_locked(stream, record):
-    stream.seek(0)
-    json.dump(redact(record), stream, ensure_ascii=False)
-    stream.truncate()
-    stream.flush()
-    os.fsync(stream.fileno())
+    # Caller holds the separate .lock inode, not the replaced JSON inode.
+    atomic_record(state_path(record["request_id"]), redact(record))
+
+
+def operation_identity(tool, arguments, operation_id=None):
+    digest = fingerprint(tool, arguments)
+    # Legacy Python callers remain safe: identical normalized content gets a
+    # stable identity. CLI callers must provide the host's durable job ID.
+    operation_id = "content-" + digest if operation_id is None else operation_id
+    if not isinstance(operation_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}", operation_id):
+        raise ValueError("operation_id must be 1..128 ASCII letters/digits or _ . : -")
+    if contains_runtime_secret(operation_id):
+        raise ValueError("operation_id must not contain credentials")
+    request_id = hashlib.sha256(json.dumps([load_settings().profile, account(), operation_id]).encode()).hexdigest()[:32]
+    return operation_id, request_id, digest
+
+
+def original_operation(request_id, operation_id, digest, tool):
+    if not os.path.lexists(state_path(request_id)):
+        return None
+    record = read_receipt(request_id)
+    if record.get("operation_id") != operation_id or record.get("fingerprint") != digest or record.get("tool") != tool:
+        raise ValueError("operation_id is already bound to different mail content/tool; do not reuse it")
+    return public_receipt(record)
+
+
+def public_receipt(record):
+    result = {key: record.get(key) for key in ("request_id", "operation_id", "state", "account", "tool", "created_at", "failure_code", "verification", "evidence")}
+    if record.get("state") == "pending":
+        result.update(state="awaiting_user_confirmation", operation_summary=record.get("operation_summary"))
+    if "result" in record:
+        result["result"] = record["result"]
+    if record.get("state") == "completed" and record.get("tool") != "DeleteMessage":
+        result.update(state="legacy_unverified", verification={"qq_accepted": "unknown", "sent_verified": False, "recipient_verified": False})
+    return result
+
+
+def accepted_receipt(record, payload):
+    record.update(state="accepted", result=payload,
+        verification={"qq_accepted": True, "sent_verified": False, "recipient_verified": False})
+    # Keep the intended content privately for evidence matching, not in public status.
+    record["intended"] = record.pop("arguments")
+    record.pop("confirmation_token", None)
 
 
 def acknowledged(tool, arguments, payload):
@@ -148,19 +226,22 @@ def progress(phase, index, total, request_id):
 
 
 def public_prepared(record):
-    return {"state": "awaiting_user_confirmation", "request_id": record["request_id"], "preview": record["preview"],
+    return {"state": "awaiting_user_confirmation", "request_id": record["request_id"], "operation_id": record.get("operation_id"), "preview": record["preview"],
             "operation_summary": record["operation_summary"],
             "instructions": "Show this summary and the exact content to the user; call confirm only after their explicit approval."}
 
 
-async def prepare_on_client(mail, tool, arguments, preview):
+async def prepare_on_client(mail, tool, arguments, preview, operation_id=None):
     """Persist intent before a prepare RPC, which could itself lose its response."""
-    request_id = uuid.uuid4().hex
-    record = {"request_id": request_id, "state": "preparing", "account": account(), "tool": tool,
+    op, request_id, digest = operation_identity(tool, arguments, operation_id) if tool != "DeleteMessage" else (None, uuid.uuid4().hex, fingerprint(tool, arguments))
+    record = {"request_id": request_id, "operation_id": op, "state": "preparing", "account": account(), "tool": tool,
               "arguments": arguments, "fingerprint": fingerprint(tool, arguments), "preview": preview, "created_at": time.time()}
-    save_new(record)
-    with state_path(request_id).open("r+") as stream:
-        fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with receipt_lock(request_id) as stream:
+        if op is not None:
+            prior = original_operation(request_id, op, digest, tool)
+            if prior is not None:
+                return prior
+        save_new(record)
         try:
             wire = {**arguments, "alias_id": mail.alias_id}
             if tool != "DeleteMessage":
@@ -180,7 +261,7 @@ async def prepare_on_client(mail, tool, arguments, preview):
             raise RuntimeError(f"Preparation outcome is {record['state']} (request {request_id}); reconcile mailbox state, do not automatically retry" + suffix) from None
 
 
-async def execute_authorized(tool, arguments, *, user_authorized=False, client=CodexMail):
+async def execute_authorized(tool, arguments, *, user_authorized=False, client=CodexMail, operation_id=None):
     if not user_authorized or tool not in ("SendMessage", "ReplyMessage", "ForwardMessage"):
         raise ValueError("An explicit user send/reply/forward instruction is required")
     validate_arguments(tool, arguments)
@@ -190,41 +271,40 @@ async def execute_authorized(tool, arguments, *, user_authorized=False, client=C
         arguments.setdefault("reply_all", False)
     if tool == "ForwardMessage":
         arguments.setdefault("include_attachments", False)
-    async with client(write_tool=tool, user_authorized_send=True) as mail:
-        request_id = uuid.uuid4().hex
-        record = {"request_id": request_id, "mode": "user_authorized_send", "state": "submitting", "account": account(),
-                  "tool": tool, "arguments": arguments, "fingerprint": fingerprint(tool, arguments), "created_at": time.time()}
+    operation_id, request_id, digest = operation_identity(tool, arguments, operation_id)
+    with receipt_lock(request_id) as stream:
+        prior = original_operation(request_id, operation_id, digest, tool)
+        if prior is not None:
+            return prior  # No credential read, client connection or mail RPC.
+        record = {"request_id": request_id, "operation_id": operation_id, "mode": "user_authorized_send",
+                  "state": "submitting", "account": account(), "tool": tool, "arguments": arguments,
+                  "fingerprint": digest, "created_at": time.time()}
         save_new(record)
-        with state_path(request_id).open("r+") as stream:
-            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            try:
+        try:
+            async with client(write_tool=tool, user_authorized_send=True) as mail:
                 raw = await mail.raw_call(tool, {**arguments, "alias_id": mail.alias_id, "skip_confirmation": True})
                 payload = decode_result(raw)
                 challenge = confirmation(payload)
                 if challenge:
-                    # A server-forced challenge is not consent from the assistant.
-                    record.update({"state": "pending", "confirmation_token": challenge[0], "operation_summary": challenge[1]})
-                    update_locked(stream, record)
-                    return {"state": "awaiting_user_confirmation", "request_id": request_id, "operation_summary": challenge[1]}
-                if raw.get("isError") or endpoint_error(payload):
-                    record["state"] = "failed"
-                    raise RuntimeError("Tencent rejected the write; inspect the mailbox before another attempt")
-                if not acknowledged(tool, arguments, payload):
-                    raise RuntimeError("No positive write acknowledgment; reconcile mailbox state")
-                record["state"] = "completed"
-                record["result"] = payload
-                record.pop("arguments", None)
+                    record.update(state="pending", confirmation_token=challenge[0], operation_summary=challenge[1])
+                else:
+                    if raw.get("isError") or endpoint_error(payload):
+                        record["state"] = "failed"
+                        raise RuntimeError("Tencent rejected the write")
+                    if not acknowledged(tool, arguments, payload):
+                        raise RuntimeError("No positive write acknowledgment")
+                    accepted_receipt(record, payload)
                 update_locked(stream, record)
-                return {"state": "completed", "request_id": request_id, "result": payload}
-            except BaseException as error:
-                if record["state"] == "submitting":
-                    record["state"] = "unknown"
-                update_locked(stream, record)
-                suffix = "; authorization rejected: securely update authorization and verify first" if isinstance(error, AuthenticationError) else ""
-                raise RuntimeError(f"Write outcome is {record['state']} (request {request_id}); do not automatically retry" + suffix) from None
+                return public_receipt(record)
+        except BaseException as error:
+            if record["state"] in ("submitting", "accepted"):
+                record["state"] = "unknown"
+            update_locked(stream, record)
+            suffix = "; authorization rejected: securely update authorization and verify first" if isinstance(error, AuthenticationError) else ""
+            raise RuntimeError(f"Write outcome is {record['state']} (request {request_id}); do not automatically retry" + suffix) from None
 
 
-async def prepare(tool, arguments, client=CodexMail):
+async def prepare(tool, arguments, client=CodexMail, operation_id=None):
     validate_arguments(tool, arguments)
     arguments = dict(arguments)
     if tool == "ReplyMessage":
@@ -233,6 +313,12 @@ async def prepare(tool, arguments, client=CodexMail):
         arguments.setdefault("include_attachments", False)
     if tool != "DeleteMessage":
         arguments.setdefault("body_format", "PLAIN")
+    if tool != "DeleteMessage":
+        op, request_id, digest = operation_identity(tool, arguments, operation_id)
+        with receipt_lock(request_id):
+            prior = original_operation(request_id, op, digest, tool)
+            if prior is not None:
+                return prior
     async with client(write_tool=tool) as mail:
         preview = {"account": account(), "tool": tool}
         if arguments.get("message_id"):
@@ -240,7 +326,7 @@ async def prepare(tool, arguments, client=CodexMail):
             preview.update({"original_subject": original.get("subject"), "original_sender": original.get("from"), "original_date": original.get("created_at")})
         preview.update({k: arguments[k] for k in ("to", "cc", "bcc", "subject", "reply_all", "include_attachments") if k in arguments})
         preview["attachments"] = [{k: a[k] for k in ("filename", "content_type", "size", "sha1")} for a in arguments.get("attachments", [])]
-        return await prepare_on_client(mail, tool, arguments, preview)
+        return await prepare_on_client(mail, tool, arguments, preview, operation_id=operation_id)
 
 
 def remember_challenge(tool, arguments, raw, preview):
@@ -342,12 +428,86 @@ def batch_status(batch_id):
 
 
 def request_status(request_id):
-    """Read a single local receipt without exposing mail arguments or confirmation tokens."""
-    record = json.loads(state_path(request_id).read_text())
-    if (record.get("account") != account() or record.get("request_id") != request_id or
-            record.get("tool") not in WRITE_TOOLS):
+    """Read an atomic snapshot; no connection, secrets, mail body or resend."""
+    record = read_receipt(request_id)
+    if record.get("tool") not in WRITE_TOOLS:
         raise ValueError("Invalid operation receipt identity")
-    return {key: record.get(key) for key in ("request_id", "state", "account", "tool", "created_at", "failure_code")}
+    result = {key: record.get(key) for key in ("request_id", "operation_id", "state", "account", "tool", "created_at", "failure_code", "verification", "evidence")}
+    if record.get("state") == "completed" and record["tool"] != "DeleteMessage":
+        result.update(state="legacy_unverified", verification={"qq_accepted": "unknown", "sent_verified": False, "recipient_verified": False})
+    return result
+
+
+def record_verification(request_id, observation):
+    """Match a host's independent observation, not an assumed provider wire schema.
+
+    Only SendMessage has a fully known outbound body/subject/attachment intent.
+    """
+    if not isinstance(observation, dict):
+        raise ValueError("Verification requires an independent normalized observation")
+    stage = observation.get("stage")
+    if stage not in ("sent", "recipient"):
+        raise ValueError("Verification stage must be sent or recipient")
+    for key in ("provider", "message_id", "source_reference", "folder", "account"):
+        if not isinstance(observation.get(key), str) or not observation[key].strip():
+            raise ValueError("Verification observation lacks source identity/reference")
+    if contains_runtime_secret(observation):
+        raise ValueError("Verification must not contain runtime credentials")
+    with receipt_lock(request_id) as stream:
+        record = read_receipt(request_id)
+        if record.get("tool") != "SendMessage" or "intended" not in record and "arguments" not in record:
+            raise ValueError("Evidence matching requires a retained SendMessage intent; do not infer reply/forward content")
+        intended = record.get("intended", record.get("arguments"))
+        if record.get("state") not in ("accepted", "sent_verified", "recipient_verified", "unknown", "submitting"):
+            raise ValueError("This operation is not eligible for evidence reconciliation")
+        def addresses(items):
+            if not isinstance(items, list) or any(not isinstance(p, dict) or not isinstance(p.get("email"), str) for p in items):
+                raise ValueError("Verification recipients are incomplete")
+            return sorted(p["email"].casefold() for p in items)
+        if observation.get("from") != record["account"]:
+            raise ValueError("Verification sender differs from the intended QQ account")
+        recipients = sum((addresses(intended.get(field, [])) for field in ("to", "cc", "bcc")), [])
+        if stage == "sent":
+            if observation["provider"] != "qq" or observation["folder"] != "sent" or observation["account"].casefold() != record["account"]:
+                raise ValueError("Sent evidence must come from this QQ account's sent folder")
+        elif observation["provider"].casefold() == "qq" or observation["account"].casefold() not in recipients:
+            raise ValueError("Recipient evidence must come from an independent recipient mailbox")
+        for field in ("to", "cc", "bcc") if stage == "sent" else ("to", "cc"):
+            if addresses(observation.get(field, [])) != addresses(intended.get(field, [])):
+                raise ValueError("Verification recipients differ from the intended mail")
+        if any(observation.get(key) != intended.get(key, "PLAIN" if key == "body_format" else None) for key in ("subject", "body", "body_format")):
+            raise ValueError("Verification subject/body/format differs or is incomplete")
+        observed_attachments = observation.get("attachments")
+        if not isinstance(observed_attachments, list):
+            raise ValueError("Verification must explicitly include all attachment bytes, or []")
+        validate_arguments("SendMessage", {"to": intended["to"], "subject": intended["subject"], "body": intended["body"], "attachments": observed_attachments})
+        def signature(items):
+            return sorted((a["filename"], a["content_type"].casefold(), a["size"], a["sha1"].lower()) for a in items)
+        if signature(observed_attachments) != signature(intended.get("attachments", [])):
+            raise ValueError("Verification attachments differ or are incomplete")
+        if observation.get("time_basis") != ("qq_sent_at" if stage == "sent" else "mailbox_received_at"):
+            raise ValueError("Verification needs an established mailbox timestamp basis, never a guessed created_at")
+        observed_at = observation.get("observed_mail_at")
+        try:
+            timestamp = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+            if timestamp.tzinfo is None or not record["created_at"]-5 <= timestamp.timestamp() <= time.time()+60:
+                raise ValueError("unbound observation time")
+        except (AttributeError, TypeError, ValueError, OverflowError):
+            raise ValueError("Verification requires a timezone-aware mail timestamp tied to this operation") from None
+        acknowledged_id = record.get("result", {}).get("message_id")
+        if stage == "sent" and acknowledged_id and observation["message_id"] != acknowledged_id:
+            raise ValueError("Sent evidence differs from the acknowledged message ID")
+        verification = record.setdefault("verification", {"qq_accepted": False, "sent_verified": False, "recipient_verified": False})
+        verification["qq_accepted"] = True
+        verification[stage+"_verified"] = True
+        record.setdefault("evidence", {})[stage] = {key: observation[key] for key in ("provider", "message_id", "source_reference", "folder", "account", "observed_mail_at", "time_basis")}
+        record["evidence"][stage].update(verified_at=time.time(), source="host_independent_observation")
+        record["state"] = "recipient_verified" if verification["recipient_verified"] else "sent_verified"
+        record["intended"] = intended
+        record.pop("arguments", None)
+        record.pop("confirmation_token", None)
+        update_locked(stream, record)
+        return request_status(request_id)
 
 
 def read_json_input(path):
@@ -419,18 +579,15 @@ async def renew_delete_challenge(mail, record, stream):
 
 
 async def confirm(request_id, client=CodexMail, renew_delete=False):
-    fd = os.open(state_path(request_id), os.O_RDWR | os.O_NOFOLLOW)
-    with os.fdopen(fd, "r+") as stream:
+    with receipt_lock(request_id) as stream:
         try:
-            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            raise RuntimeError("This request is already being handled")
-        try:
-            record = json.load(stream)
-        except (ValueError, OSError) as error:
-            raise RuntimeError("Cannot read the prepared operation; reconcile mailbox state before proceeding") from error
-        if record.get("account") != account() or record.get("request_id") != request_id:
-            raise RuntimeError("Request identity mismatch")
+            record = read_receipt(request_id)
+        except ValueError:
+            raise RuntimeError("Request identity mismatch") from None
+        if record.get("tool") not in WRITE_TOOLS:
+            raise RuntimeError("Unsupported operation receipt")
+        if record.get("tool") != "DeleteMessage" and record.get("state") not in ("pending",):
+            return public_receipt(record)
         known_expiry = record.get("tool") == "DeleteMessage" and record.get("state") == "failed" and record.get("failure_code") == "40001"
         if record.get("state") != "pending" and not known_expiry:
             raise RuntimeError("Request already used or has an unknown outcome; do not retry")
@@ -460,8 +617,10 @@ async def confirm(request_id, client=CodexMail, renew_delete=False):
                     raise RuntimeError("Tencent did not confirm completion; inspect the mailbox before preparing another request")
                 if not acknowledged(tool, arguments, payload):
                     raise RuntimeError("No positive write acknowledgment; reconcile mailbox state")
-                record["state"] = "completed"
-                record["result"] = payload
+                if tool == "DeleteMessage":
+                    record.update(state="completed", result=payload)
+                else:
+                    accepted_receipt(record, payload)
             except BaseException:
                 if record["state"] == "submitting":
                     record["state"] = "unknown"
@@ -470,7 +629,7 @@ async def confirm(request_id, client=CodexMail, renew_delete=False):
             record.pop("confirmation_token", None)
             record.pop("arguments", None)
             update_locked(stream, record)
-            return {"state": "completed", "request_id": request_id, "result": payload}
+            return public_receipt(record)
 
 
 async def main():
@@ -478,9 +637,11 @@ async def main():
     parser.add_argument("--profile", help="Configured mailbox profile")
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("prepare")
+    p.add_argument("--operation-id", help="Durable host job ID; required for sending/reply/forward")
     p.add_argument("--tool", choices=WRITE_TOOLS, required=True)
     p.add_argument("--arguments-file", type=Path, required=True, help="Private JSON file, or - to read UTF-8 JSON from stdin")
     p = sub.add_parser("execute-authorized")
+    p.add_argument("--operation-id", required=True, help="Reuse this durable ID for every retry of the same mail")
     p.add_argument("--tool", choices=("SendMessage", "ReplyMessage", "ForwardMessage"), required=True)
     p.add_argument("--arguments-file", type=Path, required=True, help="Private JSON file, or - to read UTF-8 JSON from stdin")
     p.add_argument("--user-authorized", action="store_true", required=True, help="Use when the human explicitly requested this exact mail operation; no extra confirmation prompt")
@@ -496,21 +657,28 @@ async def main():
     p.add_argument("--user-approved", action="store_true", required=True)
     p = sub.add_parser("batch-status", help="Read local per-message receipts after a partial or interrupted batch; never resubmits")
     p.add_argument("--batch-id", required=True)
+    p = sub.add_parser("record-verification", help="Match an independent host observation against retained SendMessage intent; no mail RPC")
+    p.add_argument("--request-id", required=True)
+    p.add_argument("--observation-file", type=Path, required=True, help="Private normalized observation JSON; - reads stdin")
     p = sub.add_parser("request-status", help="Read one local write receipt without contacting mail or resubmitting")
     p.add_argument("--request-id", required=True)
     args = parser.parse_args()
     if args.profile:
         select_profile(args.profile)
     if args.command == "prepare":
-        result = await prepare(args.tool, read_json_input(args.arguments_file))
+        if args.tool != "DeleteMessage" and not args.operation_id:
+            parser.error("--operation-id is required for sending/reply/forward preparation")
+        result = await prepare(args.tool, read_json_input(args.arguments_file), operation_id=args.operation_id)
     elif args.command == "execute-authorized":
-        result = await execute_authorized(args.tool, read_json_input(args.arguments_file), user_authorized=args.user_authorized)
+        result = await execute_authorized(args.tool, read_json_input(args.arguments_file), user_authorized=args.user_authorized, operation_id=args.operation_id)
     elif args.command == "confirm":
         result = await confirm(args.request_id, renew_delete=args.renew_confirmation)
     elif args.command == "prepare-delete-batch":
         result = await prepare_delete_batch(read_json_input(args.review_file))
     elif args.command == "batch-status":
         result = batch_status(args.batch_id)
+    elif args.command == "record-verification":
+        result = record_verification(args.request_id, read_json_input(args.observation_file))
     elif args.command == "request-status":
         result = request_status(args.request_id)
     else:

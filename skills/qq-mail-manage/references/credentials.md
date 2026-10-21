@@ -134,3 +134,7 @@ QQ_MAIL_HOME 是非秘密 profile/邮件回执位置，credential_state_dir 是�
 私有文件在保存轮换期间中断可能保留旧的 pending 或当前可见的新记录；`.pending` 标记未完成清理时，当前可见不代表持久化成功。标记存在会阻止重启后继续使用，临时文件也不代表提交完成。凭据所有者须先解决磁盘/同步故障，确保持久化完整有效的新 bundle（无法核实则换授权）并重新核对，才能显式清理标记；不得仅删除标记重试旧 refresh token。磁盘故障/容器回滚无法由代码保证恢复，状态不可靠时停止。凭据、pending、邮件未知结果回执都要由宿主持久保存；发送结果未知仍须核对外部状态，不得重发。
 
 核实依据（2026-10-20，无凭据只读 GET）：[QQ 官方授权服务器元数据](https://api.mail.qq.com/.well-known/oauth-authorization-server) 返回 issuer `https://wx.mail.qq.com`、token_endpoint `https://wx.mail.qq.com/oauth/token`、grant_types_supported 含 refresh_token。[OAuth 2.0 §6](https://www.rfc-editor.org/rfc/rfc6749#section-6) 规定可省略轮换 refresh token，返回时须替换旧值；[§2.3.1](https://www.rfc-editor.org/rfc/rfc6749#section-2.3.1) 规定机密客户端认证。元数据核实不代表已完成真实续期；本次开发全用假 token。
+
+## 只读诊断
+
+`python3 scripts/onboard.py --profile PROFILE credential-status` 只返回 status、expires_at、refresh_owner、recovery；按显式来源读取元数据，不执行续期。unknown/pending 或不安全存储显示 blocked_unknown，由凭据所有者核对，不自动重试。doctor 不读取文件/宿主凭据内容，不能验证授权；init 的唯一 next 保留当前 --profile：缺令牌时只提示安全注入；外部存储先查看 credential-status；令牌已注入后再 verify，OAuth 模式指向 login。

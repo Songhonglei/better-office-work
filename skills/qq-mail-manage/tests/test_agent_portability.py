@@ -280,10 +280,10 @@ class StandaloneCLITests(unittest.TestCase):
             self.assertEqual(downloaded["verification"]["level"], "metadata_size_and_local_digest")
             arguments = {"to": [{"email": "fixture@example.com"}], "subject": "fixture", "body": "fixture body"}
             sent = run("qq_mail_write.py", "execute-authorized", "--tool", "SendMessage",
-                       "--arguments-file", "-", "--user-authorized", simulated=True, content=json.dumps(arguments))
-            self.assertEqual(sent["state"], "completed")
+                       "--arguments-file", "-", "--operation-id", "fixture-cli-send", "--user-authorized", simulated=True, content=json.dumps(arguments))
+            self.assertEqual(sent["state"], "accepted")
             status = run("qq_mail_write.py", "request-status", "--request-id", sent["request_id"])
-            self.assertEqual(status["state"], "completed")
+            self.assertEqual(status["state"], "accepted")
             self.assertEqual((root / "sends").read_text(), "send\n")
             self.assertFalse((root / "unused-codex" / "config.toml").exists())
             self.assertFalse((installed / "profiles").exists())

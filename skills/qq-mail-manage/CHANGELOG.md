@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.5.0] - 2026-10-21
+
+### Changed
+
+- 发送/回复/转发 CLI 必须持久复用 operation_id；同 ID 返回原回执，不同内容拒绝，跨进程锁与原子 JSON 更新防止重复和回执截断。旧 Python 调用按内容稳定去重，显式 ID 为推荐方式。
+- queued/消息 ID 仅记 accepted，独立区分 sent_verified/recipient_verified；支持用宿主独立观察的正文/附件证据匹配 SendMessage，未知结果仅对账不重发，旧 completed 不推断核验。
+- onboard next 保留 profile；增加无续期/无秘密的 credential-status。手动游标强制固定日期，并输出 query_window 与候选语义。
+- 上传/下载统一大小预检；固化 v1.4.2 已观察结构的合成附件 fixture 及来源，其他接口无真实脱敏样本，不声称在线契约已验证。README 移除滞后测试数量，统一可选服务端摘要和本地摘要说明。
+
+### Migration and limits
+
+- 调用方需新增 --operation-id 并识别 accepted/核验状态；不要混跑旧/新写入进程。去重依赖共享且保留的状态目录，不是服务端 exactly-once，不支持丢失状态后自动补发。
+- 核验证据来自宿主实际独立读取，脚本只做内容匹配；原生 Reply/Forward 最终内容未知时不升级。无真实 QQ 收发、刷新或云端验收。
+
 ## [1.4.2] - 2026-10-21
 
 ### Fixed

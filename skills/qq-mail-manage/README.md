@@ -1,6 +1,6 @@
 # QQ Mail Manage
 
-Version: **1.4.2** · License: [MIT](LICENSE)
+Version: **1.5.0** · License: [MIT](LICENSE)
 
 通过真实 Codex CLI 或显式直接 HTTP 后端和腾讯官方 MCP 管理 QQ 邮箱，账号可配置。支持多 profile、OAuth/keyring 或环境变量认证初始化、列表/搜索/正文/附件，以及按用户具体指令发送、回复、转发；删除需先确认具体清单，执行移至垃圾箱。
 
@@ -63,6 +63,8 @@ python3 scripts/onboard.py --profile cloud init --account YOUR@qq.com --mode rea
 
 无法启动嵌套 Codex 的宿主可显式配置 `--backend direct_http --auth-mode env_token`，无需 Codex CLI，不更改平台限制，不自动回退。默认 --http-protocol auto 通过 server/discover 选择双方版本，优先2026-07-28无initialize请求；也可显式固定2026或三个legacy版本。完整协议、配置命令、时限及持久错误回执见 [直接 HTTP MCP](references/direct-http.md)。
 
+新增发送需要稳定的 `--operation-id`；`accepted` 仅表示 QQ 受理。持久状态去重边界、三阶段结果及独立证据匹配见 [发送回执](references/operation-delivery.md)。
+
 ## Operations
 
 - [技能指令](SKILL.md)：工作流与用户授权边界。
@@ -81,7 +83,7 @@ python3 scripts/onboard.py --profile cloud init --account YOUR@qq.com --mode rea
 python3 -m unittest discover -s tests -v
 ```
 
-192 项离线回归（保留远端 179 项并加入通用性 13 项）涵盖账号隔离、别名校验、授权范围、单次写入、未知结果不重试、删除续期和独立进程 onboard。不会自动发送或删除真实测试邮件。实际腾讯账号可获得的范围、完整历史、真实刷新和撤销行为仍需分别验收。
+离线回归（通过数量以发布报告和 CI 为准，避免文档数量滞后）涵盖账号隔离、别名校验、授权范围、单次写入、未知结果不重试、删除续期和独立进程 onboard。不会自动发送或删除真实测试邮件。实际腾讯账号可获得的范围、完整历史、真实刷新和撤销行为仍需分别验收。
 
 附件列表严格兼容官方 text JSON 数组；附件下载兼容只有 Base64/文件名/MIME 的响应：先绑定 GetMessage 的邮件/附件 ID 和大小，核对解码长度；可选服务端摘要必须验证，缺失时明确标注本地 SHA-1 及校验级别。
 

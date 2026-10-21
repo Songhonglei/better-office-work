@@ -15,7 +15,7 @@
 ```
 
 ```bash
-python3 scripts/qq_mail_write.py execute-authorized --tool SendMessage --arguments-file /private/path/draft.json --user-authorized
+python3 scripts/qq_mail_write.py execute-authorized --operation-id HOST_JOB_ID --tool SendMessage --arguments-file /private/path/draft.json --user-authorized
 ```
 
 ReplyMessage：message_id、body，默认 reply_all=false。ForwardMessage：message_id、to、body，默认 include_attachments=false。确认是否包含原附件需依据用户指令；用户已要求带原附件时直接包含，不重复问。原生 ForwardMessage 不支持新主题，定制主题时用 SendMessage 发送用户指定的原正文和附件。
@@ -38,7 +38,7 @@ ListAttachments 的官方 text JSON 数组及已有 attachments 对象均规范�
 ## 用户主动要求发前预览
 
 ```bash
-python3 scripts/qq_mail_write.py prepare --tool SendMessage --arguments-file /private/path/draft.json
+python3 scripts/qq_mail_write.py prepare --operation-id HOST_JOB_ID --tool SendMessage --arguments-file /private/path/draft.json
 python3 scripts/qq_mail_write.py confirm --request-id REQUEST_ID --user-approved
 ```
 
@@ -83,7 +83,7 @@ python3 scripts/qq_mail_write.py confirm-delete-batch --batch-id BATCH_ID --indi
 
 状态保存在 data_home/state/PROFILE/pending，目录 700、文件 600。提交前写 submitting、绑定账号及参数哈希，成功后去除原参数与确认令牌。待确认/结果未知记录可能含正文和附件，仅保留本机；不得装进技能包。更新技能不会删除这些记录。
 
-prepare 同样先写 preparing 再发请求；缺少预期挑战、丢响应或异常时落为 unknown，并返回 request_id。未知响应不等于失败或成功，不自动再次 prepare/confirm。发送必须有 queued=true 或消息 ID，删除必须有匹配 ID 的 deleted=true 才记录 completed；文件夹核验仍按前述步骤执行。
+prepare 同样先写 preparing 再发请求；缺少预期挑战、丢响应或异常时落为 unknown，并返回 request_id。未知响应不等于失败或成功，不自动再次 prepare/confirm。发送只有 queued=true 或消息 ID 时记录 accepted，删除有匹配 ID 的 deleted=true 才记录 completed；文件夹核验仍按前述步骤执行。
 
 批次会在 stderr 输出逐封准备、确认、完成或停止阶段，stdout 保留最终 JSON。部分完成或中断后只读查询本地状态：
 

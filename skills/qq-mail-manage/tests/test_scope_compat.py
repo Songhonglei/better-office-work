@@ -113,7 +113,7 @@ class ScopeCompatibilityTests(unittest.IsolatedAsyncioTestCase):
                 await mail.raw_call("DeleteMessage", {"alias_id": mail.alias_id, "message_id": "synthetic-message"})
         result = await flow.execute_authorized("SendMessage", {"to": [{"email": "recipient@example.com"}],
             "subject": "synthetic", "body": "synthetic"}, user_authorized=True)
-        self.assertEqual(result["state"], "completed")
+        self.assertEqual(result["state"], "accepted")
         events = [json.loads(line) for line in self.events.read_text().splitlines()]
         self.assertEqual(sum(item.get("tool") == "SendMessage" for item in events), 1)
         self.assertFalse(any(item.get("tool") == "DeleteMessage" for item in events))

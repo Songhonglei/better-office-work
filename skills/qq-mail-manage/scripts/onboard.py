@@ -9,6 +9,8 @@ import os
 import platform
 import subprocess
 import sys
+import math
+import time
 from datetime import datetime, timezone
 
 from mail_config import (MODES, AUTH_MODES, BACKENDS, HTTP_PROTOCOLS, DEFAULT_TOKEN_ENV, codex_binary, data_home, load_settings, overrides,
@@ -23,6 +25,51 @@ def apply_credential_options(data, options):
         for key in ("credential_file", "credential_state_dir", "credential_command", "refresh_policy", "client_auth_method"):
             data.pop(key, None)
     data.update({key: value for key, value in options.items() if value is not None})
+
+
+def next_step(settings, action):
+    return f"python3 scripts/onboard.py --profile {settings.profile} {action}"
+
+
+def credential_summary(settings, inspect_store=False):
+    """Only publish expiry, refresh owner and recovery; never refresh or return credentials."""
+    from mail_credentials import FileStore, HostStore, MAX_UNIX_SECONDS
+    summary = {"expires_at": None, "refresh_owner": "Codex" if settings.auth_mode == "oauth_keyring" else
+               "skill" if settings.refresh_policy == "auto" else "host", "status": "unverified",
+               "recovery": next_step(settings, "verify")}
+    if settings.auth_mode == "oauth_keyring":
+        summary["recovery"] = next_step(settings, "login")
+        return summary
+    if settings.credential_source == "env":
+        var = settings.credential_env_vars.get("expires_at", ENV_FIELDS["expires_at"])
+        value = os.environ.get(var)
+        record = {"expires_at": value} if value is not None else {}
+    elif not inspect_store:
+        summary["recovery"] = next_step(settings, "credential-status")
+        return summary
+    else:
+        try:
+            store = FileStore(settings.credential_file, settings.credential_state_dir) if settings.credential_source == "private_file" else HostStore(settings.credential_command)
+            record = store.load()  # Atomic snapshot; never wait for or start a refresh.
+            if not isinstance(record, dict) or record.get("refresh_state", "ready") != "ready":
+                raise ValueError("unresolved credential state")
+        except (RuntimeError, ValueError, OSError, subprocess.SubprocessError):
+            summary.update(status="blocked_unknown", recovery="Ask the credential owner to reconcile pending/unknown refresh; do not retry or reuse old credentials")
+            return summary
+    if "expires_at" in record:
+        try:
+            raw = record["expires_at"]
+            expiry = float(raw)
+            if isinstance(raw, bool) or not math.isfinite(expiry) or not 0 < expiry <= MAX_UNIX_SECONDS:
+                raise ValueError("invalid expiry")
+            summary["expires_at"] = datetime.fromtimestamp(expiry, timezone.utc).isoformat()
+            summary["status"] = "expired" if expiry <= time.time() else "near_expiry" if expiry <= time.time()+settings.refresh_skew else "ready_unverified"
+        except (ValueError, TypeError, OverflowError, OSError):
+            summary.update(status="blocked_unknown", recovery="Ask the credential owner to correct expires_at in UTC Unix seconds; do not retry unknown authorization")
+            return summary
+    if summary["status"] in ("expired", "near_expiry"):
+        summary["recovery"] = "Ask the credential owner to safely refresh and persist authorization, then " + next_step(settings, "verify")
+    return summary
 
 
 def doctor(settings=None, *, auth_mode=None, token_env_var=None, **credential_options):
@@ -73,7 +120,8 @@ def doctor(settings=None, *, auth_mode=None, token_env_var=None, **credential_op
             "persistence": "host responsibility; environment variables are not persistent storage",
             "store_inspected": False, "refresh_attempted": False,
             "credential_status": "previously_verified" if last_verified else "unverified",
-            "last_verified_at": last_verified, "currently_verified": False}
+            "last_verified_at": last_verified, "currently_verified": False,
+            "credential_summary": credential_summary(diagnostic)}
 
 
 def configure(account, mode="read", server=None, auth_mode=None, token_env_var=None, **credential_options):
@@ -138,6 +186,7 @@ def main():
     diagnostic = commands.add_parser("doctor", help="Check runtime without starting OAuth or accessing mail")
     diagnostic.add_argument("--auth-mode", choices=AUTH_MODES)
     diagnostic.add_argument("--token-env-var", help="Variable name only, never its value")
+    commands.add_parser("credential-status", help="Read only expiry/refresh responsibility/recovery; never refresh")
     commands.add_parser("verify", help="Read GetMe and verify exact account and granted scopes")
     commands.add_parser("login", help="Reauthorize the selected configured profile and verify it")
     init = commands.add_parser("init")
@@ -177,6 +226,8 @@ def main():
             options["credential_env_vars"] = mapping
     if args.command == "doctor":
         result = doctor(auth_mode=args.auth_mode, token_env_var=args.token_env_var, **options)
+    elif args.command == "credential-status":
+        result = credential_summary(load_settings(), inspect_store=True)
     elif args.command == "verify":
         doctor()
         result = asyncio.run(verify())
@@ -185,9 +236,17 @@ def main():
         result = asyncio.run(verify())
     else:
         settings = configure(args.account, args.mode, args.server, args.auth_mode, args.token_env_var, **options)
-        doctor(settings)
+        diagnostic = doctor(settings)
         if args.configure_only:
-            result = {"state": "configured_not_verified", **settings.as_dict(), "next": "onboard.py verify" if settings.auth_mode == "env_token" else "onboard.py login"}
+            if settings.auth_mode == "oauth_keyring":
+                following = next_step(settings, "login")
+            elif settings.credential_source != "env":
+                following = next_step(settings, "credential-status")
+            elif not diagnostic["token_variable_nonempty"]:
+                following = f"Securely inject {settings.token_env_var} through the host secret manager for --profile {settings.profile}"
+            else:
+                following = next_step(settings, "verify")
+            result = {"state": "configured_not_verified", **settings.as_dict(), "next": following}
         else:
             if settings.auth_mode == "oauth_keyring" and not args.reuse_auth:
                 login(settings)

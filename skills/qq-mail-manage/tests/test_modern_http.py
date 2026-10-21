@@ -139,8 +139,8 @@ class ModernHTTPTests(unittest.IsolatedAsyncioTestCase):
                     "content":base64.b64encode(content).decode(),"content_type":"application/pdf"}
         args={"to":[{"email":"recipient@example.com"}],"subject":"Item+Invoice+1.00",
               "body":"Complete original body; source synthetic-message; currency CNY","attachments":[attachment]}
-        result=await flow.execute_authorized("SendMessage",args,user_authorized=True)
-        self.assertEqual(result["state"],"completed")
+        result=await flow.execute_authorized("SendMessage",args,user_authorized=True,operation_id="fixture-"+self.server.case)
+        self.assertEqual(result["state"],"accepted")
         sends=[r for r in self.server.requests if r[0].get("params",{}).get("name")=="SendMessage"]
         self.assertEqual(len(sends),1)
         self.assertEqual(sends[0][1]["Mcp-name"],"SendMessage")
@@ -153,7 +153,7 @@ class ModernHTTPTests(unittest.IsolatedAsyncioTestCase):
             self.server.case=case;self.server.requests=[]
             with patch.object(fixtures.creds,"exchange",side_effect=AssertionError("no reactive refresh")) as exchange:
                 with self.assertRaisesRegex(RuntimeError,"unknown"):
-                    await flow.execute_authorized("SendMessage",args,user_authorized=True)
+                    await flow.execute_authorized("SendMessage",args,user_authorized=True,operation_id="fixture-"+self.server.case)
                 exchange.assert_not_called()
             self.assertEqual(sum(r[0].get("params",{}).get("name")=="SendMessage" for r in self.server.requests),1)
         self.assertTrue(any(r.get("tool")=="SendMessage" and r["state"]=="unknown" for r in self.records()))

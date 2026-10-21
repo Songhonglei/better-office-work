@@ -75,15 +75,15 @@ class WriteFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("confirmation_token", FakeMail.writes[0][1])
         self.assertFalse(FakeMail.writes[0][1]["skip_confirmation"])
         result = await flow.confirm(prepared["request_id"], client=FakeMail)
-        self.assertEqual(result["state"], "completed")
+        self.assertEqual(result["state"], "accepted")
         self.assertEqual(FakeMail.writes[1][1]["confirmation_token"], "test-one-time-token")
         for key, value in FakeMail.writes[0][1].items():
             self.assertEqual(FakeMail.writes[1][1][key], value)
         record = json.loads(flow.state_path(prepared["request_id"]).read_text())
         self.assertNotIn("arguments", record)
         self.assertNotIn("confirmation_token", record)
-        with self.assertRaises(RuntimeError):
-            await flow.confirm(prepared["request_id"], client=FakeMail)
+        replay = await flow.confirm(prepared["request_id"], client=FakeMail)
+        self.assertEqual(replay["state"], "accepted")
         self.assertEqual(len(FakeMail.writes), 2)
 
     async def test_changed_payload_cannot_be_submitted(self):
@@ -103,8 +103,8 @@ class WriteFlowTests(unittest.IsolatedAsyncioTestCase):
             await flow.confirm(prepared["request_id"], client=FakeMail)
         record = json.loads(flow.state_path(prepared["request_id"]).read_text())
         self.assertEqual(record["state"], "unknown")
-        with self.assertRaises(RuntimeError):
-            await flow.confirm(prepared["request_id"], client=FakeMail)
+        replay = await flow.confirm(prepared["request_id"], client=FakeMail)
+        self.assertEqual(replay["state"], "unknown")
         self.assertEqual(len(FakeMail.writes), 2)
 
     async def test_injected_authorization_fields_rejected_before_network(self):
@@ -146,7 +146,7 @@ class WriteFlowTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_explicitly_requested_send_uses_direct_mode_once(self):
         result = await flow.execute_authorized("SendMessage", self.arguments, user_authorized=True, client=FakeMail)
-        self.assertEqual(result["state"], "completed")
+        self.assertEqual(result["state"], "accepted")
         self.assertEqual(len(FakeMail.writes), 1)
         self.assertTrue(FakeMail.writes[0][1]["skip_confirmation"])
         self.assertNotIn("confirmation_token", FakeMail.writes[0][1])
@@ -199,7 +199,7 @@ class WriteFlowTests(unittest.IsolatedAsyncioTestCase):
                     self.writes.append((tool, dict(arguments)))
                     return {"structuredContent": payload}
             with self.assertRaisesRegex(RuntimeError, "unknown"):
-                await flow.execute_authorized("SendMessage", self.arguments, user_authorized=True, client=Unacknowledged)
+                await flow.execute_authorized("SendMessage", self.arguments, user_authorized=True, client=Unacknowledged, operation_id="bad-"+str(len(FakeMail.writes)))
         records = [json.loads(p.read_text()) for p in flow.PENDING.glob("*.json")]
         self.assertEqual(len(records), 4)
         self.assertTrue(all(r["state"] == "unknown" for r in records))
@@ -227,8 +227,8 @@ class WriteFlowTests(unittest.IsolatedAsyncioTestCase):
         record = json.loads(paths[0].read_text())
         self.assertEqual(record["state"], "unknown")
         self.assertIn(record["request_id"], str(caught.exception))
-        with self.assertRaises(RuntimeError):
-            await flow.confirm(record["request_id"], client=FakeMail)
+        replay = await flow.confirm(record["request_id"], client=FakeMail)
+        self.assertEqual(replay["state"], "unknown")
         self.assertEqual(len(FakeMail.writes), 1)
 
     async def test_missing_or_invalid_batch_date_is_rejected_before_network(self):

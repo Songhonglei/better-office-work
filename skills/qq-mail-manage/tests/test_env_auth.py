@@ -248,7 +248,7 @@ class EnvAuthTests(unittest.IsolatedAsyncioTestCase):
     async def test_read_send_sends_once_and_forbids_delete(self):
         self.configure()
         result = await flow.execute_authorized("SendMessage", self.arguments, user_authorized=True)
-        self.assertEqual(result["state"], "completed")
+        self.assertEqual(result["state"], "accepted")
         self.assertNotIn(TOKEN, json.dumps(result))
         with self.assertRaisesRegex(RuntimeError, "Deletion requires"):
             bridge.CodexMail(write_tool="DeleteMessage")
