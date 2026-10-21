@@ -26,6 +26,7 @@ TOKEN_ENDPOINT = "https://wx.mail.qq.com/oauth/token"
 SOURCES = ("env", "host_command", "private_file")
 POLICIES = ("host", "auto")
 CLIENT_AUTH = ("none", "client_secret_basic", "client_secret_post")
+MAX_UNIX_SECONDS = 253402300799  # Last UTC second representable in year 9999.
 ENV_FIELDS = {"access_token": "QQ_MAIL_ACCESS_TOKEN", "refresh_token": "QQ_MAIL_REFRESH_TOKEN",
               "client_id": "QQ_MAIL_CLIENT_ID", "token_type": "QQ_MAIL_TOKEN_TYPE",
               "scope": "QQ_MAIL_SCOPE", "expires_at": "QQ_MAIL_EXPIRES_AT",
@@ -65,8 +66,8 @@ def validate_record(record, *, complete=False):
         fail("Only Bearer MCP credentials are supported")
     if "expires_at" in record:
         expiry = record["expires_at"]
-        if isinstance(expiry, bool) or not isinstance(expiry, (int, float)) or not math.isfinite(expiry) or expiry <= 0:
-            fail("expires_at must be a positive UTC Unix timestamp")
+        if isinstance(expiry, bool) or not isinstance(expiry, (int, float)) or not math.isfinite(expiry) or not 0 < expiry <= MAX_UNIX_SECONDS:
+            fail("expires_at must be a positive UTC Unix timestamp in seconds, not milliseconds")
     if complete:
         for key in ("refresh_token", "client_id", "scope", "token_type"):
             if not isinstance(record.get(key), str) or not record[key].strip():

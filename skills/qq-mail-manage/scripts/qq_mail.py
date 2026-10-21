@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 """Manage a configured QQ mailbox through Codex or explicit direct HTTP MCP."""
+import mail_config  # Check runtime before importing platform-dependent helpers.
 import argparse
 import asyncio
+import base64
+import binascii
+import hashlib
 import json
 import os
-import fcntl
 import re
+import stat
 import sys
+import tempfile
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -14,6 +19,10 @@ from pathlib import Path
 from mail_config import (READ_TOOLS as TOOLS, WRITE_TOOLS, load_settings, codex_binary,
                          overrides, private_dir, data_home, select_profile, subprocess_env,
                          redact, contains_runtime_secret)
+from mail_credentials import sync_directory
+import fcntl
+
+MAX_ATTACHMENT_BYTES = 1048576
 
 
 class AuthenticationError(RuntimeError):
@@ -24,8 +33,22 @@ class AuthenticationError(RuntimeError):
 
 def authentication_failure(payload):
     """Only call for an error channel, never scan normal email bodies as instructions."""
+    if isinstance(payload, dict):
+        # Tencent's one-time operation confirmation is separate from OAuth.
+        # In particular, 40001 may say "token expired" while access remains valid.
+        codes = [payload.get(k) for k in ("code", "error_code", "status", "status_code")]
+        if any(str(code) in ("401", "403") for code in codes):
+            return True
+        if any(str(code) in ("40001", "42801") for code in codes):
+            return False
+        if isinstance(payload.get("error"), dict):
+            return authentication_failure(payload["error"])
     text = json.dumps(payload, ensure_ascii=False)
-    return bool(re.search(r"\b401\b|unauthori[sz]ed|invalid[_ -]?(?:token|grant)|\bexpired\b|\brevoked\b|token[_ -]?(?:expired|revoked)", text, re.I))
+    if re.search(r"confirmation[_ -]?token|CONFIRMATION_REQUIRED", text, re.I):
+        return False
+    return bool(re.search(r"\b401\b|unauthori[sz]ed|invalid[_ -]?(?:token|grant)|"
+                          r"(?:access[_ -]?token|oauth|authorization)[^\n]{0,80}(?:expired|revoked)|"
+                          r"(?:expired|revoked)[_ -]?(?:access[_ -]?)?token|token[_ -]?(?:expired|revoked)", text, re.I))
 
 
 class ToolError(RuntimeError):
@@ -84,7 +107,7 @@ class CodexMail:
         self.sequence = 0
         try:
             await self.rpc("initialize", {
-                "clientInfo": {"name": "qq_mail_manage_bridge", "title": "QQ Mail Manage Bridge", "version": "1.4.0"},
+                "clientInfo": {"name": "qq_mail_manage_bridge", "title": "QQ Mail Manage Bridge", "version": "1.4.1"},
                 "capabilities": {"experimentalApi": True},
             })
             await self.send({"method": "initialized", "params": {}})
@@ -361,6 +384,50 @@ def latest_by_received(messages, after, before, subject_contains):
         raise RuntimeError("Latest receipt timestamp is tied; resolve the ambiguity before forwarding")
     return candidates[0][1]
 
+
+async def download_attachment(mail, message_id, attachment_id, output):
+    """Save only verified bytes to an explicit, new private file; never print Base64."""
+    output = Path(output).expanduser().absolute()
+    if output.is_relative_to(Path(__file__).resolve().parent.parent):
+        raise ValueError("Download attachments outside the installed skill")
+    if output.parent != output.parent.resolve():
+        raise ValueError("Attachment output directory must not contain symlinks")
+    parent = output.parent.stat()
+    if parent.st_uid != os.getuid() or stat.S_IMODE(parent.st_mode) & 0o022:
+        raise ValueError("Choose an existing, user-owned output directory without group/world write access")
+    if os.path.lexists(output):
+        raise ValueError("Attachment output already exists; choose a new filename")
+    payload = await mail.call("DownloadAttachment", {
+        "alias_id": mail.alias_id, "message_id": message_id, "attachment_id": attachment_id})
+    if not isinstance(payload, dict) or not isinstance(payload.get("content"), str):
+        raise RuntimeError("Attachment response has no Base64 content")
+    size, digest = payload.get("size"), payload.get("sha1")
+    if type(size) is not int or not 0 <= size <= MAX_ATTACHMENT_BYTES:
+        raise ValueError("Attachment size is missing or exceeds the supported 1 MiB limit")
+    if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", digest):
+        raise ValueError("Attachment SHA-1 is missing or invalid")
+    if len(payload["content"]) > 4 * ((MAX_ATTACHMENT_BYTES + 2) // 3):
+        raise ValueError("Attachment exceeds the supported 1 MiB limit")
+    try:
+        content = base64.b64decode(payload["content"], validate=True)
+    except (ValueError, binascii.Error):
+        raise ValueError("Attachment content is not valid Base64") from None
+    if len(content) != size or hashlib.sha1(content).hexdigest() != digest.lower():
+        raise ValueError("Attachment size or SHA-1 does not match its content")
+    fd, temporary = tempfile.mkstemp(prefix=".qq-attachment-", dir=output.parent)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        # Atomic no-clobber publication, including when another process races us.
+        os.link(temporary, output)
+        sync_directory(output.parent)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+    return {"state": "downloaded", "path": str(output), "size": size, "sha1": digest.lower()}
+
+
 async def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", help="Configured mailbox profile; default: QQ_MAIL_PROFILE or default")
@@ -381,6 +448,12 @@ async def main():
             p.add_argument("--subject-only", action="store_true")
     p = sub.add_parser("read")
     p.add_argument("--message-id", required=True)
+    p = sub.add_parser("attachments", help="List attachment metadata without downloading content")
+    p.add_argument("--message-id", required=True)
+    p = sub.add_parser("download", help="Verify and save a <=1 MiB attachment; never print its Base64")
+    p.add_argument("--message-id", required=True)
+    p.add_argument("--attachment-id", required=True)
+    p.add_argument("--output", required=True, type=Path, help="New file in an existing private output directory")
     options = parser.parse_args()
     if options.profile:
         select_profile(options.profile)
@@ -393,6 +466,10 @@ async def main():
             result = mail.status
         elif options.command == "read":
             result = await mail.call("GetMessage", {"alias_id": mail.alias_id, "message_id": options.message_id})
+        elif options.command == "attachments":
+            result = await mail.call("ListAttachments", {"alias_id": mail.alias_id, "message_id": options.message_id})
+        elif options.command == "download":
+            result = await download_attachment(mail, options.message_id, options.attachment_id, options.output)
         else:
             arguments = {"alias_id": mail.alias_id, "limit": options.limit, "dir": options.folder, "after": after, "before": before}
             if options.cursor:

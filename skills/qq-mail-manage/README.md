@@ -1,6 +1,6 @@
 # QQ Mail Manage
 
-Version: **1.4.0** · License: [MIT](LICENSE)
+Version: **1.4.1** · License: [MIT](LICENSE)
 
 通过真实 Codex CLI 或显式直接 HTTP 后端和腾讯官方 MCP 管理 QQ 邮箱，账号可配置。支持多 profile、OAuth/keyring 或环境变量认证初始化、列表/搜索/正文/附件，以及按用户具体指令发送、回复、转发；删除需先确认具体清单，执行移至垃圾箱。
 
@@ -10,7 +10,20 @@ Version: **1.4.0** · License: [MIT](LICENSE)
 
 依赖：Python 3.11+ 和网络，默认 codex 后端另需真实 Codex CLI；OAuth 需要系统安全凭据库，env_token 需要宿主安全注入官方 MCP access token，Codex 与显式 legacy HTTP 无第三方 Python 包；HTTP auto/2026-07-28 需 `python3 -m pip install -r requirements.txt`（在宿主选定的 Python/venv 内）。macOS 已实测；Linux/WSL 需按所选认证模式配置并另行验收，原生 Windows 不支持。
 
-## Onboard
+## 无 Codex 的 Agent 接入
+
+任何具备 Python 脚本执行能力的 Agent 都可使用 direct_http 后端。技能放在目标 Agent 可发现/可读取的目录，整个文件夹一起安装；不假定各客户端共用 Codex 的技能目录。先由用户认可的官方授权方及宿主安全注入 `QQ_MAIL_ACCESS_TOKEN`，再以技能目录为工作目录：
+
+```bash
+python3 -m pip install -r requirements.txt
+python3 scripts/onboard.py --profile personal doctor --backend direct_http --auth-mode env_token
+python3 scripts/onboard.py --profile personal init --account YOUR@qq.com --mode read_send --backend direct_http --auth-mode env_token --configure-only
+python3 scripts/onboard.py --profile personal verify
+```
+
+无需 Codex CLI、模型 API 或钥匙串。direct_http 不提供独立 OAuth 注册/扫码，不会自动获取 token；凭据来源、续期和目标环境验收见 [跨 Agent 接入](references/agent-integration.md)。旧 profile 及未指定后端的命令继续按原 Codex 路径运行。
+
+## Codex Onboard
 
 进入已安装的技能根目录：
 
@@ -53,6 +66,7 @@ python3 scripts/onboard.py --profile cloud init --account YOUR@qq.com --mode rea
 ## Operations
 
 - [技能指令](SKILL.md)：工作流与用户授权边界。
+- [跨 Agent 接入](references/agent-integration.md)：无 Codex 接入、stdin/JSON 契约、附件命令及目标环境验收。
 - [初始化与跨机使用](references/onboarding.md)：权限、profile、复用本机授权及恢复。
 - [凭据与刷新](references/credentials.md)：来源、续期、并发及故障恢复。
 - [操作参考](references/operations.md)：发送/回复/转发、批量删除、续期及写后核验。
@@ -67,4 +81,6 @@ python3 scripts/onboard.py --profile cloud init --account YOUR@qq.com --mode rea
 python3 -m unittest discover -s tests -v
 ```
 
-179 项离线回归（保留原有 159 项）涵盖账号隔离、别名校验、授权范围、单次写入、未知结果不重试、删除续期和独立进程 onboard。不会自动发送或删除真实测试邮件。实际腾讯账号可获得的范围、完整历史、真实刷新和撤销行为仍需分别验收。
+192 项离线回归（保留远端 179 项并加入通用性 13 项）涵盖账号隔离、别名校验、授权范围、单次写入、未知结果不重试、删除续期和独立进程 onboard。不会自动发送或删除真实测试邮件。实际腾讯账号可获得的范围、完整历史、真实刷新和撤销行为仍需分别验收。
+
+新增独立进程在空 PATH、重定位目录下完成 direct_http 配置/模拟验证/模拟单次发送；覆盖确认令牌与 OAuth 区分、续期中断状态、附件不覆盖/摘要失败、stdin 和安全回执查询。GitHub Actions 配置 Ubuntu Python 3.11/3.13 与 macOS Python 3.13 的离线测试矩阵；本地结果不代表 CI 已执行。

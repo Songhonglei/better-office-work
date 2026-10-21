@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.4.1] - 2026-10-21
+
+### Integration
+
+- 基于 4faac83 保留 MCP 2026-07-28 无状态生命周期、auto 发现、schema/header 校验和 jsonschema/referencing 依赖。
+- CI 安装 requirements.txt；独立 Agent 命令行回归同时覆盖默认 modern 与显式 legacy 路径。
+
+### Fixed
+
+- 区分 40001 删除确认令牌过期与 OAuth 401/403，避免把仍有效的授权误判为失效。
+- 删除确认挑战续期前持久化 preparing，丢响应/中断落 unknown，禁止复用旧 pending；写入意图同步目录后才提交。
+- 拒绝误传为毫秒的超范围 expires_at，避免跳过应有刷新；不支持的 Python/原生 Windows 提前给出可执行错误提示。
+
+### Added
+
+- 其他 Agent 无 Codex 的 direct_http 接入指南，明确凭据取得前提、安装发现及标准输入/输出契约；发票转发降为按需案例。
+- attachments/download 命令及完整性/大小校验、600 文件和原子不覆盖保存；写入 JSON 可通过 stdin 传入，request-status 离线查询单次回执。
+- 加入 13 项通用性合成回归，与远端 179 项合并为 192 项。配置 Ubuntu/macOS 离线 CI，不声称已运行。
+
+### Validation boundary
+
+- 本轮仅离线合成凭据/模拟服务测试；没有真实 QQ 收发、凭据读取或刷新。其他宿主/云端真实验收仍须分别执行；原生 Windows 与独立 OAuth 注册/扫码未提供。
+
 ## [1.4.0] - 2026-10-21
 
 ### Added

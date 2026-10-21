@@ -2,6 +2,8 @@
 
 `backend=codex` 保持默认且兼容旧 profile。显式 `direct_http` 直接连接固定 `https://api.mail.qq.com/mcp`，不启动 Codex，不读取或修改全局配置、沙箱或 daemon。HTTP 内部协议由 `http_protocol` 选择：默认 auto，支持2026-07-28 modern和2025-03-26/2025-06-18/2025-11-25 legacy；失败不自动切换后端。
 
+从未配置的新电脑或其他 Agent 接入时，优先按 [通用接入指南](agent-integration.md) 的最小示例执行；该示例不默认启用广权限兼容选项。
+
 ## 配置、依赖与调用
 
 Python3.11+；modern/auto采用 `jsonschema==4.25.1`，请在宿主批准的Python/venv内安装（不修改受保护环境）。Codex和显式legacy仍只需标准库。doctor只检查配置、依赖存在性和历史信息，不联网、不读取凭据内容、不刷新，不能证明账号有效：

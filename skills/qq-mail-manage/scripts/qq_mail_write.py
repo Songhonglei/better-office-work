@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Send explicitly requested mail directly; retain reviewed confirmation for deletion."""
+import mail_config  # Check runtime before importing platform-dependent helpers.
 import argparse
 import asyncio
 import base64
-import fcntl
 import hashlib
 import json
 import os
@@ -17,6 +17,8 @@ from pathlib import Path
 
 from qq_mail import WRITE_TOOLS, CodexMail, decode_result, endpoint_error, AuthenticationError
 from mail_config import account, load_settings, private_dir, select_profile, redact, contains_runtime_secret
+from mail_credentials import sync_directory
+import fcntl
 
 PENDING = None  # Test override; runtime state always lives outside the installed skill.
 
@@ -119,6 +121,7 @@ def save_new(record):
         json.dump(redact(record), stream, ensure_ascii=False)
         stream.flush()
         os.fsync(stream.fileno())
+    sync_directory(pending_dir())
 
 
 def update_locked(stream, record):
@@ -338,6 +341,28 @@ def batch_status(batch_id):
     return {"batch_id": batch_id, "requests": entries, "completed": sum(x["state"] == "completed" for x in entries), "count": len(entries)}
 
 
+def request_status(request_id):
+    """Read a single local receipt without exposing mail arguments or confirmation tokens."""
+    record = json.loads(state_path(request_id).read_text())
+    if (record.get("account") != account() or record.get("request_id") != request_id or
+            record.get("tool") not in WRITE_TOOLS):
+        raise ValueError("Invalid operation receipt identity")
+    return {key: record.get(key) for key in ("request_id", "state", "account", "tool", "created_at", "failure_code")}
+
+
+def read_json_input(path):
+    """Accept UTF-8 JSON from a file or stdin; do not echo malformed input."""
+    try:
+        if str(path) == "-":
+            content = sys.stdin.buffer.read(8 * 1024 * 1024 + 1)
+            if len(content) > 8 * 1024 * 1024:
+                raise ValueError("Mail JSON input exceeds 8 MiB")
+            return json.loads(content.decode("utf-8"))
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (UnicodeError, json.JSONDecodeError):
+        raise ValueError("Mail input must be valid UTF-8 JSON; contents omitted") from None
+
+
 async def locate_delete_target(mail, record):
     """Reconcile only the approved exact ID in a narrow original-date window."""
     created = record.get("preview", {}).get("original_date")
@@ -376,13 +401,20 @@ async def renew_delete_challenge(mail, record, stream):
         record.pop("confirmation_token", None)
         update_locked(stream, record)
         return False
-    raw = await mail.raw_call("DeleteMessage", {**record["arguments"], "alias_id": mail.alias_id})
-    fresh = confirmation(decode_result(raw))
-    if not fresh or fresh[1] != record["operation_summary"]:
-        raise RuntimeError("Renewed deletion does not match the approved summary; do not submit")
-    record.update({"state": "pending", "confirmation_token": fresh[0], "created_at": time.time()})
-    record.pop("failure_code", None)
+    record["state"] = "preparing"
     update_locked(stream, record)
+    try:
+        raw = await mail.raw_call("DeleteMessage", {**record["arguments"], "alias_id": mail.alias_id})
+        fresh = confirmation(decode_result(raw))
+        if not fresh or fresh[1] != record["operation_summary"]:
+            raise RuntimeError("Renewed deletion does not match the approved summary; do not submit")
+        record.update({"state": "pending", "confirmation_token": fresh[0], "created_at": time.time()})
+        record.pop("failure_code", None)
+        update_locked(stream, record)
+    except BaseException:
+        record["state"] = "unknown"
+        update_locked(stream, record)
+        raise
     return True
 
 
@@ -447,36 +479,40 @@ async def main():
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("prepare")
     p.add_argument("--tool", choices=WRITE_TOOLS, required=True)
-    p.add_argument("--arguments-file", type=Path, required=True)
+    p.add_argument("--arguments-file", type=Path, required=True, help="Private JSON file, or - to read UTF-8 JSON from stdin")
     p = sub.add_parser("execute-authorized")
     p.add_argument("--tool", choices=("SendMessage", "ReplyMessage", "ForwardMessage"), required=True)
-    p.add_argument("--arguments-file", type=Path, required=True)
+    p.add_argument("--arguments-file", type=Path, required=True, help="Private JSON file, or - to read UTF-8 JSON from stdin")
     p.add_argument("--user-authorized", action="store_true", required=True, help="Use when the human explicitly requested this exact mail operation; no extra confirmation prompt")
     p = sub.add_parser("confirm")
     p.add_argument("--request-id", required=True)
     p.add_argument("--user-approved", action="store_true", required=True, help="Use only after the human approves the displayed operation")
     p.add_argument("--renew-confirmation", action="store_true", help="Deletion only: reconcile target and refresh the identical approved summary")
     p = sub.add_parser("prepare-delete-batch")
-    p.add_argument("--review-file", type=Path, required=True, help="JSON array of reviewed message metadata")
+    p.add_argument("--review-file", type=Path, required=True, help="JSON array of reviewed message metadata; - reads stdin")
     p = sub.add_parser("confirm-delete-batch")
     p.add_argument("--batch-id", required=True)
     p.add_argument("--indices", help="Comma-separated 1-based indices; omit only when the human approved the entire batch")
     p.add_argument("--user-approved", action="store_true", required=True)
     p = sub.add_parser("batch-status", help="Read local per-message receipts after a partial or interrupted batch; never resubmits")
     p.add_argument("--batch-id", required=True)
+    p = sub.add_parser("request-status", help="Read one local write receipt without contacting mail or resubmitting")
+    p.add_argument("--request-id", required=True)
     args = parser.parse_args()
     if args.profile:
         select_profile(args.profile)
     if args.command == "prepare":
-        result = await prepare(args.tool, json.loads(args.arguments_file.read_text()))
+        result = await prepare(args.tool, read_json_input(args.arguments_file))
     elif args.command == "execute-authorized":
-        result = await execute_authorized(args.tool, json.loads(args.arguments_file.read_text()), user_authorized=args.user_authorized)
+        result = await execute_authorized(args.tool, read_json_input(args.arguments_file), user_authorized=args.user_authorized)
     elif args.command == "confirm":
         result = await confirm(args.request_id, renew_delete=args.renew_confirmation)
     elif args.command == "prepare-delete-batch":
-        result = await prepare_delete_batch(json.loads(args.review_file.read_text()))
+        result = await prepare_delete_batch(read_json_input(args.review_file))
     elif args.command == "batch-status":
         result = batch_status(args.batch_id)
+    elif args.command == "request-status":
+        result = request_status(args.request_id)
     else:
         indices = [int(i) for i in args.indices.split(",")] if args.indices else None
         result = await confirm_delete_batch(args.batch_id, indices=indices)

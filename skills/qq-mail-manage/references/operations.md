@@ -6,6 +6,8 @@
 
 `scripts/write_schemas.json` 为实际发现的四个写工具参数。外部参数文件仅放技能目录外的私有目录，权限 600，不含 alias_id、confirmation_token、skip_confirmation、file_refs；由桥接层生成身份和授权字段。不要输出参数中的附件 Base64、pending 中的确认令牌或任何 OAuth 凭据。
 
+其他 Agent 可以对 prepare/execute-authorized 使用 `--arguments-file -`，对 prepare-delete-batch 使用 `--review-file -`，通过 stdin 传入 UTF-8 JSON（最大 8 MiB）；不把正文拼进 shell 命令，格式错误不回显原文。
+
 新发参数示例（仅示意，不代表授权）：
 
 ```json
@@ -19,6 +21,15 @@ python3 scripts/qq_mail_write.py execute-authorized --tool SendMessage --argumen
 ReplyMessage：message_id、body，默认 reply_all=false。ForwardMessage：message_id、to、body，默认 include_attachments=false。确认是否包含原附件需依据用户指令；用户已要求带原附件时直接包含，不重复问。原生 ForwardMessage 不支持新主题，定制主题时用 SendMessage 发送用户指定的原正文和附件。
 
 附件字段：filename、content_type、size、sha1、content（Base64）。核验返回的大小/SHA-1，再校验实际发送字节。当前已验证限制：最多 3 个，单个 1 MiB、合计 3 MiB；超限停止说明，不擅自上传第三方链接或删附件。
+
+## 附件命令
+
+```bash
+python3 scripts/qq_mail.py --profile personal attachments --message-id MESSAGE_ID
+python3 scripts/qq_mail.py --profile personal download --message-id MESSAGE_ID --attachment-id ATTACHMENT_ID --output /absolute/private-directory/invoice.pdf
+```
+
+先列出元数据确认 ID；下载校验返回的字节数和 SHA-1，最多 1 MiB，不输出 Base64。输出目录须已存在、当前用户所有且无组/其他用户写权限，不能位于技能目录。新文件为 600；已存在的文件或链接及并发抢占目标均不会被覆盖。字段缺失、超限或摘要不符时不保存附件。下载接口返回的摘要仍应与邮件元数据核对；无可核实的字段时停止。
 
 ## 用户主动要求发前预览
 
@@ -56,6 +67,8 @@ python3 scripts/qq_mail_write.py confirm-delete-batch --batch-id BATCH_ID --indi
 
 单封已批准删除可用 `confirm --request-id ID --user-approved --renew-confirmation` 执行同样流程。没有原始日期时不能续期；先获取目标的确切当前状态和日期，重新准备绑定同一目标的操作。
 
+40001 是删除操作确认令牌失效，区别于 OAuth 的 401/403/invalid_grant；不能仅看到 expired 就要求重新登录。刷新删除挑战前同样持久化 preparing，丢响应或中断落为 unknown，不能沿用旧 pending 再提交。
+
 令牌明确返回 40001 时，记录 failed/failure_code=40001，完成状态核对后可再次用同一个请求执行上述续期，不必让用户重新批准未变的清单。网络丢响应、超时、中断或 unknown/submitting 不属于明确过期，禁止自动重试；先核对邮箱，并报告哪些完成、哪些待处理。新旧摘要不一致、目标找不到则停止，不能替换成相似主题的新邮件。
 
 ## 写入后核验与状态
@@ -75,6 +88,14 @@ python3 scripts/qq_mail_write.py batch-status --batch-id BATCH_ID
 ```
 
 输出编号、request_id、预览和状态，不输出令牌或正文/附件。此命令不访问邮箱也不重新提交；先核对 completed 的回执、unknown/submitting/preparing 的外部实际状态，再针对尚未执行且仍在原批准范围内的 pending 项选择 --indices。结果未知项即使当时尚未在垃圾箱显示，也不能直接当作未执行而自动重试。
+
+单次写入的只读状态查询：
+
+```bash
+python3 scripts/qq_mail_write.py --profile personal request-status --request-id REQUEST_ID
+```
+
+只显示账号、工具、状态、时间及失败码，不输出正文、参数、附件或确认令牌；不访问邮箱、不刷新凭据、不重新提交。写入意图文件及其目录均同步后才发起实际写请求。文件系统/容器回滚仍不能保证恢复，结果未知时必须先查外部邮箱。
 
 ## 临时认证与失败处理
 

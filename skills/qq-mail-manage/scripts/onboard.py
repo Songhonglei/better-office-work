@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Initialize portable QQ Mail profiles and authorize the real local Codex CLI."""
+"""Initialize QQ Mail profiles for direct HTTP or compatible Codex OAuth."""
+import mail_config  # Check runtime before importing platform-dependent helpers.
 import argparse
 import asyncio
 import json
