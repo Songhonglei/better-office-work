@@ -92,6 +92,8 @@ class FakeServer:
         elif "result" in message: return Response(status=202,body=b"")
         else: raise AssertionError(method)
         envelope = {"jsonrpc":"2.0","id":message["id"],"result":result}
+        if self.case == "empty_initialize" and method == "initialize":
+            envelope = {"jsonrpc":"2.0","id":message["id"]}
         if self.case == "rpc_error": envelope = {"jsonrpc":"2.0","id":message["id"],"error":{"code":-32000,"message":fixtures.A+SESSION}}
         if self.case == "mismatched_id": envelope["id"] = "wrong"
         if self.sse:
@@ -160,6 +162,23 @@ class DirectHTTPTests(unittest.IsolatedAsyncioTestCase):
         for version in http.VERSIONS:
             self.server.protocol=version
             async with bridge.CodexMail() as mail: self.assertEqual(mail.direct.protocol,version)
+    async def test_default_proposes_qq_declared_implemented_legacy_version(self):
+        async with bridge.CodexMail() as mail:
+            self.assertEqual(mail.direct.protocol,"2025-03-26")
+        self.assertEqual(self.server.requests[0][0]["params"]["protocolVersion"],"2025-03-26")
+        self.assertEqual(self.server.requests[0][1]["Mcp-protocol-version"],"2025-03-26")
+    async def test_empty_initialize_is_not_success_and_is_durable(self):
+        self.server.case="empty_initialize"
+        with self.assertRaisesRegex(http.DirectMCPError,"invalid_jsonrpc"):
+            async with bridge.CodexMail(): pass
+        self.assertEqual(len(self.server.requests),1)
+        self.assertTrue(any(r.get("reason")=="invalid_jsonrpc" for r in self.records()))
+        self.assert_safe_records()
+    async def test_modern_version_is_not_accepted_as_legacy_initialize(self):
+        self.server.protocol="2026-07-28"
+        with self.assertRaisesRegex(http.DirectMCPError,"unsupported_protocol"):
+            async with bridge.CodexMail(): pass
+        self.assertEqual(len(self.server.requests),1)
     async def test_missing_session_header_is_supported(self):
         self.server.session=None
         async with bridge.CodexMail() as mail: self.assertIsNone(mail.direct.session)
@@ -313,6 +332,27 @@ class WireTests(unittest.TestCase):
         self.assertEqual(messages[0]["result"]["value"],"中文")
     def test_partial_sse_event_is_not_a_response(self):
         self.assertEqual(list(http.sse_messages(Response(body=b'data: {"result":{}}'))),[])
+    def test_legacy_json_and_sse_batches_and_strict_version_boundary(self):
+        result={"jsonrpc":"2.0","id":"synthetic-id","result":{}}
+        note={"jsonrpc":"2.0","method":"notifications/progress"}
+        for kind in ("application/json","text/event-stream"):
+            for version in http.VERSIONS:
+                payload={**self.payload(),"protocol":version}
+                batch=[note,result]
+                body=json.dumps(batch).encode() if kind=="application/json" else ('data: '+json.dumps(batch)+'\n\n').encode()
+                with patch.object(http,"build_opener") as build:
+                    build.return_value.open.return_value=Response(kind=kind,body=body)
+                    if version=="2025-03-26": self.assertEqual(http.wire(payload)["message"],result)
+                    else:
+                        with self.assertRaises(http.WireFailure): http.wire(payload)
+    def test_legacy_invalid_batches_stop_without_followup_posts(self):
+        result={"jsonrpc":"2.0","id":"synthetic-id","result":{}}
+        payload={**self.payload(),"protocol":"2025-03-26"}
+        for batch in ([],[result,result],[[result]],[{**result,"id":"unexpected"}], [result]*1001):
+            with patch.object(http,"build_opener") as build:
+                build.return_value.open.return_value=Response(batch)
+                with self.assertRaises(http.WireFailure): http.wire(payload)
+                self.assertEqual(build.return_value.open.call_count,1)
     def test_complete_cr_event_returns_while_stream_remains_open(self):
         class OpenStream:
             def __init__(self): self.reads=0
@@ -344,11 +384,15 @@ class WireTests(unittest.TestCase):
         body='data: {"jsonrpc":"2.0","id":"server-ping","method":"ping"}\n\ndata: {"jsonrpc":"2.0","id":"synthetic-id","result":{}}\n\n'
         with patch.object(http,"build_opener") as build:
             build.return_value.open.side_effect=[Response(kind="text/event-stream",body=body.encode(),session=SESSION),Response(status=202,body=b"")]
-            result=http.wire(self.payload())
+            payload=self.payload()
+            payload["message"]["params"]["protocolVersion"]="2025-03-26"
+            result=http.wire(payload)
             self.assertTrue(result["ok"])
             self.assertEqual(build.return_value.open.call_count,2)
             ping=json.loads(build.return_value.open.call_args.args[0].data)
             self.assertEqual(ping,{"jsonrpc":"2.0","id":"server-ping","result":{}})
+            for call in build.return_value.open.call_args_list:
+                self.assertEqual(call.args[0].get_header("Mcp-protocol-version"),"2025-03-26")
     def test_json_nonfinite_and_duplicate_keys_are_rejected(self):
         for raw in ('{"x":NaN}','{"x":1,"x":2}'):
             with self.assertRaises(http.WireFailure): http.strict_json(raw)

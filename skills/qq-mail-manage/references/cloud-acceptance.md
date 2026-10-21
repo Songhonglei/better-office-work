@@ -16,6 +16,14 @@ python3 scripts/onboard.py --profile cloud verify
 
 doctor 的存在性和历史时间不是认证成功；verify 必须本次实际通过 GetMe，账号别名精确匹配、scopes 包含 mail:read/mail:send；默认不得含 mail:delete。用户明确复用已有广权限凭据时，须先在 read_send profile 显式启用 `--allow-extra-delete-scope`，只接受该额外 scope；DeleteMessage 仍禁止，未知 scopes 仍拒绝，不能称 token 已降权。记录真实 scopes 及兼容选项值。失败停止，更新授权后再验证，不回退 OAuth，不在 401 后刷新并重放邮件。默认 env + host 由宿主负责续期；本技能自动刷新必须先显式配置可原子保存的 host_command 或 private_file，见 [凭据与刷新](credentials.md)。环境变量不等于持久存储。
 
+## Codex 执行前置检查
+
+先区分 CLI 已安装、宿主原生 QQ 工具已暴露、脚本能启动新 app-server 三种条件。可先用同一执行环境做无 QQ 凭据、无 skill 操作的最小 Codex 任务；普通 codex exec 成功也不代替实际 QQ verify，读取版本/help 更不能代替线程启动。
+
+2026-10-21 Ela 云端的只读、ephemeral 最小回复任务实测 8.127 秒退出码 1，报 failed to initialize in-process app-server client: Read-only file system (os error 30)，尚未到 skill 或 QQ。该错误未指明路径，不能直接等同其他 daemon 目录故障；不是工具审批拒绝，不改沙箱/挂载去绕过。Codex 后端保留，该环境当前记为执行前置阻断。
+
+宿主原生工具清单没有 QQ 时，不尝试虚构调用或把 Mac 授权导入云端。若改用宿主原生 MCP，由用户/管理者通过该宿主受支持的 MCP/插件连接入口加载；本机 Codex 配置不会自动成为云端会话工具。本次不更改任何 Codex 配置或新增授权，原生工具也不能绕过脚本读发限制和验收护栏。
+
 ## 直接 HTTP 后端验收
 
 已配置凭据来源的 profile 可运行以下非秘密更新；省略存储/刷新参数会保留原值。仅在用户明确复用额外 mail:delete 时添加兼容选项：
@@ -28,7 +36,7 @@ python3 scripts/onboard.py --profile cloud verify
 python3 scripts/qq_mail.py --profile cloud list --limit 1
 ```
 
-协议限制及持久错误回执见 [直接 HTTP MCP](direct-http.md)。记录所选 backend、协商结果及本次 verify 身份；不记录 session header 或 token。初始化/JSON/SSE/分页的离线模拟不证明 QQ 官方实时兼容。失败读取独立 transport 回执，保留 submitting/unknown 并核对外部状态，不重试写入、自动刷新或切换 Codex；本节通过后仍须完整执行下述查询、附件、改主题发送及双端核验。
+协议限制及持久错误回执见 [直接 HTTP MCP](direct-http.md)。记录所选 backend、协商结果及本次 verify 身份；不记录 session header 或 token。v1.3.1 优先请求已声明支持的 2025-03-26；公开 server/discover 和初始化/JSON/SSE/分页的离线模拟都不证明账号实时可用，必须本次 initialize 返回合法 result、确认协议及 tools capability，再经 GetMe 核验。空壳响应或2026新版协商均停止，不自动回退重试。失败读取独立 transport 回执，保留 submitting/unknown 并核对外部状态，不重试写入、自动刷新或切换 Codex；本节通过后仍须完整执行下述查询、附件、改主题发送及双端核验。
 
 ## 凭据生命周期验收（用户确认后执行）
 

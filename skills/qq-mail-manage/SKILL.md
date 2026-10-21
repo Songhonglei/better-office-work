@@ -3,12 +3,12 @@ name: qq-mail-manage
 description: >
   通过真实 Codex 或显式 direct HTTP 后端和腾讯官方 MCP 管理 QQ 邮箱：初始化账号与 OAuth/环境变量认证、查询邮件和附件、按用户指令发送回复转发、确认后移至垃圾箱。支持可配置邮箱及多 profile，适用于具备本地执行能力的 Codex 或 dot；不支持恢复或永久删除。
 metadata:
-  version: 1.3.0
+  version: 1.3.1
 ---
 
 # QQ 邮箱管理
 
-- **Version**: 1.3.0
+- **Version**: 1.3.1
 - **License**: MIT
 - **Author**: Evan Song · [github.com/Songhonglei](https://github.com/Songhonglei)
 - **Repository**: https://github.com/Songhonglei/better-office-work-flow

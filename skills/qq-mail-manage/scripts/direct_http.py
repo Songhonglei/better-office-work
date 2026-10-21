@@ -17,7 +17,10 @@ from urllib.request import Request, build_opener
 from mail_config import ENDPOINT, _runtime_secrets, private_dir, redact, subprocess_env, token_value
 from mail_credentials import NoRedirect, atomic_record
 
-VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26")
+# QQ's observed server/discover contract advertises 2025-03-26 and 2026-07-28.
+# Prefer the implemented legacy version. 2026 is a different lifecycle, not an
+# alternative version string for initialize; never negotiate it here.
+VERSIONS = ("2025-03-26", "2025-11-25", "2025-06-18")
 MAX_BYTES = 8 * 1024 * 1024
 WORKER_SECONDS = 60
 IO_SECONDS = 20
@@ -128,8 +131,13 @@ def wire(payload, *, ping_budget=8):
                "Accept": "application/json, text/event-stream", "Accept-Encoding": "identity"}
     if payload.get("session"):
         headers["MCP-Session-Id"] = payload["session"]
-    if payload.get("protocol"):
-        headers["MCP-Protocol-Version"] = payload["protocol"]
+    protocol = payload.get("protocol")
+    if message.get("method") == "initialize":
+        # Dual-era HTTP servers need the requested legacy version for routing
+        # before they inspect the body. It must match initialize's proposal.
+        protocol = message.get("params", {}).get("protocolVersion")
+    if protocol:
+        headers["MCP-Protocol-Version"] = protocol
     request = Request(ENDPOINT, data=body, headers=headers, method="POST")
     try:
         # Keep default host proxy/CA, certificate and hostname verification.
@@ -158,16 +166,32 @@ def wire(payload, *, ping_budget=8):
                 messages = sse_messages(response)
             else:
                 raise WireFailure("unsupported_content_type")
-            for incoming in messages:
-                action = rpc_response(incoming, message["id"])
-                if action == "response":
-                    return {"ok": True, "message": incoming, "session": session}
-                if action == "ping":
-                    if ping_budget <= 0:
-                        raise WireFailure("too_many_server_requests")
-                    ping_budget -= 1
-                    wire({**payload, "session": session or payload.get("session"),
-                          "message": {"jsonrpc": "2.0", "id": incoming["id"], "result": {}}}, ping_budget=0)
+            for frame in messages:
+                # 2025-03-26 permits response batches even for one request.
+                # Later implemented revisions removed batching. Outbound mail
+                # requests remain one per POST, with no retry on parse errors.
+                version = payload.get("protocol") or message.get("params", {}).get("protocolVersion")
+                if isinstance(frame, list):
+                    if version != "2025-03-26" or not 1 <= len(frame) <= 1000:
+                        raise WireFailure("invalid_jsonrpc")
+                    incoming_messages = frame
+                else:
+                    incoming_messages = [frame]
+                actions = [rpc_response(incoming, message["id"]) for incoming in incoming_messages]
+                if actions.count("response") > 1:
+                    raise WireFailure("invalid_jsonrpc")
+                result = None
+                for incoming, action in zip(incoming_messages, actions):
+                    if action == "response":
+                        result = incoming
+                    if action == "ping":
+                        if ping_budget <= 0:
+                            raise WireFailure("too_many_server_requests")
+                        ping_budget -= 1
+                        wire({**payload, "session": session or payload.get("session"), "protocol": protocol,
+                              "message": {"jsonrpc": "2.0", "id": incoming["id"], "result": {}}}, ping_budget=0)
+                if result is not None:
+                    return {"ok": True, "message": result, "session": session}
             raise WireFailure("response_lost")
     except HTTPError as error:
         try:
@@ -286,7 +310,7 @@ class DirectMCP:
             self.closed = True
             raise DirectMCPError("credential_unavailable", identifier) from None
         result = self.request("initialize", {"protocolVersion": VERSIONS[0], "capabilities": {},
-            "clientInfo": {"name": "qq_mail_manage_direct", "version": "1.3.0"}})
+            "clientInfo": {"name": "qq_mail_manage_direct", "version": "1.3.1"}})
         version = result.get("protocolVersion")
         if version not in VERSIONS or not isinstance(result.get("capabilities"), dict) or not isinstance(result["capabilities"].get("tools"), dict):
             self.closed = True

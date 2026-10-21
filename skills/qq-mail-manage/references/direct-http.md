@@ -25,16 +25,27 @@ doctor 仅检查配置，不连接、刷新或读取凭据内容；输出 codex=
 
 ## 协议及边界
 
-实现依据 MCP 官方 [Streamable HTTP](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)、[生命周期](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle)、[工具](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)、[分页](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/pagination) 和 [SSE 解析](https://html.spec.whatwg.org/multipage/server-sent-events.html#event-stream-interpretation)：
+实现依据 MCP 官方 [2025-03-26 Streamable HTTP](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports)、[2025-03-26 生命周期](https://modelcontextprotocol.io/specification/2025-03-26/basic/lifecycle)、[工具](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)、[分页](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/pagination) 和 [SSE 解析](https://html.spec.whatwg.org/multipage/server-sent-events.html#event-stream-interpretation)：
 
-- 单条 JSON-RPC 2.0 POST；initialize 请求 2025-11-25，接受服务选择的 2025-11-25、2025-06-18 或 2025-03-26，核对 tools capability 后发送 notifications/initialized。通知及 server ping 的响应 POST 要求空的 HTTP 202。
-- 所有后续 POST 带协商的 MCP-Protocol-Version；initialize 若返回 MCP-Session-Id，则校验可见 ASCII 后仅在内存中保存，并加入后续请求。session 不进入回执或日志。404 停止当前连接和操作；下一次显式建立连接重新 initialize，绝不自动重放失败请求。
+- 单条 JSON-RPC 2.0 POST；initialize 优先请求 QQ 已声明支持且本客户端已实现的 2025-03-26，接受服务按旧版协商选择的 2025-03-26、2025-11-25 或 2025-06-18，核对 tools capability 后发送 notifications/initialized。通知及 server ping 的响应 POST 要求空的 HTTP 202。
+- initialize 的 MCP-Protocol-Version 头与请求体中的提议版本一致，供双协议时代服务器在解析请求体前路由；所有后续 POST 带协商的 MCP-Protocol-Version；initialize 若返回 MCP-Session-Id，则校验可见 ASCII 后仅在内存中保存，并加入后续请求。session 不进入回执或日志。404 停止当前连接和操作；下一次显式建立连接重新 initialize，绝不自动重放失败请求。
 - Accept 同时声明 application/json 与 text/event-stream，解析 JSON 或增量 UTF-8 SSE，支持 CR/LF/CRLF、多行 data、注释和跨块字符；仅完整空行终止事件可成为响应，核对请求 id。服务 ping 单独响应，最多 8 次；不提供 sampling/elicitation，未知服务请求拒绝。
+- 2025-03-26 允许 JSON 或 SSE 事件中的入站批响应；仅该版本接受非空、最多 1000 条的批。逐条核验 JSON-RPC、id、通知与 ping，重复最终响应、空/嵌套批或不匹配 id 均拒绝。后续已实现版本不接受批；所有出站邮件请求仍单条 POST。
 - tools/list 完整分页后才启用本地允许的工具；最多 100 页、1000 个唯一工具，重复工具、异常/重复游标、必需工具缺失或列表变化均停止，未知工具不暴露。
 - 单次网络读写超时 20 秒；每个 HTTP worker 总时限最多 60 秒，初始化及工具发现共享 120 秒预算（原凭据适配器另有既定超时），单次请求/响应最多 8 MiB。独立 Python worker 被超时机制终止，避免持续 SSE 保活造成无限等待；stdin 仅传本次 access token/session，环境和 argv 不传 refresh token/client secret。
 - 这是 Streamable HTTP 的有界请求实现，不支持旧版 HTTP+SSE 端点、GET 长连接、断线续传/Last-Event-ID、自动重连或自动协商重试。服务要求这些扩展时安全停止并报告未兼容，不宣称 QQ 云端已实测。
 
 TLS 证书/主机名验证开启，遵循宿主已有代理、no_proxy、默认 CA 配置；不关闭验证、不调整网络安全设置、不跟随重定向。HTTP 401/403、RPC/工具认证错误均停止；后续同客户端调用被阻止，不触发响应式刷新或写操作重放。同一客户端调用串行完成认证检查、提交及结果解码。
+
+## QQ 协议契约与真实验证边界
+
+2026-10-21，本机一次不带 Authorization、不读取凭据的官方 server/discover 返回 HTTP200 application/json，合法 result 声明 supportedVersions=[2025-03-26,2026-07-28] 及 tools capability；与目标云环境的发现结果一致。该公开探针只证明当次服务协议声明，不能证明用户账号、GetMe 或邮件操作可用。
+
+v1.3.0 优先请求的 2025-11-25 不在这份服务声明中；目标云端 initialize 实测只返回 jsonrpc/id，既无 result 也无 error。此类空壳继续按错误处理，不当作成功，不自动重试另一版本。v1.3.1 改为优先请求已声明的 2025-03-26，并补齐该版允许的入站批响应；仍须在目标云端实际核验握手和账号。
+
+[2026-07-28 server/discover](https://modelcontextprotocol.io/specification/2026-07-28/server/discover) 属于取消 initialize 的新生命周期。本后端没有实现该业务生命周期，不会只改版本字符串就宣称兼容；server/discover 的公开调查也不等于运行时自动发现或自动回退。若服务 initialize 选择 2026-07-28 或其他未实现版本，停止并报告。
+
+Codex 后端保留兼容：它通过新 app-server 调用 QQ，不自动复用当前会话的原生工具。只有宿主已加载并暴露 QQ MCP 时，当前 Codex 才有原生调用条件；仅安装 skill 或 CLI 不会产生工具。原生调用也不会自动获得 Python 的 read_send、附件及持久写入回执保护，不能绕过既有受保护流程。云端 Codex 启动前置检查及失败记录见 [云端验收](cloud-acceptance.md)。
 
 ## 持久错误记录与未知结果
 
