@@ -19,8 +19,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Pillow (icon generation)
-        run: python3 -m pip install --user pillow
+      - name: Set up Python + Pillow (icon generation)
+        run: |
+          python3 -m venv /tmp/pomo-venv
+          /tmp/pomo-venv/bin/pip install --quiet pillow
+          echo "/tmp/pomo-venv/bin" >> "$GITHUB_PATH"
 
       - name: Build standalone HTML + macOS app
         run: |
