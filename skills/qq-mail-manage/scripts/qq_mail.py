@@ -107,7 +107,7 @@ class CodexMail:
         self.sequence = 0
         try:
             await self.rpc("initialize", {
-                "clientInfo": {"name": "qq_mail_manage_bridge", "title": "QQ Mail Manage Bridge", "version": "1.5.0"},
+                "clientInfo": {"name": "qq_mail_manage_bridge", "title": "QQ Mail Manage Bridge", "version": "1.5.1"},
                 "capabilities": {"experimentalApi": True},
             })
             await self.send({"method": "initialized", "params": {}})
@@ -589,6 +589,7 @@ async def main():
             result = await collect_pages(mail, tool, arguments, options.max_pages) if options.all_pages else await mail.call(tool, arguments)
             result["query_window"] = {"after": after, "before": before, "folder": options.folder}
             result["selection"] = {"status": "candidates", "received_at_available": all(isinstance(x.get("received_at"), str) for x in result.get("data", [])),
+                                   "reason_codes": ["received_at_missing"] if any(not isinstance(x.get("received_at"), str) for x in result.get("data", [])) else [],
                                    "note": "No latest selection implied; created_at is not receipt time"}
         print(json.dumps(redact(result), ensure_ascii=False, indent=2))
 

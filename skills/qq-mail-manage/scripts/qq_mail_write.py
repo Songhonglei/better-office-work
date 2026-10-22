@@ -18,11 +18,13 @@ from pathlib import Path
 from qq_mail import WRITE_TOOLS, CodexMail, decode_result, endpoint_error, AuthenticationError, preflight_attachment, MAX_ATTACHMENT_BYTES
 from mail_config import account, load_settings, private_dir, select_profile, redact, contains_runtime_secret
 from mail_credentials import sync_directory, atomic_record
+from verification_rules import VerificationFailure, fail, match_body, match_attachments
 import fcntl
 import tempfile
 import stat
 
 PENDING = None  # Test override; runtime state always lives outside the installed skill.
+MAX_RECEIPT_BYTES = 16 * 1024 * 1024
 
 
 def pending_dir():
@@ -131,42 +133,129 @@ def receipt_lock(request_id):
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise RuntimeError("Operation is already being handled; query the original receipt, never resubmit") from None
+        recover_publication(request_id)
         yield lock
 
 
-def read_receipt(request_id):
-    path = state_path(request_id)
+def read_private_record(path, *, links=1):
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     with os.fdopen(fd) as stream:
         info = os.fstat(stream.fileno())
-        if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600 or not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+        if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600 or not stat.S_ISREG(info.st_mode) or info.st_nlink != links or info.st_size > MAX_RECEIPT_BYTES:
             raise RuntimeError("Unsafe operation receipt")
         try:
             record = json.load(stream)
         except (ValueError, UnicodeError):
             raise RuntimeError("Unreadable operation receipt; reconcile externally without resubmitting") from None
+    return record, info
+
+
+def read_receipt(request_id):
+    record, _ = read_private_record(state_path(request_id))
     if not isinstance(record, dict) or record.get("account") != account() or record.get("request_id") != request_id:
         raise ValueError("Invalid operation receipt identity")
     return record
 
 
+def recovery_identity(record, request_id):
+    if not isinstance(record, dict) or record.get("account") != account() or record.get("request_id") != request_id:
+        raise RuntimeError("Publication recovery identity mismatch; reconcile without resubmitting")
+    if record.get("type") == "delete_batch":
+        if not isinstance(record.get("requests"), list) or not record["requests"]:
+            raise RuntimeError("Invalid batch publication")
+        return
+    tool = record.get("tool")
+    arguments = record.get("intended", record.get("arguments"))
+    validate_arguments(tool, arguments)
+    if fingerprint(tool, arguments) != record.get("fingerprint"):
+        raise RuntimeError("Publication recovery content mismatch; reconcile without resubmitting")
+    if record.get("operation_id") is not None:
+        if operation_identity(tool, arguments, record["operation_id"])[1] != request_id:
+            raise RuntimeError("Publication recovery operation identity mismatch")
+
+
+def recover_publication(request_id):
+    """Only under the stable lock: finish a proven interrupted initial publication.
+
+    No provider connection and no state transition authorizing another send.
+    Ambiguous, partial, foreign or externally hard-linked records remain blocked.
+    """
+    path = state_path(request_id)
+    named = list(pending_dir().glob(f".operation-{request_id}-*"))
+    if os.path.lexists(path):
+        info = path.lstat()
+        if info.st_nlink == 1:
+            if named:
+                raise RuntimeError("Ambiguous publication temporary files; reconcile without resubmitting")
+            return
+        record, info = read_private_record(path, links=2)
+        recovery_identity(record, request_id)
+        aliases = []
+        for candidate in pending_dir().glob(".operation-*"):
+            try:
+                candidate_info = candidate.lstat()
+            except FileNotFoundError:
+                continue  # Another operation can finish publishing concurrently.
+            if (candidate_info.st_dev, candidate_info.st_ino) == (info.st_dev, info.st_ino):
+                aliases.append(candidate)
+        if len(aliases) != 1 or any(p != aliases[0] for p in named):
+            raise RuntimeError("Unproven receipt hard link; reconcile without resubmitting")
+        temporary = aliases[0]
+        _, alias_info = read_private_record(temporary, links=2)
+    else:
+        if not named:
+            return
+        if len(named) != 1:
+            raise RuntimeError("Ambiguous initial receipt; reconcile without resubmitting")
+        temporary = named[0]
+        record, info = read_private_record(temporary)
+        recovery_identity(record, request_id)
+        # Preserve the original conservative barrier even when no RPC took place.
+        os.link(temporary, path, follow_symlinks=False)
+        sync_directory(pending_dir())
+        alias_info = temporary.lstat()
+    current = path.lstat()
+    alias = temporary.lstat()
+    if ((current.st_dev, current.st_ino) != (info.st_dev, info.st_ino)
+            or (alias.st_dev, alias.st_ino) != (info.st_dev, info.st_ino)
+            or alias_info.st_ino != info.st_ino or current.st_nlink != 2 or alias.st_nlink != 2
+            or not stat.S_ISREG(alias.st_mode)):
+        raise RuntimeError("Publication changed during recovery; reconcile without resubmitting")
+    temporary.unlink()  # Only the proven second name for this exact inode.
+    sync_directory(pending_dir())
+    read_receipt(request_id)  # Recheck ownership/mode/identity and sole remaining link.
+    record["receipt_recovery"] = {"code": "initial_publication_completed", "at": time.time(), "state_unchanged": True}
+    atomic_record(path, receipt_payload(record))
+
+
+def receipt_payload(record):
+    payload = redact(record)
+    # atomic_record uses ASCII escapes; preflight that representation as well.
+    if len(json.dumps(payload).encode("utf-8")) > MAX_RECEIPT_BYTES:
+        raise RuntimeError("Receipt size exceeds 16 MiB; previous evidence retained, reconcile without resubmitting")
+    return payload
+
+
 def save_new(record):
+    payload = receipt_payload(record)
     private_dir(pending_dir())
-    fd, temporary = tempfile.mkstemp(prefix=".operation-", dir=pending_dir())
+    fd, temporary = tempfile.mkstemp(prefix=f".operation-{record['request_id']}-", dir=pending_dir())
     try:
         with os.fdopen(fd, "w") as stream:
-            json.dump(redact(record), stream, ensure_ascii=False)
+            json.dump(payload, stream, ensure_ascii=False)
             stream.flush()
             os.fsync(stream.fileno())
         os.link(temporary, state_path(record["request_id"]))
         sync_directory(pending_dir())
     finally:
-        Path(temporary).unlink(missing_ok=True)
+        if os.path.lexists(state_path(record["request_id"])):
+            Path(temporary).unlink(missing_ok=True)
+            sync_directory(pending_dir())
 
 
 def update_locked(stream, record):
     # Caller holds the separate .lock inode, not the replaced JSON inode.
-    atomic_record(state_path(record["request_id"]), redact(record))
+    atomic_record(state_path(record["request_id"]), receipt_payload(record))
 
 
 def operation_identity(tool, arguments, operation_id=None):
@@ -192,7 +281,7 @@ def original_operation(request_id, operation_id, digest, tool):
 
 
 def public_receipt(record):
-    result = {key: record.get(key) for key in ("request_id", "operation_id", "state", "account", "tool", "created_at", "failure_code", "verification", "evidence")}
+    result = {key: record.get(key) for key in ("request_id", "operation_id", "state", "account", "tool", "created_at", "failure_code", "verification", "evidence", "selection", "receipt_recovery", "last_verification_attempt")}
     if record.get("state") == "pending":
         result.update(state="awaiting_user_confirmation", operation_summary=record.get("operation_summary"))
     if "result" in record:
@@ -380,7 +469,8 @@ async def prepare_delete_batch(messages, client=CodexMail):
 
 
 async def confirm_delete_batch(batch_id, indices=None, client=CodexMail):
-    batch = json.loads(state_path(batch_id).read_text())
+    with receipt_lock(batch_id):
+        batch = read_receipt(batch_id)
     if batch.get("type") != "delete_batch" or batch.get("account") != account():
         raise ValueError("Invalid deletion batch")
     requests = batch["requests"]
@@ -389,7 +479,8 @@ async def confirm_delete_batch(batch_id, indices=None, client=CodexMail):
         raise ValueError("Invalid selected indices")
     selected = [requests[i - 1] for i in indices]
     for item in selected:
-        record = json.loads(state_path(item["request_id"]).read_text())
+        with receipt_lock(item["request_id"]):
+            record = read_receipt(item["request_id"])
         if record.get("tool") != "DeleteMessage" or record.get("preview") != item["preview"] or record.get("operation_summary") != item["operation_summary"]:
             raise RuntimeError("Deletion batch no longer matches the reviewed summary")
         if record.get("state") != "pending" and not (record.get("state") == "failed" and record.get("failure_code") == "40001"):
@@ -415,99 +506,134 @@ async def confirm_delete_batch(batch_id, indices=None, client=CodexMail):
 
 def batch_status(batch_id):
     """Read local receipts only; does not renew, retry, or contact the mailbox."""
-    batch = json.loads(state_path(batch_id).read_text())
+    with receipt_lock(batch_id):
+        batch = read_receipt(batch_id)
     if batch.get("type") != "delete_batch" or batch.get("account") != account():
         raise ValueError("Invalid deletion batch")
     entries = []
     for index, item in enumerate(batch["requests"], 1):
-        record = json.loads(state_path(item["request_id"]).read_text())
+        with receipt_lock(item["request_id"]):
+            record = read_receipt(item["request_id"])
         if record.get("account") != account() or record.get("request_id") != item["request_id"]:
             raise RuntimeError("Batch receipt identity mismatch")
         entries.append({"index": index, "request_id": item["request_id"], "state": record.get("state"), "preview": item["preview"]})
     return {"batch_id": batch_id, "requests": entries, "completed": sum(x["state"] == "completed" for x in entries), "count": len(entries)}
 
 
-def request_status(request_id):
-    """Read an atomic snapshot; no connection, secrets, mail body or resend."""
-    record = read_receipt(request_id)
+def status_record(record):
     if record.get("tool") not in WRITE_TOOLS:
         raise ValueError("Invalid operation receipt identity")
-    result = {key: record.get(key) for key in ("request_id", "operation_id", "state", "account", "tool", "created_at", "failure_code", "verification", "evidence")}
+    result = {key: record.get(key) for key in ("request_id", "operation_id", "state", "account", "tool", "created_at", "failure_code", "verification", "evidence", "selection", "receipt_recovery", "last_verification_attempt")}
     if record.get("state") == "completed" and record["tool"] != "DeleteMessage":
         result.update(state="legacy_unverified", verification={"qq_accepted": "unknown", "sent_verified": False, "recipient_verified": False})
     return result
 
 
-def record_verification(request_id, observation):
-    """Match a host's independent observation, not an assumed provider wire schema.
+def request_status(request_id):
+    """Recover publication and read locally under lock; no provider RPC or resend."""
+    with receipt_lock(request_id):
+        return status_record(read_receipt(request_id))
 
-    Only SendMessage has a fully known outbound body/subject/attachment intent.
-    """
+
+def observation_match(record, observation, *, allow_qq_style_scope=False, allow_gmail_octet_stream=False):
+    stage = observation["stage"]
+    intended = record.get("intended", record.get("arguments"))
+    def addresses(items):
+        if not isinstance(items, list) or any(not isinstance(p, dict) or not isinstance(p.get("email"), str) for p in items):
+            fail("recipient_evidence_missing", "Verification recipients are incomplete")
+        return sorted(p["email"].casefold() for p in items)
+    if observation.get("from") != record["account"]:
+        fail("sender_changed", "Verification sender differs from the intended QQ account")
+    recipients = sum((addresses(intended.get(field, [])) for field in ("to", "cc", "bcc")), [])
+    if stage == "sent":
+        if observation["provider"] != "qq" or observation["folder"] != "sent" or observation["account"].casefold() != record["account"]:
+            fail("source_not_independent", "Sent evidence must come from this QQ account's sent folder")
+    elif observation["provider"].casefold() == "qq" or observation["account"].casefold() not in recipients:
+        fail("source_not_independent", "Recipient evidence must come from an independent recipient mailbox")
+    for field in ("to", "cc", "bcc") if stage == "sent" else ("to", "cc"):
+        if addresses(observation.get(field, [])) != addresses(intended.get(field, [])):
+            fail("recipients_changed", "Verification recipients differ from the intended mail")
+    if observation.get("subject") != intended.get("subject"):
+        fail("subject_changed", "Verification subject differs or is incomplete")
+    body = match_body(intended, observation, allow_qq_style_scope=allow_qq_style_scope)
+    attachments = match_attachments(intended, observation, allow_gmail_octet_stream=allow_gmail_octet_stream)
+    if observation.get("time_basis") != ("qq_sent_at" if stage == "sent" else "mailbox_received_at"):
+        fail("time_basis_missing", "An established mailbox timestamp basis is required; created_at is not receipt time")
+    try:
+        timestamp = datetime.fromisoformat(observation.get("observed_mail_at").replace("Z", "+00:00"))
+        if timestamp.tzinfo is None or not record["created_at"]-5 <= timestamp.timestamp() <= time.time()+60:
+            raise ValueError("unbound observation time")
+    except (AttributeError, TypeError, ValueError, OverflowError):
+        fail("mail_timestamp_invalid", "A timezone-aware mail timestamp tied to this operation is required")
+    acknowledged_id = record.get("result", {}).get("message_id")
+    if stage == "sent" and acknowledged_id and observation["message_id"] != acknowledged_id:
+        fail("message_id_changed", "Sent evidence differs from the acknowledged message ID")
+    return body, attachments
+
+
+def record_verification(request_id, observation, *, allow_qq_style_scope=False, allow_gmail_octet_stream=False):
+    """Match actual host observations; compatibility is explicit and provider-bound."""
     if not isinstance(observation, dict):
-        raise ValueError("Verification requires an independent normalized observation")
+        fail("observation_missing", "Verification requires an independent normalized observation")
     stage = observation.get("stage")
     if stage not in ("sent", "recipient"):
-        raise ValueError("Verification stage must be sent or recipient")
+        fail("stage_invalid", "Verification stage must be sent or recipient")
     for key in ("provider", "message_id", "source_reference", "folder", "account"):
         if not isinstance(observation.get(key), str) or not observation[key].strip():
-            raise ValueError("Verification observation lacks source identity/reference")
+            fail("source_evidence_missing", "Verification observation lacks source identity/reference")
     if contains_runtime_secret(observation):
-        raise ValueError("Verification must not contain runtime credentials")
+        fail("credentials_forbidden", "Verification must not contain runtime credentials")
     with receipt_lock(request_id) as stream:
         record = read_receipt(request_id)
         if record.get("tool") != "SendMessage" or "intended" not in record and "arguments" not in record:
-            raise ValueError("Evidence matching requires a retained SendMessage intent; do not infer reply/forward content")
-        intended = record.get("intended", record.get("arguments"))
+            fail("intent_unavailable", "Retained SendMessage intent is required; do not infer reply/forward content")
         if record.get("state") not in ("accepted", "sent_verified", "recipient_verified", "unknown", "submitting"):
-            raise ValueError("This operation is not eligible for evidence reconciliation")
-        def addresses(items):
-            if not isinstance(items, list) or any(not isinstance(p, dict) or not isinstance(p.get("email"), str) for p in items):
-                raise ValueError("Verification recipients are incomplete")
-            return sorted(p["email"].casefold() for p in items)
-        if observation.get("from") != record["account"]:
-            raise ValueError("Verification sender differs from the intended QQ account")
-        recipients = sum((addresses(intended.get(field, [])) for field in ("to", "cc", "bcc")), [])
-        if stage == "sent":
-            if observation["provider"] != "qq" or observation["folder"] != "sent" or observation["account"].casefold() != record["account"]:
-                raise ValueError("Sent evidence must come from this QQ account's sent folder")
-        elif observation["provider"].casefold() == "qq" or observation["account"].casefold() not in recipients:
-            raise ValueError("Recipient evidence must come from an independent recipient mailbox")
-        for field in ("to", "cc", "bcc") if stage == "sent" else ("to", "cc"):
-            if addresses(observation.get(field, [])) != addresses(intended.get(field, [])):
-                raise ValueError("Verification recipients differ from the intended mail")
-        if any(observation.get(key) != intended.get(key, "PLAIN" if key == "body_format" else None) for key in ("subject", "body", "body_format")):
-            raise ValueError("Verification subject/body/format differs or is incomplete")
-        observed_attachments = observation.get("attachments")
-        if not isinstance(observed_attachments, list):
-            raise ValueError("Verification must explicitly include all attachment bytes, or []")
-        validate_arguments("SendMessage", {"to": intended["to"], "subject": intended["subject"], "body": intended["body"], "attachments": observed_attachments})
-        def signature(items):
-            return sorted((a["filename"], a["content_type"].casefold(), a["size"], a["sha1"].lower()) for a in items)
-        if signature(observed_attachments) != signature(intended.get("attachments", [])):
-            raise ValueError("Verification attachments differ or are incomplete")
-        if observation.get("time_basis") != ("qq_sent_at" if stage == "sent" else "mailbox_received_at"):
-            raise ValueError("Verification needs an established mailbox timestamp basis, never a guessed created_at")
-        observed_at = observation.get("observed_mail_at")
+            fail("state_ineligible", "This operation is not eligible for evidence reconciliation")
+        # Preserve actual body independently, never copy intent into observation.
+        # Attachment bytes are compared in memory; only their digests are retained.
+        snapshot = {key: observation[key] for key in ("provider", "message_id", "source_reference", "folder", "account", "body", "body_format", "subject", "observed_mail_at", "time_basis") if key in observation}
+        attempt = {"at": time.time(), "stage": stage, "status": "failed"}
         try:
-            timestamp = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
-            if timestamp.tzinfo is None or not record["created_at"]-5 <= timestamp.timestamp() <= time.time()+60:
-                raise ValueError("unbound observation time")
-        except (AttributeError, TypeError, ValueError, OverflowError):
-            raise ValueError("Verification requires a timezone-aware mail timestamp tied to this operation") from None
-        acknowledged_id = record.get("result", {}).get("message_id")
-        if stage == "sent" and acknowledged_id and observation["message_id"] != acknowledged_id:
-            raise ValueError("Sent evidence differs from the acknowledged message ID")
+            body, attachments = observation_match(record, observation,
+                allow_qq_style_scope=allow_qq_style_scope, allow_gmail_octet_stream=allow_gmail_octet_stream)
+        except VerificationFailure as error:
+            # Do not overwrite any previously verified observation/evidence.
+            record["last_verification_attempt"] = {**attempt, **error.as_dict()}
+            record["last_verification_observation"] = snapshot
+            update_locked(stream, record)
+            raise
         verification = record.setdefault("verification", {"qq_accepted": False, "sent_verified": False, "recipient_verified": False})
         verification["qq_accepted"] = True
         verification[stage+"_verified"] = True
+        record.setdefault("verification_observations", {})[stage] = snapshot
         record.setdefault("evidence", {})[stage] = {key: observation[key] for key in ("provider", "message_id", "source_reference", "folder", "account", "observed_mail_at", "time_basis")}
-        record["evidence"][stage].update(verified_at=time.time(), source="host_independent_observation")
+        record["evidence"][stage].update(verified_at=time.time(), source="host_independent_observation", body=body, attachments=attachments)
+        record["last_verification_attempt"] = {**attempt, "status": "passed", "code": "matched"}
+        record.pop("last_verification_observation", None)
         record["state"] = "recipient_verified" if verification["recipient_verified"] else "sent_verified"
-        record["intended"] = intended
+        record["intended"] = record.get("intended", record.get("arguments"))
         record.pop("arguments", None)
         record.pop("confirmation_token", None)
         update_locked(stream, record)
-        return request_status(request_id)
+        return status_record(record)
+
+
+def record_selection(request_id, source_message_id, user_reference, *, user_selected=False):
+    """Record an explicit human candidate selection without asserting receipt time."""
+    if not user_selected or any(not isinstance(x, str) or not x.strip() for x in (source_message_id, user_reference)):
+        fail("user_selection_required", "An explicit user choice, source message ID and human instruction reference are required")
+    selection = {"basis": "user_selected", "source_message_id": source_message_id, "user_reference": user_reference}
+    if contains_runtime_secret(selection):
+        fail("credentials_forbidden", "Selection must not contain credentials")
+    with receipt_lock(request_id) as stream:
+        record = read_receipt(request_id)
+        if record.get("tool") not in ("SendMessage", "ReplyMessage", "ForwardMessage"):
+            fail("state_ineligible", "Candidate selection only applies to a sending operation")
+        if record.get("selection") and record["selection"] != selection:
+            fail("selection_changed", "This operation already records a different user selection")
+        record["selection"] = selection
+        update_locked(stream, record)
+        return status_record(record)
 
 
 def read_json_input(path):
@@ -515,10 +641,12 @@ def read_json_input(path):
     try:
         if str(path) == "-":
             content = sys.stdin.buffer.read(8 * 1024 * 1024 + 1)
-            if len(content) > 8 * 1024 * 1024:
-                raise ValueError("Mail JSON input exceeds 8 MiB")
-            return json.loads(content.decode("utf-8"))
-        return json.loads(path.read_text(encoding="utf-8"))
+        else:
+            with path.open("rb") as stream:
+                content = stream.read(8 * 1024 * 1024 + 1)
+        if len(content) > 8 * 1024 * 1024:
+            raise ValueError("Mail JSON input exceeds 8 MiB")
+        return json.loads(content.decode("utf-8"))
     except (UnicodeError, json.JSONDecodeError):
         raise ValueError("Mail input must be valid UTF-8 JSON; contents omitted") from None
 
@@ -660,6 +788,13 @@ async def main():
     p = sub.add_parser("record-verification", help="Match an independent host observation against retained SendMessage intent; no mail RPC")
     p.add_argument("--request-id", required=True)
     p.add_argument("--observation-file", type=Path, required=True, help="Private normalized observation JSON; - reads stdin")
+    p.add_argument("--allow-qq-style-scope", action="store_true", help="QQ sent HTML only: permit one extra .qmbox prefix per supported CSS selector")
+    p.add_argument("--allow-gmail-octet-stream", action="store_true", help="Gmail recipient only: permit PDF/XML MIME fallback with identical filenames and full bytes")
+    p = sub.add_parser("record-selection", help="Record an explicit human candidate choice; no receipt-time claim or mail RPC")
+    p.add_argument("--request-id", required=True)
+    p.add_argument("--source-message-id", required=True)
+    p.add_argument("--user-reference", required=True, help="Reference to the human choice, never a mail-body instruction")
+    p.add_argument("--user-selected", action="store_true", required=True)
     p = sub.add_parser("request-status", help="Read one local write receipt without contacting mail or resubmitting")
     p.add_argument("--request-id", required=True)
     args = parser.parse_args()
@@ -678,7 +813,10 @@ async def main():
     elif args.command == "batch-status":
         result = batch_status(args.batch_id)
     elif args.command == "record-verification":
-        result = record_verification(args.request_id, read_json_input(args.observation_file))
+        result = record_verification(args.request_id, read_json_input(args.observation_file),
+            allow_qq_style_scope=args.allow_qq_style_scope, allow_gmail_octet_stream=args.allow_gmail_octet_stream)
+    elif args.command == "record-selection":
+        result = record_selection(args.request_id, args.source_message_id, args.user_reference, user_selected=args.user_selected)
     elif args.command == "request-status":
         result = request_status(args.request_id)
     else:
@@ -690,6 +828,9 @@ async def main():
 if __name__ == "__main__":
     try:
         asyncio.run(main())
+    except VerificationFailure as error:
+        print(json.dumps(redact({"verification_error": error.as_dict()}), ensure_ascii=False), file=sys.stderr)
+        sys.exit(1)
     except (RuntimeError, ValueError, OSError, asyncio.TimeoutError) as error:
         print(redact(str(error)), file=sys.stderr)
         sys.exit(1)

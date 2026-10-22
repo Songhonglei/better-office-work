@@ -6,7 +6,7 @@
 
 | Skill | Description |
 |---|---|
-| [qq-mail-manage](./skills/qq-mail-manage/) | QQ 邮箱管理：Python HTTP 直连无需 Codex，兼容 Codex OAuth；支持现代无初始化 MCP、账号与权限隔离、附件 CLI、发送及确认后移至垃圾箱（v1.5.0） |
+| [qq-mail-manage](./skills/qq-mail-manage/) | QQ 邮箱管理：Python HTTP 直连无需 Codex，兼容 Codex OAuth；支持现代无初始化 MCP、账号与权限隔离、附件 CLI、发送及确认后移至垃圾箱；可审计核验兼容及中断恢复（v1.5.1） |
 | [macos-power-control](./skills/macos-power-control/) | macOS 合盖与电源设置：一句话需求解析，设置前确认，区分电池/接电、临时防休眠与持久策略，附验证和恢复流程 |
 | [invoice-auto-forward](./skills/invoice-auto-forward/) | 邮箱发票自动转发：IMAP 扫描 + 发票解析（PDF/OFD/XML）+ SMTP 转发，支持 QQ/163/126 多邮箱、链接型发票下载、抬头白名单与定时无人值守 |
 | [wb-token-analyzer](./skills/wb-token-analyzer/) | WorkBuddy Token/Credit 使用量分析：按天/模型汇总、Top N 消耗任务排名、6 类优化建议、自定义模型支持、Neon Dashboard 可视化报告 |

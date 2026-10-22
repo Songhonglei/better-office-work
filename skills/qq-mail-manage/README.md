@@ -1,6 +1,6 @@
 # QQ Mail Manage
 
-Version: **1.5.0** · License: [MIT](LICENSE)
+Version: **1.5.1** · License: [MIT](LICENSE)
 
 通过真实 Codex CLI 或显式直接 HTTP 后端和腾讯官方 MCP 管理 QQ 邮箱，账号可配置。支持多 profile、OAuth/keyring 或环境变量认证初始化、列表/搜索/正文/附件，以及按用户具体指令发送、回复、转发；删除需先确认具体清单，执行移至垃圾箱。
 
@@ -62,6 +62,8 @@ python3 scripts/onboard.py --profile cloud init --account YOUR@qq.com --mode rea
 默认关闭；用 `--no-allow-extra-delete-scope` 显式关闭。这里只接受已有凭据额外的 mail:delete，不会降低 token 本身权限或改写原始 scope；GetMe 仍核对账号、必需权限和未知 scopes。mode 和请求 scopes 保持 read_send/read+send，删除工具始终禁止。真实 verify 仍由目标环境在授权范围内执行。
 
 无法启动嵌套 Codex 的宿主可显式配置 `--backend direct_http --auth-mode env_token`，无需 Codex CLI，不更改平台限制，不自动回退。默认 --http-protocol auto 通过 server/discover 选择双方版本，优先2026-07-28无initialize请求；也可显式固定2026或三个legacy版本。完整协议、配置命令、时限及持久错误回执见 [直接 HTTP MCP](references/direct-http.md)。
+
+核验新增两个默认关闭的显式兼容开关，仅接受 QQ 指定 CSS 前缀变化与 Gmail PDF/XML 通用 MIME 回退；仍比对完整字节并保存差异证据。首次回执硬链接中断可在锁内安全恢复，不明状态继续阻断，不重新发送。
 
 新增发送需要稳定的 `--operation-id`；`accepted` 仅表示 QQ 受理。持久状态去重边界、三阶段结果及独立证据匹配见 [发送回执](references/operation-delivery.md)。
 

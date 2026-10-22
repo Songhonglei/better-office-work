@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 发布范围为 GitHub 仓库更新，不包含 ClawHub 发布或平台申诉；不代表账号恢复或审核通过。
 
 ### Added
+- **qq-mail-manage** v1.5.1 — 显式 QQ 样式/Gmail MIME 兼容、保留原文与摘要证据、初次回执中断恢复、结构化失败和用户候选选择；不重新发送。
 - **qq-mail-manage** v1.5.0 — 持久 operation_id 防重复、原子回执、三阶段核验状态、固定分页窗口与安全诊断。
 - **qq-mail-manage** v1.4.2 — 修复附件下载实际只返回 Base64 的兼容问题，按 GetMessage 元数据绑定 ID/大小，验证可选服务端摘要并明确本地 SHA-1 来源；210 项离线回归，保留严格大小、路径、原子不覆盖及未知结果不重发保障。
 - **qq-mail-manage** v1.4.1 — 合并现代无状态 MCP 与通用性修复：保留协议发现/schema 校验，补齐确认令牌处理、未知结果屏障、附件 CLI/stdin/回执查询；192 项离线回归与跨平台 CI 配置。

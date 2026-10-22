@@ -3,18 +3,18 @@ name: qq-mail-manage
 description: >
   通过腾讯官方 MCP 管理 QQ 邮箱：Python HTTP 直连无需 Codex，兼容 Codex OAuth 后端；支持多账号初始化、查询与附件、发送回复转发、确认后移至垃圾箱。适用于能执行 Python 脚本的 Agent 和电脑；不支持恢复或永久删除。
 metadata:
-  version: 1.5.0
+  version: 1.5.1
   python_optional: [jsonschema, referencing]
 ---
 
 # QQ 邮箱管理
 
-- **Version**: 1.5.0
+- **Version**: 1.5.1
 - **License**: MIT
 - **Author**: Evan Song · [github.com/Songhonglei](https://github.com/Songhonglei)
 - **Repository**: https://github.com/Songhonglei/better-office-work-flow
 
-版本记录见 [CHANGELOG.md](CHANGELOG.md)。
+版本记录见 [CHANGELOG.md](CHANGELOG.md)。严格核验与显式兼容规则由 [scripts/verification_rules.py](scripts/verification_rules.py) 实现，宿主证据契约见发送前必读的 [核验参考](references/operation-delivery.md)。
 
 可选直接后端的内部传输实现为 [scripts/direct_http.py](scripts/direct_http.py)，通过现有 onboard/qq_mail 命令选择，不直接传入令牌调用该脚本。modern 协议与 schema 参数头校验实现在 [scripts/modern_protocol.py](scripts/modern_protocol.py)。
 
