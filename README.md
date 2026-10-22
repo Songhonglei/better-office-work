@@ -1,6 +1,14 @@
-# Better Office Work Flow
+# Better Office Work
 
-> AI Agent Skill Suite — 办公自动化技能套件，覆盖发票处理、Token 用量分析、小红书发布、文本润色等高频办公场景。
+> AI 驱动的办公提效仓库 —— **Skills** 让你的 Agent 会干活，**Tools** 让你自己用得爽。
+>
+> 覆盖发票处理、Token 用量分析、小红书发布、文本润色等高频办公场景的 Agent 技能套件，以及开箱即用的独立小工具。
+
+## Tools
+
+| Tool | Description |
+|---|---|
+| [Pomodoro Timer](./tools/Pomodoro%20Timer/) | 星环番茄钟：星空/破晓双主题、艺术椭圆进度环、瀑布背景、打断追踪、完成彩蛋；提供 [GitHub Pages 在线版](https://songhonglei.github.io/better-office-work/)、macOS 原生 App 与单文件 HTML 三种形态 |
 
 ## Skills
 
@@ -21,7 +29,7 @@
 
 ```bash
 # 克隆本仓库
-git clone https://github.com/Songhonglei/better-office-work-flow.git
+git clone https://github.com/Songhonglei/better-office-work.git
 
 # 将需要的 skill 复制到你的 agent skills 目录
 cp -r skills/invoice-auto-forward ~/.workbuddy/skills/
@@ -37,6 +45,10 @@ cp -r skills/macos-power-control ~/.workbuddy/skills/
 mkdir -p ~/.agents/skills
 cp -r skills/qq-mail-manage ~/.agents/skills/
 ```
+
+Tools 无需安装，直接使用：
+
+- **Pomodoro Timer**：浏览器打开 [在线版](https://songhonglei.github.io/better-office-work/)，或把 `tools/Pomodoro Timer/dist/番茄钟.app` 拷贝到「应用程序」；也可在仓库内 `./tools/Pomodoro\ Timer/build.sh` 重新构建。
 
 ## Install via Agent Platforms
 

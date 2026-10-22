@@ -1,0 +1,945 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>番茄钟</title>
+<style>
+  :root{
+    --k-sans:var(--kimi-font-sans,-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","MiSans","Microsoft YaHei",sans-serif);
+    --k-mono:var(--kimi-font-mono,ui-monospace,"SF Mono",Menlo,Consolas,monospace);
+    --k-r:12px;
+    --ering:224px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:var(--k-sans); overflow:hidden; font-size:13px; -webkit-font-smoothing:antialiased;}
+  button{font:inherit; -webkit-tap-highlight-color:transparent;}
+
+  .card{
+    container-type:size;
+    --padx:clamp(14px,4cqi,22px); --pady:clamp(12px,2.4cqb,18px);
+    position:relative; height:100vh;
+    border-radius:var(--k-r); overflow:hidden;
+    padding:var(--pady) var(--padx);
+    display:flex; flex-direction:column;
+    color:var(--fg);
+    transition:color .4s;
+  }
+  .card[data-theme="dark"]{
+    --fg:#EDF1FF; --fg-2:rgba(237,241,255,.62); --fg-3:rgba(237,241,255,.40);
+    --line:rgba(237,241,255,.14);
+    --halo:rgba(143,216,255,.30);
+    --btn-ghost-bg:rgba(237,241,255,.07);
+    --dot:rgba(237,241,255,.10);
+  }
+  .card[data-theme="light"]{
+    --fg:#1E2C48; --fg-2:rgba(30,44,72,.62); --fg-3:rgba(30,44,72,.44);
+    --line:rgba(30,44,72,.14);
+    --halo:rgba(29,95,168,.22);
+    --btn-ghost-bg:rgba(30,44,72,.06);
+    --dot:rgba(30,44,72,.10);
+  }
+  #sky{position:absolute; inset:0; width:100%; height:100%; z-index:0;}
+  .card > *{position:relative; z-index:1;}
+  .card[data-theme="dark"]::after{
+    content:""; position:absolute; inset:0; pointer-events:none; z-index:1;
+    box-shadow:inset 0 0 60px rgba(2,4,12,.55);
+    border-radius:var(--k-r);
+  }
+
+  /* ---------- header ---------- */
+  header{flex:none; display:flex; align-items:flex-start; justify-content:space-between; gap:8px;}
+  .title-block{display:flex; flex-direction:column; gap:4px; min-width:0;}
+  .overline{
+    font-family:var(--k-mono); font-size:9px; font-weight:600; letter-spacing:.42em;
+    text-transform:uppercase; color:var(--fg-3); white-space:nowrap;
+  }
+  .title-line{display:flex; align-items:center; gap:9px; min-width:0;}
+  .title-mark{flex:none; color:var(--fg-2);}
+  .title{
+    font-size:clamp(20px,6.8cqi,26px);
+    font-weight:700; letter-spacing:.16em; line-height:1.15;
+    white-space:nowrap;
+    background:linear-gradient(100deg, #F2F6FF 5%, #8FD8FF 52%, #A78BFA 100%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .card[data-theme="light"] .title{
+    background:linear-gradient(100deg, #16223B 5%, #1D5FA8 52%, #C2792D 100%);
+    -webkit-background-clip:text; background-clip:text;
+  }
+  .rounds{
+    font-family:var(--k-mono); font-size:10.5px; font-weight:600; letter-spacing:.1em;
+    color:var(--fg-3); white-space:nowrap; font-variant-numeric:tabular-nums;
+  }
+  .theme-btn{
+    flex:none; width:30px; height:30px; margin-top:2px;
+    display:flex; align-items:center; justify-content:center;
+    border-radius:8px; border:1px solid var(--line);
+    background:var(--btn-ghost-bg); color:var(--fg-2);
+    cursor:pointer; transition:color .2s, border-color .2s, background .2s;
+  }
+  .theme-btn:hover{color:var(--fg); border-color:var(--fg-3);}
+  .theme-btn svg{display:block;}
+  .card[data-theme="dark"] .icon-sun{display:block;}
+  .card[data-theme="dark"] .icon-moon{display:none;}
+  .card[data-theme="light"] .icon-sun{display:none;}
+  .card[data-theme="light"] .icon-moon{display:block;}
+
+  /* ---------- mode segment ---------- */
+  .seg{
+    flex:none; display:flex; gap:6px; justify-content:center;
+    margin-top:clamp(6px,1.4cqb,12px);
+  }
+  .seg button{
+    min-height:26px; padding:4px 12px;
+    border:1px solid var(--line); border-radius:999px;
+    background:var(--btn-ghost-bg); color:var(--fg-2);
+    font-family:var(--k-mono); font-size:10.5px; font-weight:600; letter-spacing:.1em;
+    cursor:pointer; white-space:nowrap;
+    transition:background .18s, color .18s, border-color .18s;
+  }
+  .seg button:hover:not([aria-selected="true"]){color:var(--fg); border-color:var(--fg-3);}
+  .seg button[aria-selected="true"]{ background:var(--fg); border-color:var(--fg); font-weight:700; }
+  .card[data-theme="dark"] .seg button[aria-selected="true"],
+  .card[data-theme="dark"] .seg button[aria-selected="true"]:hover{color:#0A0E1E; border-color:var(--fg);}
+  .card[data-theme="light"] .seg button[aria-selected="true"],
+  .card[data-theme="light"] .seg button[aria-selected="true"]:hover{color:#FFF3E2; border-color:var(--fg);}
+
+  /* ---------- ellipse stage ---------- */
+  .stage{
+    position:relative; flex:1; min-height:0;
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    padding:clamp(4px,1.2cqb,10px) 0 0;
+  }
+  .ellipse-wrap{
+    position:relative;
+    width:clamp(170px, var(--ering), 100%);
+    max-width:100%;
+    touch-action:none;
+  }
+  .ellipse-wrap svg{display:block; width:100%; height:auto; overflow:visible;}
+  .halo{fill:none; stroke:var(--halo); stroke-width:16; filter:url(#soft);}
+  .ring-track{fill:none; stroke:var(--line); stroke-width:2.4;}
+  .ring-bar{
+    fill:none; stroke:url(#eGrad); stroke-width:4.6; stroke-linecap:round;
+    transition:stroke-dashoffset .25s linear;
+    filter:drop-shadow(0 0 6px var(--halo));
+  }
+  .decor{
+    fill:none; stroke:var(--fg-3); stroke-width:1.1; stroke-dasharray:2 9;
+    transform-box:fill-box; transform-origin:center;
+    animation:spin 34s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .orb{filter:drop-shadow(0 0 5px var(--halo));}
+  .ellipse-center{
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    pointer-events:none;
+  }
+  .time{
+    font-family:var(--k-mono);
+    font-size:calc(var(--ering) * .155);
+    line-height:1; font-weight:700; letter-spacing:.06em;
+    font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1;
+    color:var(--fg);
+  }
+  .card[data-theme="dark"] .time{
+    text-shadow:0 0 18px rgba(143,216,255,.42),
+      .5px 0 0 rgba(237,241,255,.95), -.5px 0 0 rgba(237,241,255,.95);
+  }
+  .card[data-theme="light"] .time{
+    text-shadow:.5px 0 0 rgba(30,44,72,.9), -.5px 0 0 rgba(30,44,72,.9);
+  }
+
+  /* ---------- waterfall (背景水帘, 文字静态) ---------- */
+  .waterfall{
+    position:relative;
+    width:clamp(170px, var(--ering), 100%);
+    height:56px; margin-top:-4px;
+    overflow:hidden;
+    -webkit-mask-image:linear-gradient(to bottom, transparent, #000 22%, #000 78%, transparent);
+    mask-image:linear-gradient(to bottom, transparent, #000 22%, #000 78%, transparent);
+  }
+  .wf-canvas{position:absolute; inset:0; width:100%; height:100%;}
+  .fall-text{
+    position:absolute; left:0; right:0; top:17px;
+    text-align:center; white-space:nowrap; overflow:hidden;
+    font-family:var(--k-mono); font-size:11.5px; font-weight:600; letter-spacing:.2em;
+    color:var(--fg); pointer-events:none;
+  }
+  .card[data-theme="dark"] .fall-text{text-shadow:0 0 12px rgba(10,14,30,.9), 0 0 4px rgba(143,216,255,.5);}
+  .card[data-theme="light"] .fall-text{text-shadow:0 0 8px rgba(255,240,214,.95), 0 1px 2px rgba(255,240,214,.8);}
+  .fall-text.flash{animation:pulse .5s ease-in-out 2;}
+  @keyframes pulse{0%,100%{opacity:1;} 50%{opacity:.3;}}
+
+  /* drag handle */
+  .grip{
+    position:absolute; right:-6px; top:50%; transform:translateY(-50%);
+    width:20px; height:20px; border-radius:999px; cursor:ew-resize;
+    background:var(--fg); display:flex; align-items:center; justify-content:center;
+    opacity:.85; transition:transform .15s, opacity .15s;
+    touch-action:none; z-index:3;
+  }
+  .card[data-theme="dark"] .grip{color:#0A0E1E;}
+  .card[data-theme="light"] .grip{color:#FFF3E2;}
+  .grip:hover{transform:translateY(-50%) scale(1.15); opacity:1;}
+
+  /* ---------- celebration (完成时刻彩蛋) ---------- */
+  .card.celebrate .ring-bar{animation:ringGlow .8s ease-out 4;}
+  @keyframes ringGlow{
+    0%{stroke-width:4.6; opacity:1;}
+    35%{stroke-width:8.5; opacity:1; filter:drop-shadow(0 0 18px var(--halo));}
+    100%{stroke-width:4.6; opacity:1;}
+  }
+  .card.celebrate .halo{animation:haloFlare .8s ease-out 4;}
+  @keyframes haloFlare{0%,100%{opacity:1;} 40%{opacity:.35;}}
+  .card.celebrate .decor{animation-duration:6s;}
+  .card.celebrate .fall-text{color:var(--fg);}
+
+  /* compact mode */
+  .card.compact .time{font-size:calc(var(--ering) * .13);}
+  .card.compact .fall-text{font-size:9px; letter-spacing:.1em; top:17px;}
+  .card.compact .waterfall{height:46px;}
+  .card.compact .rounds{display:none;}
+  .card.compact .seg button{font-size:9.5px; padding:3px 9px; min-height:23px;}
+  .card.compact .title{font-size:17px;}
+
+  /* ---------- controls ---------- */
+  .side{flex:none; display:flex; justify-content:center; margin-top:clamp(4px,1.2cqb,10px);}
+  .btns{display:flex; gap:8px; width:100%; max-width:240px;}
+  .btns button{
+    flex:1; min-width:0; min-height:33px; padding:6px 12px;
+    border-radius:999px; font-size:13px; font-weight:600; letter-spacing:.08em;
+    cursor:pointer; white-space:nowrap;
+    transition:transform .16s, background .18s, color .18s, border-color .18s;
+  }
+  .btn-primary{ background:var(--fg); border:1px solid var(--fg); font-weight:700; }
+  .card[data-theme="dark"] .btn-primary,
+  .card[data-theme="dark"] .btn-primary:hover,
+  .card[data-theme="dark"] .btn-primary:active{color:#0A0E1E; box-shadow:0 0 20px rgba(143,216,255,.22);}
+  .card[data-theme="light"] .btn-primary,
+  .card[data-theme="light"] .btn-primary:hover,
+  .card[data-theme="light"] .btn-primary:active{color:#FFF3E2; box-shadow:0 6px 16px rgba(30,44,72,.18);}
+  .btn-primary:hover{transform:translateY(-1px);}
+  .btn-primary:active{transform:scale(.96);}
+  .btn-ghost{ background:var(--btn-ghost-bg); color:var(--fg-2); border:1px solid var(--line); }
+  .btn-ghost:hover{background:var(--btn-ghost-bg); color:var(--fg); border-color:var(--fg-3);}
+  .btn-ghost:active{transform:scale(.96);}
+
+  /* ---------- stats ---------- */
+  .stats{
+    flex:none; margin-top:clamp(6px,1.4cqb,10px);
+    padding-top:clamp(6px,1.4cqb,10px);
+    border-top:1px solid var(--line);
+    display:flex; flex-direction:column; gap:7px; align-items:center;
+  }
+  .dots{display:flex; gap:6px; flex-wrap:wrap; justify-content:center; min-height:11px;}
+  .dots i{width:10px; height:10px; border-radius:3px; background:var(--dot); border:1px solid var(--line);}
+  .dots i.on{background:var(--fg); border-color:var(--fg);}
+  .stat-grid{display:flex; gap:6px; width:100%;}
+  .stat{flex:1; min-width:0; padding:2px 4px; display:flex; flex-direction:column; align-items:center; gap:2px;}
+  .stat b{
+    font-family:var(--k-mono); font-size:17px; font-weight:700;
+    letter-spacing:.02em; font-variant-numeric:tabular-nums; color:var(--fg);
+  }
+  .stat span{font-size:9.5px; letter-spacing:.08em; color:var(--fg-3); white-space:nowrap;}
+  .tip{font-size:10.5px; color:var(--fg-3); text-align:center; letter-spacing:.04em;}
+
+  @container (max-height: 430px){
+    .stats .tip{display:none;}
+    .dots{display:none;}
+    .waterfall{height:44px;}
+    .btns button{min-height:29px; font-size:12px;}
+  }
+  @container (max-width: 230px){
+    .overline{display:none;}
+    .seg button{padding:3px 8px; font-size:9.5px;}
+    .stat b{font-size:14px;}
+  }
+</style>
+</head>
+<body>
+<main class="card" data-theme="dark" aria-label="番茄钟">
+  <canvas id="sky" aria-hidden="true"></canvas>
+
+  <header>
+    <div class="title-block">
+      <span class="overline">Pomodoro · Orbit</span>
+      <span class="title-line">
+        <svg class="title-mark" width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="5" stroke="url(#eGrad)" stroke-width="1.6"/>
+          <ellipse cx="12" cy="12" rx="10" ry="3.8" stroke="currentColor" stroke-width="1" opacity=".65" transform="rotate(-18 12 12)"/>
+          <circle cx="20.6" cy="8.4" r="1.3" fill="currentColor"/>
+        </svg>
+        <span class="title">番茄钟</span>
+      </span>
+      <span class="rounds">今日第 <span id="roundN">0</span> 轮</span>
+    </div>
+    <button type="button" class="theme-btn" id="themeBtn" aria-label="切换主题">
+      <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="4.2"/>
+        <path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M5.2 5.2l1.7 1.7M17.1 17.1l1.7 1.7M18.8 5.2l-1.7 1.7M6.9 17.1l-1.7 1.7"/>
+      </svg>
+      <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M20.4 14.2A8.5 8.5 0 1 1 9.8 3.6a7 7 0 0 0 10.6 10.6Z"/>
+      </svg>
+    </button>
+  </header>
+
+  <div class="seg" role="tablist" aria-label="模式">
+    <button type="button" role="tab" data-mode="focus" aria-selected="true">专注 25</button>
+    <button type="button" role="tab" data-mode="short" aria-selected="false">短休 5</button>
+    <button type="button" role="tab" data-mode="long" aria-selected="false">长休 15</button>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="ellipse-wrap" id="ellipseWrap">
+      <svg viewBox="0 0 300 190" aria-hidden="true">
+        <defs>
+          <linearGradient id="eGrad" x1="0" y1="0" x2="1" y2="0.35">
+            <stop offset="0" stop-color="#8FD8FF"/>
+            <stop offset="0.5" stop-color="#EAF6FF"/>
+            <stop offset="1" stop-color="#A78BFA"/>
+          </linearGradient>
+          <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="7"/>
+          </filter>
+        </defs>
+        <path class="halo" d="M 150 15 A 135 80 0 1 1 150 175 A 135 80 0 1 1 150 15" />
+        <ellipse class="decor" cx="150" cy="95" rx="121" ry="66" />
+        <path id="trackPath" class="ring-track" d="M 150 15 A 135 80 0 1 1 150 175 A 135 80 0 1 1 150 15" />
+        <path id="barPath" class="ring-bar" d="M 150 15 A 135 80 0 1 1 150 175 A 135 80 0 1 1 150 15" />
+        <circle class="orb" id="orb0" r="3" fill="#8FD8FF"/>
+        <circle class="orb" id="orb1" r="2.2" fill="#EAF6FF"/>
+        <circle class="orb" id="orb2" r="2.6" fill="#A78BFA"/>
+      </svg>
+      <div class="ellipse-center">
+        <div class="time" id="timeText">25:00</div>
+      </div>
+      <div class="grip" id="grip" role="slider" aria-label="拖拽调整椭圆大小"
+           aria-valuemin="170" aria-valuemax="280" aria-valuenow="224" title="拖拽调整大小">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+          <path d="M8.5 1.5v3.2a3.8 3.8 0 0 1-3.8 3.8H1.5"/>
+        </svg>
+      </div>
+    </div>
+    <div class="waterfall">
+      <canvas class="wf-canvas" id="wfCanvas" aria-hidden="true"></canvas>
+      <div class="fall-text" id="statusText">准备开始</div>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="btns">
+      <button type="button" class="btn-primary" id="startBtn">开始</button>
+      <button type="button" class="btn-ghost" id="resetBtn">重置</button>
+    </div>
+  </div>
+
+  <section class="stats" aria-label="今日统计">
+    <div class="dots" id="dots"></div>
+    <div class="stat-grid">
+      <div class="stat"><b id="statRounds">0</b><span>今日轮数</span></div>
+      <div class="stat"><b id="statMin">0</b><span>专注分钟</span></div>
+      <div class="stat"><b id="statBreaks">0</b><span>被打断次数</span></div>
+      <div class="stat"><b id="statBreakMin">0</b><span>被打断分钟</span></div>
+    </div>
+    <div class="tip" id="tipText">攒满 4 轮，奖励一次长休</div>
+  </section>
+
+<script>
+"use strict";
+(function () {
+  var MODES = {
+    focus: { seconds: 25 * 60, label: "专注" },
+    short: { seconds: 5 * 60, label: "短休" },
+    long:  { seconds: 15 * 60, label: "长休" }
+  };
+  var ELLIPSE_D = "M 150 15 A 135 80 0 1 1 150 175 A 135 80 0 1 1 150 15";
+  var SIZE_MIN = 170, SIZE_MAX = 280, SIZE_COMPACT = 198;
+  /* test hook: #tsec=N shortens the focus round to N seconds */
+  var hm = /tsec=(\d+)/.exec(location.hash || "");
+  if (hm) MODES.focus.seconds = Math.max(1, parseInt(hm[1], 10) || 1);
+
+  var card = document.querySelector(".card");
+  var sky = document.getElementById("sky");
+  var stage = document.getElementById("stage");
+  var ellipseWrap = document.getElementById("ellipseWrap");
+  var grip = document.getElementById("grip");
+  var barPath = document.getElementById("barPath");
+  var timeText = document.getElementById("timeText");
+  var statusText = document.getElementById("statusText");
+  var startBtn = document.getElementById("startBtn");
+  var resetBtn = document.getElementById("resetBtn");
+  var themeBtn = document.getElementById("themeBtn");
+  var roundN = document.getElementById("roundN");
+  var segBtns = Array.prototype.slice.call(document.querySelectorAll(".seg button"));
+
+  var ELL_LEN = barPath.getTotalLength();
+  barPath.setAttribute("stroke-dasharray", String(ELL_LEN));
+
+  /* ---------------- storage ---------------- */
+  function todayKey() {
+    var d = new Date();
+    var m = String(d.getMonth() + 1), day = String(d.getDate());
+    if (m.length < 2) m = "0" + m;
+    if (day.length < 2) day = "0" + day;
+    return "daimon_onboarding_pomo_" + d.getFullYear() + "-" + m + "-" + day;
+  }
+  function lsGet(k, fb) {
+    try { var v = localStorage.getItem(k); return v === null ? fb : v; }
+    catch (e) { return fb; }
+  }
+  function lsSet(k, v) { try { localStorage.setItem(k, String(v)); } catch (e) {} }
+  function lsInt(k) { var v = parseInt(lsGet(k, "0"), 10); return isNaN(v) || v < 0 ? 0 : v; }
+
+  /* ---------------- theme ---------------- */
+  function applyTheme(t) {
+    card.setAttribute("data-theme", t);
+    lsSet("daimon_onboarding_pomo_theme", t);
+    applyStroke();
+  }
+  function applyStroke() {
+    var stops = document.querySelectorAll("#eGrad stop");
+    var dark = card.getAttribute("data-theme") === "dark";
+    var cols = dark ? ["#8FD8FF", "#EAF6FF", "#A78BFA"] : ["#1D5FA8", "#4E8FD1", "#E8964C"];
+    for (var i = 0; i < stops.length && i < cols.length; i++) stops[i].setAttribute("stop-color", cols[i]);
+    var orbCols = dark ? ["#8FD8FF", "#EAF6FF", "#A78BFA"] : ["#1D5FA8", "#4E8FD1", "#E8964C"];
+    for (var j = 0; j < 3; j++) document.getElementById("orb" + j).setAttribute("fill", orbCols[j]);
+  }
+  applyTheme(lsGet("daimon_onboarding_pomo_theme", "dark"));
+  themeBtn.addEventListener("click", function () {
+    applyTheme(card.getAttribute("data-theme") === "dark" ? "light" : "dark");
+  });
+
+  /* ---------------- drag resize ---------------- */
+  var ellSize = Math.min(SIZE_MAX, Math.max(SIZE_MIN, parseInt(lsGet("daimon_onboarding_pomo_ring", "224"), 10) || 224));
+  function applySize(px) {
+    var maxW = Math.max(SIZE_MIN, stage.clientWidth - 8);
+    var maxH = Math.max(SIZE_MIN, (stage.clientHeight - 70) * (300 / 190));
+    ellSize = Math.round(Math.min(Math.min(SIZE_MAX, maxW, maxH), Math.max(SIZE_MIN, px)));
+    card.style.setProperty("--ering", ellSize + "px");
+    card.classList.toggle("compact", ellSize < SIZE_COMPACT);
+    grip.setAttribute("aria-valuenow", String(ellSize));
+    lsSet("daimon_onboarding_pomo_ring", ellSize);
+  }
+  applySize(ellSize);
+  if (window.ResizeObserver) {
+    new ResizeObserver(function () { applySize(ellSize); }).observe(stage);
+  }
+  grip.addEventListener("pointerdown", function (e) {
+    e.preventDefault();
+    grip.setPointerCapture(e.pointerId);
+    var rect = ellipseWrap.getBoundingClientRect();
+    var cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+    function onMove(ev) {
+      var d = Math.max(Math.abs(ev.clientX - cx), Math.abs(ev.clientY - cy));
+      applySize(d * 2);
+    }
+    function onUp() {
+      grip.removeEventListener("pointermove", onMove);
+      grip.removeEventListener("pointerup", onUp);
+      grip.removeEventListener("pointercancel", onUp);
+    }
+    grip.addEventListener("pointermove", onMove);
+    grip.addEventListener("pointerup", onUp);
+    grip.addEventListener("pointercancel", onUp);
+  });
+
+  /* ---------------- stats ---------------- */
+  var dotsEl = document.getElementById("dots");
+  var statRoundsEl = document.getElementById("statRounds");
+  var statMinEl = document.getElementById("statMin");
+  var statBreaksEl = document.getElementById("statBreaks");
+  var statBreakMinEl = document.getElementById("statBreakMin");
+  var tipEl = document.getElementById("tipText");
+
+  function renderStats() {
+    var rounds = lsInt(todayKey());
+    var slots = Math.max(8, Math.ceil(rounds / 4) * 4);
+    if (slots > 12) slots = 12;
+    dotsEl.innerHTML = "";
+    for (var i = 0; i < slots; i++) {
+      var d = document.createElement("i");
+      if (i < rounds) d.className = "on";
+      dotsEl.appendChild(d);
+    }
+    roundN.textContent = String(rounds);
+    statRoundsEl.textContent = String(rounds);
+    statMinEl.textContent = String(lsInt(todayKey() + "_min"));
+    statBreaksEl.textContent = String(lsInt(todayKey() + "_brk"));
+    statBreakMinEl.textContent = String(Math.round(lsInt(todayKey() + "_brksec") / 60));
+    if (rounds === 0) tipEl.textContent = "攒满 4 轮，奖励一次长休";
+    else if (rounds % 4 === 0) tipEl.textContent = "攒满 " + rounds + " 轮了，去长休一下";
+    else tipEl.textContent = "再 " + (4 - rounds % 4) + " 轮就能长休啦";
+  }
+
+  /* ---------------- status text (静态, 瀑布仅作背景) ---------------- */
+  var flashTimer = null;
+  function setStatus(text, flash) {
+    if (statusText.getAttribute("data-text") !== text) {
+      statusText.setAttribute("data-text", text);
+      statusText.textContent = text;
+    }
+    if (!flash) return;
+    statusText.classList.remove("flash");
+    if (flashTimer) { clearTimeout(flashTimer); flashTimer = null; }
+    void statusText.offsetWidth;
+    statusText.classList.add("flash");
+    flashTimer = setTimeout(function () { statusText.classList.remove("flash"); }, 1600);
+  }
+
+  /* ---------------- timer core ---------------- */
+  var mode = "focus";
+  var total = MODES.focus.seconds;
+  var remaining = total;
+  var running = false;
+  var endTime = 0;
+  var timer = null;
+  var pauseTick = null;
+  var pauseStart = 0;
+
+  function fmt(sec) {
+    var s = Math.max(0, Math.ceil(sec));
+    var m = Math.floor(s / 60), r = s % 60;
+    return (m < 10 ? "0" + m : String(m)) + ":" + (r < 10 ? "0" + r : String(r));
+  }
+  function fmtCn(sec) {
+    sec = Math.max(0, Math.round(sec));
+    var m = Math.floor(sec / 60), r = sec % 60;
+    if (m > 0) return m + " 分 " + r + " 秒";
+    return r + " 秒";
+  }
+  function render() {
+    timeText.textContent = fmt(remaining);
+    var frac = total > 0 ? Math.max(0, Math.min(1, remaining / total)) : 0;
+    barPath.setAttribute("stroke-dashoffset", String(ELL_LEN * (1 - frac)));
+  }
+  function stopTimer() { if (timer) { clearInterval(timer); timer = null; } }
+  function stopPauseTick() { if (pauseTick) { clearInterval(pauseTick); pauseTick = null; } }
+
+  function complete() {
+    running = false;
+    stopTimer(); stopPauseTick();
+    remaining = 0;
+    render();
+    startCelebrate(mode === "focus");
+    startBtn.textContent = "开始";
+    if (mode === "focus") {
+      lsSet(todayKey() + "_min", lsInt(todayKey() + "_min") + Math.round(MODES.focus.seconds / 60));
+      var n = lsInt(todayKey()) + 1;
+      lsSet(todayKey(), n);
+      setStatus("完成 · 喝口水", true);
+    } else {
+      setStatus("完成 · 回来专注", true);
+    }
+    remaining = total;
+    renderStats();
+    setTimeout(render, 400);
+  }
+  function tick() {
+    remaining = (endTime - Date.now()) / 1000;
+    if (remaining <= 0) { complete(); return; }
+    render();
+  }
+  function start() {
+    if (remaining <= 0 || remaining > total) remaining = total;
+    endTime = Date.now() + remaining * 1000;
+    running = true;
+    stopPauseTick();
+    startBtn.textContent = "暂停";
+    setStatus(mode === "focus" ? "专注中" : MODES[mode].label + "中");
+    stopTimer();
+    timer = setInterval(tick, 200);
+    tick();
+  }
+  function pause() {
+    remaining = Math.max(0, (endTime - Date.now()) / 1000);
+    running = false;
+    stopTimer();
+    pauseStart = Date.now();
+    startBtn.textContent = "继续";
+    setStatus("已暂停");
+    stopPauseTick();
+    var last = "";
+    pauseTick = setInterval(function () {
+      var s = "已暂停 " + fmt((Date.now() - pauseStart) / 1000);
+      if (s !== last) { last = s; setStatus(s); }
+    }, 500);
+    render();
+  }
+  function resume() {
+    if (pauseStart > 0) {
+      var away = (Date.now() - pauseStart) / 1000;
+      if (away >= 3) {
+        lsSet(todayKey() + "_brk", lsInt(todayKey() + "_brk") + 1);
+        lsSet(todayKey() + "_brksec", lsInt(todayKey() + "_brksec") + Math.round(away));
+        renderStats();
+        start();
+        setStatus("中断 " + fmtCn(away) + " · 欢迎回来", true);
+        pauseStart = 0;
+        return;
+      }
+      pauseStart = 0;
+    }
+    start();
+  }
+  function reset() {
+    running = false;
+    stopTimer(); stopPauseTick();
+    endCelebrate();
+    pauseStart = 0;
+    remaining = total;
+    startBtn.textContent = "开始";
+    setStatus("准备开始");
+    render();
+  }
+  function setMode(next) {
+    mode = next;
+    total = MODES[mode].seconds;
+    segBtns.forEach(function (b) {
+      b.setAttribute("aria-selected", b.dataset.mode === mode ? "true" : "false");
+    });
+    reset();
+  }
+
+  startBtn.addEventListener("click", function () {
+    if (running) pause();
+    else if (pauseStart > 0) resume();
+    else start();
+  });
+  resetBtn.addEventListener("click", reset);
+  segBtns.forEach(function (b) {
+    b.addEventListener("click", function () {
+      if (b.dataset.mode !== mode) setMode(b.dataset.mode);
+    });
+  });
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden && running) tick();
+  });
+
+  /* ---------------- sky + orbits + waterfall (single rAF loop) ---------------- */
+  var ctx = sky.getContext("2d");
+  var wf = document.getElementById("wfCanvas");
+  var wctx = wf.getContext("2d");
+  var stars = [], meteors = [], clouds = [], streams = [];
+  var W = 0, H = 0, dpr = 1, wfW = 0, wfH = 0;
+  var nextMeteor = 0, raf = null, t0 = Date.now();
+  var orbs = [
+    { el: document.getElementById("orb0"), sp: .5, ph: 0 },
+    { el: document.getElementById("orb1"), sp: -.34, ph: 2.1 },
+    { el: document.getElementById("orb2"), sp: .22, ph: 4.4 }
+  ];
+
+  function rand(a, b) { return a + Math.random() * (b - a); }
+
+  function seedSky() {
+    stars = [];
+    var n = Math.round((W * H) / 9000);
+    if (n < 60) n = 60; if (n > 170) n = 170;
+    for (var i = 0; i < n; i++) {
+      stars.push({
+        x: Math.random() * W, y: Math.random() * H,
+        r: rand(.4, 1.5), base: rand(.25, .85),
+        amp: rand(.12, .4), sp: rand(.4, 1.6), ph: rand(0, Math.PI * 2),
+        warm: Math.random() < .18
+      });
+    }
+    clouds = [];
+    for (var c = 0; c < 5; c++) {
+      clouds.push({
+        x: Math.random() * W, y: rand(H * .12, H * .5),
+        w: rand(W * .3, W * .7), h: rand(16, 34),
+        sp: rand(.008, .02), a: rand(.08, .16)
+      });
+    }
+  }
+  function seedStreams() {
+    streams = [];
+    for (var i = 0; i < 16; i++) {
+      streams.push({
+        fx: (i + 0.5) / 16 + rand(-.015, .015),
+        y: rand(-60, wfH),
+        len: rand(28, 56),
+        sp: rand(16, 34)
+      });
+    }
+  }
+  function resizeAll() {
+    var rect = card.getBoundingClientRect();
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    W = Math.max(1, Math.round(rect.width));
+    H = Math.max(1, Math.round(rect.height));
+    sky.width = W * dpr; sky.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    seedSky();
+    var wr = wf.getBoundingClientRect();
+    wfW = Math.max(1, Math.round(wr.width));
+    wfH = Math.max(1, Math.round(wr.height));
+    wf.width = wfW * dpr; wf.height = wfH * dpr;
+    wctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    seedStreams();
+  }
+  if (window.ResizeObserver) {
+    var ro = new ResizeObserver(function () { applySize(ellSize); resizeAll(); });
+    ro.observe(stage); ro.observe(wf);
+  }
+  resizeAll();
+
+  function drawDarkSky(t) {
+    var g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "#0C1230");
+    g.addColorStop(.55, "#0A0E24");
+    g.addColorStop(1, "#05070F");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+    var nb1 = ctx.createRadialGradient(W * .22, H * .18, 0, W * .22, H * .18, W * .55);
+    nb1.addColorStop(0, "rgba(48,58,130,.30)"); nb1.addColorStop(1, "rgba(48,58,130,0)");
+    ctx.fillStyle = nb1; ctx.fillRect(0, 0, W, H);
+    var nb2 = ctx.createRadialGradient(W * .85, H * .75, 0, W * .85, H * .75, W * .5);
+    nb2.addColorStop(0, "rgba(18,74,99,.26)"); nb2.addColorStop(1, "rgba(18,74,99,0)");
+    ctx.fillStyle = nb2; ctx.fillRect(0, 0, W, H);
+
+    for (var i = 0; i < stars.length; i++) {
+      var s = stars[i];
+      var a = Math.max(.05, Math.min(1, s.base + s.amp * Math.sin(t * s.sp + s.ph)));
+      ctx.globalAlpha = a;
+      ctx.fillStyle = s.warm ? "#FFE9C9" : "#DCEAFF";
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    if (t > nextMeteor) {
+      nextMeteor = t + rand(6, 14);
+      meteors.push({ x: rand(W * .2, W), y: rand(0, H * .3), vx: -rand(280, 420), vy: rand(120, 200), life: 1 });
+    }
+    for (var m = meteors.length - 1; m >= 0; m--) {
+      var mt = meteors[m];
+      mt.x += mt.vx / 60; mt.y += mt.vy / 60; mt.life -= .016;
+      if (mt.life <= 0 || mt.x < -60) { meteors.splice(m, 1); continue; }
+      var lg = ctx.createLinearGradient(mt.x, mt.y, mt.x - mt.vx * .12, mt.y - mt.vy * .12);
+      lg.addColorStop(0, "rgba(220,234,255," + (.8 * mt.life) + ")");
+      lg.addColorStop(1, "rgba(220,234,255,0)");
+      ctx.strokeStyle = lg; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(mt.x, mt.y);
+      ctx.lineTo(mt.x - mt.vx * .12, mt.y - mt.vy * .12); ctx.stroke();
+    }
+  }
+
+  function drawLightSky(t) {
+    var g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "#B9D4EE");
+    g.addColorStop(.42, "#DCE9F4");
+    g.addColorStop(.72, "#FFDCA6");
+    g.addColorStop(1, "#FFE9C6");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+    var sx = W * .5, sy = H * .34;
+    var breath = 1 + Math.sin(t * .5) * .05;
+    var halo = ctx.createRadialGradient(sx, sy, 0, sx, sy, W * .5 * breath);
+    halo.addColorStop(0, "rgba(255,246,224,.95)");
+    halo.addColorStop(.25, "rgba(255,222,164,.55)");
+    halo.addColorStop(1, "rgba(255,222,164,0)");
+    ctx.fillStyle = halo; ctx.fillRect(0, 0, W, H);
+
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(t * .03);
+    ctx.fillStyle = "rgba(255,240,214,.10)";
+    for (var i = 0; i < 10; i++) {
+      ctx.rotate(Math.PI * 2 / 10);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(W * .55, -W * .05);
+      ctx.lineTo(W * .55, W * .05);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+
+    var core = ctx.createRadialGradient(sx, sy, 0, sx, sy, 26 * breath);
+    core.addColorStop(0, "#FFFDF6");
+    core.addColorStop(1, "rgba(255,253,246,0)");
+    ctx.fillStyle = core;
+    ctx.beginPath(); ctx.arc(sx, sy, 26 * breath, 0, Math.PI * 2); ctx.fill();
+
+    for (var c = 0; c < clouds.length; c++) {
+      var cl = clouds[c];
+      cl.x += cl.sp;
+      if (cl.x - cl.w / 2 > W) cl.x = -cl.w / 2;
+      ctx.fillStyle = "rgba(255,255,255," + cl.a + ")";
+      ctx.beginPath();
+      ctx.ellipse(cl.x, cl.y, cl.w / 2, cl.h / 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawOrbits(t) {
+    for (var i = 0; i < orbs.length; i++) {
+      var o = orbs[i];
+      var a = t * o.sp + o.ph;
+      var x = 150 + 135 * Math.cos(a);
+      var y = 95 + 80 * Math.sin(a);
+      o.el.setAttribute("cx", x.toFixed(1));
+      o.el.setAttribute("cy", y.toFixed(1));
+    }
+  }
+
+  function drawWaterfall(dt, dark) {
+    wctx.clearRect(0, 0, wfW, wfH);
+    var rgb = dark ? "186,226,255" : "70,124,190";
+    var up = celeb.until > Date.now();
+    /* lip under the ellipse */
+    var lip = wctx.createLinearGradient(0, 0, wfW, 0);
+    lip.addColorStop(0, "rgba(" + rgb + ",0)");
+    lip.addColorStop(.5, "rgba(" + rgb + "," + (up ? .9 : (dark ? .5 : .35)) + ")");
+    lip.addColorStop(1, "rgba(" + rgb + ",0)");
+    wctx.fillStyle = lip;
+    wctx.fillRect(wfW * .08, 0, wfW * .84, up ? 2.4 : 1.6);
+    /* falling / reversing streams */
+    for (var i = 0; i < streams.length; i++) {
+      var s = streams[i];
+      if (up) {
+        s.y -= s.sp * dt * 2.4;
+        if (s.y + s.len < -6) { s.y = wfH + rand(4, 26); s.len = rand(28, 56); s.sp = rand(16, 34); }
+      } else {
+        s.y += s.sp * dt;
+        if (s.y - s.len > wfH) { s.y = rand(-44, -6); s.len = rand(28, 56); s.sp = rand(16, 34); }
+      }
+      var x = s.fx * wfW;
+      var headA = up ? .85 : Math.min(.55, .1 + .45 * (s.y / wfH));
+      var top = up ? s.y : s.y - s.len;
+      var bot = up ? s.y + s.len : s.y;
+      var g = wctx.createLinearGradient(0, top, 0, bot);
+      if (up) {
+        g.addColorStop(0, "rgba(" + rgb + "," + headA.toFixed(2) + ")");
+        g.addColorStop(1, "rgba(" + rgb + ",0)");
+      } else {
+        g.addColorStop(0, "rgba(" + rgb + ",0)");
+        g.addColorStop(1, "rgba(" + rgb + "," + headA.toFixed(2) + ")");
+      }
+      wctx.strokeStyle = g;
+      wctx.lineWidth = up ? 1.6 : 1.2;
+      wctx.beginPath();
+      wctx.moveTo(x, top);
+      wctx.lineTo(x, bot);
+      wctx.stroke();
+      wctx.fillStyle = "rgba(" + rgb + "," + Math.min(1, headA + .15).toFixed(2) + ")";
+      wctx.beginPath();
+      wctx.arc(x, up ? top : bot, up ? 1.3 : 1, 0, Math.PI * 2);
+      wctx.fill();
+    }
+  }
+
+  /* ---------------- celebration ---------------- */
+  var celeb = { until: 0, spawnUntil: 0, cx: 0, cy: 0, rx: 0, ry: 0 };
+  var sparks = [], ripples = [];
+
+  function startCelebrate(full) {
+    var now = Date.now();
+    celeb.until = now + (full ? 3400 : 2200);
+    celeb.spawnUntil = now + (full ? 1400 : 800);
+    var er = ellipseWrap.getBoundingClientRect();
+    var cr = card.getBoundingClientRect();
+    celeb.cx = er.left - cr.left + er.width / 2;
+    celeb.cy = er.top - cr.top + er.height / 2;
+    celeb.rx = er.width * .45;
+    celeb.ry = er.height * .42;
+    sparks = [];
+    ripples = [{ t0: now }, { t0: now + 300 }, { t0: now + 600 }];
+    card.classList.add("celebrate");
+  }
+  function endCelebrate() {
+    celeb.until = 0;
+    celeb.spawnUntil = 0;
+    sparks = [];
+    ripples = [];
+    card.classList.remove("celebrate");
+  }
+  function sparkColors(dark) {
+    return dark ? ["#8FD8FF", "#EAF6FF", "#A78BFA", "#FFFFFF"] : ["#1D5FA8", "#4E8FD1", "#E8964C", "#FFFFFF"];
+  }
+  function spawnSpark(cx, cy, rx, ry) {
+    var ang = rand(0, Math.PI * 2);
+    var rim = Math.random() < .68;
+    var px = cx + (rim ? rx * Math.cos(ang) : rand(-8, 8));
+    var py = cy + (rim ? ry * Math.sin(ang) : rand(-6, 6));
+    var sp = rand(70, rim ? 210 : 150);
+    sparks.push({
+      x: px, y: py,
+      vx: Math.cos(ang) * sp + rand(-30, 30),
+      vy: Math.sin(ang) * sp * (rim ? .75 : .4) - rand(50, 140),
+      life: 1, decay: rand(.4, .85),
+      r: rand(1, 2.5), tw: rand(5, 11), ph: rand(0, 6.28),
+      ci: Math.floor(Math.random() * 4)
+    });
+  }
+  function drawCelebration(dt, dark, t) {
+    if (celeb.until === 0) return;
+    var now = Date.now();
+    if (now > celeb.until) { endCelebrate(); return; }
+    var cols = sparkColors(dark);
+    if (now < celeb.spawnUntil) {
+      for (var k = 0; k < 4; k++) spawnSpark(celeb.cx, celeb.cy, celeb.rx, celeb.ry);
+    }
+    /* expanding ellipse ripples */
+    for (var i = 0; i < ripples.length; i++) {
+      var p = (now - ripples[i].t0) / 950;
+      if (p < 0 || p > 1) continue;
+      var a = (1 - p) * (dark ? .55 : .4);
+      ctx.strokeStyle = dark ? "rgba(143,216,255," + a.toFixed(2) + ")" : "rgba(29,95,168," + a.toFixed(2) + ")";
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.ellipse(celeb.cx, celeb.cy, celeb.rx * (1 + p * 1.1), celeb.ry * (1 + p * 1.1), 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    /* sparks */
+    for (var m = sparks.length - 1; m >= 0; m--) {
+      var s = sparks[m];
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      s.vy += 85 * dt;
+      s.vx *= .995;
+      s.life -= s.decay * dt;
+      if (s.life <= 0) { sparks.splice(m, 1); continue; }
+      var tw = .55 + .45 * Math.sin(t * s.tw + s.ph);
+      ctx.globalAlpha = Math.max(0, Math.min(1, s.life * tw));
+      ctx.fillStyle = cols[s.ci];
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  var lastFrame = 0;
+  function frame(now) {
+    raf = null;
+    if (document.hidden) { lastFrame = 0; return; }
+    var t = (Date.now() - t0) / 1000;
+    var dt = lastFrame ? Math.min(.05, (now - lastFrame) / 1000) : .016;
+    lastFrame = now;
+    var dark = card.getAttribute("data-theme") === "dark";
+    ctx.clearRect(0, 0, W, H);
+    if (dark) drawDarkSky(t); else drawLightSky(t);
+    drawOrbits(t);
+    drawWaterfall(dt, dark);
+    drawCelebration(dt, dark, t);
+    raf = requestAnimationFrame(frame);
+  }
+  function kick() { if (!raf) raf = requestAnimationFrame(frame); }
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) kick(); });
+  kick();
+
+  /* ---------------- init ---------------- */
+  roundN.textContent = String(lsInt(todayKey()));
+  renderStats();
+  setStatus("准备开始");
+  render();
+})();
+</script>
+</main>
+</body>
+</html>
