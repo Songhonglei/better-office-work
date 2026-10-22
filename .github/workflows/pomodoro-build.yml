@@ -11,6 +11,10 @@ on:
       - '.github/workflows/pomodoro-build.yml'
   workflow_dispatch:
 
+concurrency:
+  group: pomodoro-build
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: macos-latest
