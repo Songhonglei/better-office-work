@@ -27,6 +27,8 @@
 
 产物输出到 `dist/`（standalone HTML + 番茄钟.app）。需要 macOS 与 Xcode Command Line Tools。
 
+> 修改 `index.html`、`main.swift`、`Info.plist` 或 `build.sh` 并推送 main 后，GitHub Actions（`.github/workflows/pomodoro-build.yml`）会在 macOS 运行器上自动重建产物、同步 Pages 并回提交，无需手动构建。
+
 ## 源码结构
 
 ```

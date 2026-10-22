@@ -1,0 +1,43 @@
+name: Build Pomodoro Timer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/Pomodoro Timer/index.html'
+      - 'tools/Pomodoro Timer/main.swift'
+      - 'tools/Pomodoro Timer/Info.plist'
+      - 'tools/Pomodoro Timer/build.sh'
+      - '.github/workflows/pomodoro-build.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Pillow (icon generation)
+        run: python3 -m pip install --user pillow
+
+      - name: Build standalone HTML + macOS app
+        run: |
+          cd "tools/Pomodoro Timer"
+          ./build.sh
+
+      - name: Sync GitHub Pages
+        run: cp "tools/Pomodoro Timer/dist/index.html" docs/index.html
+
+      - name: Commit rebuilt artifacts (only when changed)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "tools/Pomodoro Timer/dist" "tools/Pomodoro Timer/icon.png" docs/index.html
+          if git diff --cached --quiet; then
+            echo "dist unchanged, nothing to commit"
+          else
+            git commit -m "chore(tools): rebuild Pomodoro Timer dist [skip ci]"
+            git push
+          fi
