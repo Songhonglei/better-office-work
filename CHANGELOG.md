@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — invoice-auto-forward v1.0.10（2026-10-20）
+
+- 修复**静默漏发**：`detect_fmt_from_magic` 原判定为「首字符是 `<` 即视为 XML」，而邮件正文 HTML 同样以 `<` 开头且 MIME 树中排在附件之前，导致正文被当发票 → 六要素全空 → 抬头比对失败 → 记为 `skipped`。实测近 7 天 4 张抬头全部命中的发票被整体漏转，报告却显示为「跳过 4」，看似正常过滤。
+- 现改为识别 HTML 头（`<!DOCTYPE`/`<html`/`<head`/`<body`）直接排除；XML 需通过 `ElementTree` 解析且根标签含 `Invoice`/`EInvoice`/`发票`。
+- `find_invoice_attachment` 只认真附件分区（有文件名或 `Content-Disposition: attachment`），候选按 **PDF > OFD > XML** 取最优；名为 `.xml` 实为 HTML 的附件丢弃。
+- 开启抬头白名单却提取不到购买方时，新增状态 `parse_failed` 并计入「无发票待人工」，**绝不再写入 `skipped`**——这是防止同类事故再次静默的关键闸门。
+- 销售方提取补兜底：数电票把购销双方排在同一行（`购 名称:A 售 名称:B`），原正则失配导致 `seller` 恒空。
+- 新增 `tests/test_attachment.py`（9 条纯标准库用例）并补充「回归测试」文档章节。
+
 ### Changed — text-humanize v1.5.0（2026-10-17）
 
 - 定位改为中英文清晰表达与风格润色，保留诊断、对照改写、体裁适配、修辞和排版；保留事实、引用、链接和必要披露。

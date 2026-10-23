@@ -3,6 +3,36 @@
 All notable changes to this skill are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+### v1.0.10 (2026-10-20)
+
+修复「邮件正文 HTML 被当成发票」导致的**静默漏发**。实测场景：近 7 天 4 张发票抬头全部命中，
+但 `scan` 报告「跳过 4」，且报告口径看起来像正常的抬头过滤。
+
+#### Fixed
+
+- **`detect_fmt_from_magic` 把 HTML 误判为 XML**（根因）：原判定为「首字符是 `<` 即视为 XML」，
+  而邮件正文 HTML 同样以 `<` 开头，且 MIME 树里正文排在附件之前 → `find_invoice_attachment`
+  第一个命中的就是正文 → `extract_xml` 解析 HTML 得空字段 → 抬头比对失败 → 记为 `skipped`。
+  现改为：识别 `<!DOCTYPE` / `<html` / `<head` / `<body` 等 HTML 头直接排除；XML 必须能被
+  `ElementTree` 解析且根标签含 `Invoice` / `EInvoice` / `发票`。
+- **`find_invoice_attachment` 只看真附件分区**：新增 `_is_attachment_part()`，要求有文件名或
+  `Content-Disposition: attachment`；正文分区不参与判定。另：多个候选按 **PDF > OFD > XML**
+  取最优（转发只带 PDF，PDF 版面也最贴近视觉顺序）；名为 `.xml` 实为 HTML 的附件直接丢弃。
+- **解析失败不再伪装成「抬头不符」**：开启抬头白名单后，若提取不到购买方名称，新增状态
+  `parse_failed` 并计入「无发票待人工」，绝不写入 `skipped`。这是防止同类事故再次静默的关键闸门。
+- **销售方提取补兜底**：数电票把购销双方排在同一行（`购 名称:A 售 名称:B`），原正则
+  `销售方\s*名称[:：]` 失配导致 seller 恒为空。改为回退取「名称:」第 2 次命中。
+
+#### Added
+
+- `tests/test_attachment.py`：9 条纯标准库回归用例，覆盖「纯正文 HTML 不算发票」「正文 HTML +
+  PDF 附件取 PDF」「PDF 优先于 XML」「RFC2047 折行编码的中文附件名」「名为 .xml 实为 HTML」
+  以及 extract 的购买方/销售方/金额/发票号断言。运行：`python3 tests/test_attachment.py`。
+
+#### Documentation
+
+- 「输出解读」新增「解析失败」状态行，并写明「解析失败绝不会落到跳过」的硬约束及其事故来源。
+
 ### v1.0.9 (2026-09-05)
 
 无功能变更，`scripts/invoice_forward.py` 行为与 v1.0.8 完全一致。全部为文档改进与勘误。

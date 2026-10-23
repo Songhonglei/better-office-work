@@ -44,7 +44,7 @@ from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-__version__ = "1.0.9"
+__version__ = "1.0.10"
 
 DEFAULT_CONFIG_PATH = os.path.expanduser("~/.workbuddy/invoice-forward/config.json")
 DEFAULTS = {
@@ -211,6 +211,12 @@ def extract(text: str) -> dict:
     m = re.search(r"销售方\s*名称[:：]\s*([^\s]+)", text)     # 销售方名称
     if m:
         f["seller"] = m.group(1)
+    else:
+        # 数电票把购销双方排在同一行（"购 名称:A 售 名称:B"），"销售方 名称" 正则失配，
+        # 用「名称:」第 2 次命中兜底（第 1 次已是购买方）。
+        names = re.findall(r"名称[:：]\s*([^\s]+)", text)
+        if len(names) >= 2:
+            f["seller"] = names[1]
     lines = text.split("\n")
     for i, l in enumerate(lines):
         m = re.search(r"\*[^*\n]+\*\s*(.+)", l)           # *税收分类*商品名 行
@@ -255,38 +261,83 @@ def _looks_like_ofd(data):
     return "OFD.XML" in {n.upper() for n in z.namelist()}
 
 
+_HTML_HEAD = (b"<!doctype", b"<html", b"<head", b"<body", b"<table", b"<div")
+
+
+def _looks_like_html(data):
+    """正文 HTML 也以 '<' 开头。不区分开就会把邮件正文当发票（历史静默漏发的根因）。"""
+    head = data[:512].lstrip().lower()
+    if any(head.startswith(h) for h in _HTML_HEAD):
+        return True
+    return b"<html" in head or b"<body" in head
+
+
+def _looks_like_invoice_xml(data):
+    """XML 必须真能解析，且根标签与发票相关；仅「首字符是 <」不足以判定。"""
+    if _looks_like_html(data):
+        return False
+    try:
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(data)
+    except Exception:
+        return False
+    tag = (root.tag or "").lower()
+    return any(k in tag for k in ("invoice", "einvoice", "发票"))
+
+
 def detect_fmt_from_magic(data):
     if data[:4] == b"%PDF":
         return "pdf"
     if data[:4] in (b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08"):
         return "ofd" if _looks_like_ofd(data) else ""
-    stripped = data.lstrip()
-    if stripped[:5] == b"<?xml" or stripped[:1] == b"<":
+    if _looks_like_invoice_xml(data):
         return "xml"
     return ""
 
 
+_ATTACH_PRIORITY = {"pdf": 0, "ofd": 1, "xml": 2}
+
+
+def _is_attachment_part(part):
+    """只认真正的附件分区：有文件名，或显式声明 attachment。
+    邮件正文（text/html、text/plain 且无文件名）必须排除在外。"""
+    if dhead(part.get_filename() or ""):
+        return True
+    return (part.get_content_disposition() or "") == "attachment"
+
+
 def find_invoice_attachment(msg):
     """在 MIME 树里找发票附件（PDF/OFD/XML）：文件名 / content-type / 魔数三重判定。
-    返回 (bytes, filename, fmt)；优先返回第一个判定成功的附件。"""
+    多个候选按 PDF > OFD > XML 取最优（转发只带 PDF，PDF 版面也最贴近视觉顺序）。
+    返回 (bytes, filename, fmt)。"""
+    best = None
     for part in msg.walk():
+        if not _is_attachment_part(part):
+            continue
         payload = part.get_payload(decode=True) or b""
         if not payload:
             continue
         fn = dhead(part.get_filename() or "")
         fmt = detect_fmt_from_name(fn)
-        if fmt:
-            return payload, fn or ("invoice." + fmt), fmt
-        ct = part.get_content_type().lower()
-        if "pdf" in ct:
-            return payload, fn or "invoice.pdf", "pdf"
-        if "ofd" in ct:
-            return payload, fn or "invoice.ofd", "ofd"
-        if "xml" in ct:
-            return payload, fn or "invoice.xml", "xml"
-        fmt = detect_fmt_from_magic(payload)
-        if fmt:
-            return payload, fn or ("invoice." + fmt), fmt
+        if not fmt:
+            ct = part.get_content_type().lower()
+            if "pdf" in ct:
+                fmt = "pdf"
+            elif "ofd" in ct:
+                fmt = "ofd"
+            elif "xml" in ct:
+                fmt = "xml"
+        if fmt == "xml" and _looks_like_html(payload):
+            continue  # 名为 .xml 实为 HTML 的附件（部分服务商正文即附件）
+        if not fmt:
+            fmt = detect_fmt_from_magic(payload)
+        if not fmt:
+            continue
+        key = _ATTACH_PRIORITY.get(fmt, 9)
+        if best is None or key < best[0]:
+            best = (key, payload, fn or ("invoice." + fmt), fmt)
+    if best:
+        return best[1], best[2], best[3]
     return b"", "", ""
 
 
@@ -712,6 +763,15 @@ def process(cfg, days, do_send):
             state[key] = {"status": "no_parser", "subject": subj}
             continue
         f, text = extract_invoice(att, fmt)
+        # 解析失败必须响亮：购买方没提取到就无法判定抬头，一律进「待人工」，
+        # 绝不允许落到 skipped——否则同一分支既表示「抬头不符」又表示「没解析出来」，
+        # 报告上看不出漏发（历史事故：正文 HTML 被当发票，4 张全被记成跳过）。
+        if cfg["rule"]["buyer_whitelist"] and not (f.get("buyer") or "").strip():
+            reason = ("解析失败：未提取到购买方名称（格式 %s，%d 字节），无法判定抬头"
+                      % (fmt, len(att)))
+            no_invoice.append((subj, reason))
+            state[key] = {"status": "parse_failed", "subject": subj, "reason": reason}
+            continue
         if not buyer_hit(cfg, f, text):
             skipped.append(subj)
             state[key] = {"status": "skipped", "subject": subj}
