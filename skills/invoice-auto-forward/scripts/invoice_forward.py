@@ -985,9 +985,12 @@ def _write_config_only(cfg, cfg_path):
         c.get("account", {}).pop(bad, None)
         c.pop(bad, None)
     os.makedirs(os.path.dirname(cfg_path), exist_ok=True)
-    with open(cfg_path, "w", encoding="utf-8") as fp:
-        json.dump(c, fp, ensure_ascii=False, indent=2)
-        fp.write("\n")
+    try:
+        with open(cfg_path, "w", encoding="utf-8") as fp:
+            json.dump(c, fp, ensure_ascii=False, indent=2)
+            fp.write("\n")
+    except OSError as e:
+        sys.exit("配置写入失败 %s：%s（检查目录权限）" % (cfg_path, e))
     print("[setup] 已写入 config.json：%s" % cfg_path)
 
 
