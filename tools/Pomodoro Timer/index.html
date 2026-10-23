@@ -483,6 +483,48 @@
     applyTheme(card.getAttribute("data-theme") === "dark" ? "light" : "dark");
   });
 
+  /* ---------------- hover pinning (inline style beats injected sheets) ---------------- */
+  function themeIsDark() { return card.getAttribute("data-theme") === "dark"; }
+  function applyInline(el, p) {
+    if (!p) return;
+    el.style.background = p.bg || "";
+    el.style.color = p.color || "";
+    el.style.borderColor = p.bc || "";
+  }
+  function clearInline(el) {
+    el.style.background = "";
+    el.style.color = "";
+    el.style.borderColor = "";
+  }
+  function pinHover(el, pick) {
+    el.addEventListener("pointerenter", function () { applyInline(el, pick(el, themeIsDark())); });
+    el.addEventListener("pointerleave", function () { clearInline(el); });
+  }
+  function hoverPal(dark) {
+    return dark
+      ? { bg: "rgba(237,241,255,.86)", color: "#0A0E1E", bc: "rgba(237,241,255,.9)" }
+      : { bg: "rgba(30,44,72,.86)", color: "#FFF3E2", bc: "rgba(30,44,72,.9)" };
+  }
+  pinHover(startBtn, function (el, dark) { return hoverPal(dark); });
+  segBtns.forEach(function (b) {
+    pinHover(b, function (el, dark) {
+      if (el.getAttribute("aria-selected") === "true")
+        return dark
+          ? { bg: "#EDF1FF", color: "#0A0E1E", bc: "#EDF1FF" }
+          : { bg: "#1E2C48", color: "#FFF3E2", bc: "#1E2C48" };
+      return hoverPal(dark);
+    });
+  });
+  [themeBtn, miniBtn, resetBtn].forEach(function (b) {
+    pinHover(b, function (el, dark) {
+      return {
+        bg: "",
+        color: dark ? "#EDF1FF" : "#1E2C48",
+        bc: dark ? "rgba(237,241,255,.4)" : "rgba(30,44,72,.44)"
+      };
+    });
+  });
+
   /* ---------------- mini lock mode ---------------- */
   function applyMini(on, save) {
     card.classList.toggle("mini", on);
