@@ -14,6 +14,7 @@
 
 | Skill | Description |
 |---|---|
+| [sms-agent-mail](./skills/sms-agent-mail/) | 手机短信邮件读取：原生邮箱工具或 Agently CLI，首次接入配置邮箱与 SIM/尾号，外置设置与凭据升级保留，附跨 Agent 端到端验收（v1.2.0） |
 | [qq-mail-manage](./skills/qq-mail-manage/) | QQ 邮箱管理：Python HTTP 直连无需 Codex，兼容 Codex OAuth；支持现代无初始化 MCP、账号与权限隔离、附件 CLI、发送及确认后移至垃圾箱；可审计核验兼容及中断恢复（v1.5.1） |
 | [macos-power-control](./skills/macos-power-control/) | macOS 合盖与电源设置：一句话需求解析，设置前确认，区分电池/接电、临时防休眠与持久策略，附验证和恢复流程 |
 | [invoice-auto-forward](./skills/invoice-auto-forward/) | 邮箱发票自动转发：IMAP 扫描 + 发票解析（PDF/OFD/XML）+ SMTP 转发，支持 QQ/163/126 多邮箱、链接型发票下载、抬头白名单与定时无人值守 |
@@ -39,6 +40,9 @@ cp -r skills/text-humanize ~/.workbuddy/skills/
 cp -r skills/zhihu-yanghao ~/.workbuddy/skills/
 cp -r skills/imagegen-batch ~/.workbuddy/skills/
 cp -r skills/macos-power-control ~/.workbuddy/skills/
+# 短信邮件助手用受限安装器保护外置设置，首次使用按 README 完成 onboarding
+python3 skills/sms-agent-mail/scripts/install.py --host codex
+# WorkBuddy 使用 --host workbuddy；其他 Agent 使用 --host custom --skills-dir <已确认的技能目录>
 # 或 ~/.claude/skills/ / ~/.cursor/skills/ 等
 
 # QQ 邮箱管理依赖真实 Codex CLI，复制完整技能目录

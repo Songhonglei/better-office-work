@@ -1,0 +1,41 @@
+name: SMS Agent Mail offline checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - skills/sms-agent-mail/**
+      - .github/workflows/sms-agent-mail-tests.yml
+  pull_request:
+    paths:
+      - skills/sms-agent-mail/**
+      - .github/workflows/sms-agent-mail-tests.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.11'
+          - os: ubuntu-latest
+            python: '3.13'
+          - os: macos-latest
+            python: '3.13'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Run synthetic checks without mailbox credentials
+        working-directory: skills/sms-agent-mail
+        run: python3 -m unittest discover -s tests -v
