@@ -1,10 +1,17 @@
 # SMS Agent Mail
 
-Version **1.2.0** · [MIT](LICENSE)
+Version **1.3.0** · [MIT](LICENSE)
 
 让 Agent 从专用邮箱读取手机转发的短信，核对服务、号码与时间，协助用户授权的网站登录。支持既有原生邮箱工具，或腾讯官方 Agently CLI；不需要 ECS，不发送或删除邮件，不修改宿主 MCP 配置。
 
 需要手机已能自动转发到目标邮箱。包内没有个人邮箱/号码默认值、授权码、token 或真实短信样本。每台设备在首次接入时确认参数并独立授权。
+
+## 1.3.0 变更
+
+- 新增 `scripts/check_message.py`：按 profile 规则做确定性判定，输出 `verdict`/`blockers`/`warnings` 与验证码长度（不回显验证码），把"读 prose 自己判断"换成可复现的校验
+- `onboard.py` 新增 `set-rules`（只改解析规则，自动留 `.bak` 副本）与 `confirm`（原生后端宿主验收留痕）
+- `init` 支持 `--service NAME=TAG` 与 `--subject-pattern`，不再只能改 JSON 才能换服务或换转发模板
+- 文档补充：手机拦截箱导致"手机有、邮箱没有"的排查顺序、`after` 与点击必须在同一次执行内完成、人工交接是验证码交付的默认路径
 
 ## 下载和安装
 
@@ -26,16 +33,26 @@ python3 scripts/install.py --host codex
 
 ## 首次使用
 
-先确认邮箱、SIM/尾号映射和可信转发发件人，以下全部是需替换的合成示例。优先复用可用原生邮箱连接；使用 CLI 时，在本 Skill 文件夹：
+先确认邮箱、SIM/尾号映射和可信转发发件人，以下全部是需替换的合成示例。优先复用可用原生邮箱连接；使用 CLI 时，在本 Skill 文件夹。其他 Agent 或第二账号用不同 profile 名称；profile 不会自动切换 CLI 的授权身份：
 
 ```bash
 python3 scripts/onboard.py prepare --profile codex
 npm install --prefix "$HOME/.local/share/sms-agent-mail/runtime" @tencent-qqmail/agently-cli@latest
-python3 scripts/onboard.py init --profile codex --email agent@example.invalid --cli "$HOME/.local/share/sms-agent-mail/runtime/node_modules/.bin/agently-cli" --route SIM2_1234=1234 --trusted-sender forwarder@example.invalid
+python3 scripts/onboard.py init --profile codex --email agent@example.invalid --cli "$HOME/.local/share/sms-agent-mail/runtime/node_modules/.bin/agently-cli" --route SIM2_1234=1234 --trusted-sender forwarder@example.invalid --service baidu=【百度】
 python3 scripts/onboard.py verify --profile codex
 ```
 
-`.invalid` 地址不能直接用于真实验收。原生连接使用 `--backend native`，由目标 Agent 调用真实身份工具验收；命令会明确返回需宿主验收，不伪装 CLI 成功。其他 Agent/第二账号选不同的 profile 名称；profile 不会自动切换 CLI 的授权身份。
+服务品牌与主题模板都可显式配置：`--service zhihu=【知乎】` 可重复，`--subject-pattern` 给含两个捕获组（路由、尾号）的正则。要改这些规则而保留身份，用 `set-rules`；它会把上一份配置存成 `<profile>.json.bak`：
+
+```bash
+python3 scripts/onboard.py set-rules --profile codex --service baidu=【百度】 --service zhihu=【知乎】
+```
+
+`.invalid` 地址不能直接用于真实验收。原生连接使用 `--backend native`，由目标 Agent 调用真实身份工具验收；`verify` 对 native 后端会明确返回"需宿主验收"（exit 1），宿主核对后用它留痕：
+
+```bash
+python3 scripts/onboard.py confirm --profile codex --evidence "host GetMe matched alias, mail:read present"
+```
 
 没有授权时由 Agent 先更新官方 CLI，再以后台 PTY 运行配置的 CLI `auth login`，原样显示官方链接，由用户核对邮箱与权限并完成。不要把密码、授权码或 token 发进聊天。已有正确身份直接复用，身份不符则停止，不覆盖别的账号。授权后再次 verify，然后执行 [端到端验收](references/end-to-end.md)。
 
@@ -50,13 +67,19 @@ python3 scripts/onboard.py verify --profile codex
 
 ## 验证
 
-不需要邮箱凭据即可运行离线检查：
+不需要邮箱凭据即可运行离线检查（当前 53 项，覆盖身份契约、接入边界、安装器保护与消息判定）：
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
-实际端到端由目标机器分别完成：安装 → onboarding → 身份 → 新短信搜索/完整正文 → 可信时间/服务/号码核对 → 在条件具备时完成网站登录 → 升级保留授权。仅有 created_at、缺浏览器或不能安全共享内存时，停止自动填写并记录阻塞，不宣称完整登录通过。
+拿到一条消息后可以直接做确定性判定，输出只有结论与验证码长度：
+
+```bash
+python3 scripts/check_message.py --profile codex --message-json message.json --after 2026-01-01T00:00:00Z --before 2026-01-01T00:05:00Z
+```
+
+实际端到端由目标机器分别完成：安装 → onboarding → 身份 → 新短信搜索/完整正文 → 可信时间/服务/号码核对 → 在条件具备时完成网站登录 → 升级保留授权。只有 created_at 而无正文时间、缺浏览器、或不能安全共享内存时，停止自动填写并记录阻塞（default 走人工交接），不宣称完整登录通过。手机有短信但邮箱没有转发件时，先查手机拦截箱。
 
 ## 交给其他 Agent 的提示词
 

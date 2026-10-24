@@ -168,6 +168,71 @@ class SkillOnboardingTests(unittest.TestCase):
         self.assertIsNone(report['workspace'])
         self.assertIsNone(report['oauth_file'])
 
+    def test_custom_services_and_subject_pattern_are_stored(self):
+        report = onboard.init_profile(self.data, 'codex', 'fixture@example.invalid',
+                                      routes={'SIM2_1218': '1218'},
+                                      trusted_senders=['forwarder@example.invalid'],
+                                      services={'zhihu': '【知乎】'},
+                                      subject_pattern=r'^(SIM[1-9]_([0-9]{4}))\s*验证码$')
+        self.assertEqual(report['state'], 'configured_not_verified')
+        settings = json.loads(onboard.profile_path(self.data, 'codex').read_text())
+        self.assertEqual(settings['services'], {'zhihu': '【知乎】'})
+        self.assertEqual(settings['subject_pattern'], r'^(SIM[1-9]_([0-9]{4}))\s*验证码$')
+
+    def test_invalid_service_or_pattern_rejected_before_writing(self):
+        for kwargs in ({'services': {'Zhihu!': '【知乎】'}},
+                       {'services': {'zhihu': '  【知乎】'}},
+                       {'services': {'zhihu': ''}},
+                       {'subject_pattern': r'no-groups-here'},
+                       {'subject_pattern': r'(unclosed'}):
+            with self.assertRaises(ValueError):
+                onboard.init_profile(self.data, 'codex', 'fixture@example.invalid', **kwargs)
+        self.assertFalse(onboard.profile_path(self.data, 'codex').exists())
+
+    def test_set_rules_keeps_identity_and_writes_private_copy(self):
+        onboard.init_profile(self.data, 'codex', 'fixture@example.invalid',
+                             routes={'SIM2_1218': '1218'}, trusted_senders=['A@Example.Invalid'],
+                             services={'baidu': '【百度】'})
+        path = onboard.profile_path(self.data, 'codex')
+        before = json.loads(path.read_text())
+        report = onboard.set_rules(self.data, 'codex',
+                                   services={'baidu': '【百度】', 'zhihu': '【知乎】'},
+                                   routes={'SIM1_0001': '0001', 'SIM2_1218': '1218'})
+        after = json.loads(path.read_text())
+        self.assertEqual(report['changed'], ['phone_routes', 'services'])
+        self.assertEqual(after['expected_email'], before['expected_email'])
+        self.assertEqual(after['backend'], before['backend'])
+        self.assertEqual(after['trusted_senders'], before['trusted_senders'])
+        self.assertEqual(after['services']['zhihu'], '【知乎】')
+        backup = path.with_suffix('.json.bak')
+        self.assertEqual(json.loads(backup.read_text()), before)
+        if os.name == 'posix':
+            self.assertEqual(stat.S_IMODE(backup.stat().st_mode), 0o600)
+
+    def test_set_rules_rejects_empty_call_and_bad_values(self):
+        onboard.init_profile(self.data, 'codex', 'fixture@example.invalid')
+        with self.assertRaises(ValueError):
+            onboard.set_rules(self.data, 'codex')
+        with self.assertRaises(ValueError):
+            onboard.set_rules(self.data, 'codex', trusted_senders=['not-an-address'])
+        with self.assertRaises(ValueError):
+            onboard.set_rules(self.data, 'codex', services={'bad key': '【X】'})
+
+    def test_confirm_only_records_native_host_checks(self):
+        onboard.init_profile(self.data, 'codex', 'fixture@example.invalid')
+        with self.assertRaises(ValueError):
+            onboard.confirm_identity(self.data, 'codex', 'host tool reported a match')
+        onboard.init_profile(self.data, 'native', 'fixture@example.invalid', backend='native')
+        with self.assertRaises(ValueError):
+            onboard.confirm_identity(self.data, 'native', 'short')
+        with self.assertRaises(ValueError):
+            onboard.confirm_identity(self.data, 'native', 'line\nbreak evidence')
+        report = onboard.confirm_identity(self.data, 'native', 'host GetMe matched alias')
+        self.assertEqual(report['state'], 'identity_verified_by_host')
+        settings = json.loads(onboard.profile_path(self.data, 'native').read_text())
+        self.assertEqual(settings['verification'], 'identity_verified_by_host')
+        self.assertEqual(settings['host_evidence'], 'host GetMe matched alias')
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -36,29 +36,37 @@
 | init --profile NAME --email ADDRESS | 首次必需明确邮箱；已有 profile 时省略 email 沿用原值，其他参数仍须与已有配置一致 |
 | --backend cli / native | init 默认 cli；native 由宿主真实工具验收 |
 | --cli PATH | 默认 agently-cli；可指定稳定绝对路径，不自动修改全局 PATH |
+| --data-dir PATH | 各 onboard 命令和安装器均支持；改变 Skill 数据目录，不改变供应商 OAuth 存储 |
 | --route SIM2_1234=1234 | 可重复，显式确认号码路由；未给出时新配置为空，不猜测真实号码 |
 | --trusted-sender ADDRESS | 可重复，来源须由用户的手机转发配置确认；未给出时新配置为空 |
+| --service NAME=TAG | 可重复，服务键与正文标签，如 `baidu=【百度】`；未给出时沿用默认的品牌集合 |
+| --subject-pattern REGEX | 主题正则，须含两个捕获组（路由、尾号）；换手机转发模板时改这里 |
 | status --profile NAME | 只读外置设置，不联网，不执行 CLI；验证状态仅是历史记录 |
 | paths --profile NAME | 显示配置与已记录/观察到的凭据位置，不读 token 内容 |
-| verify --profile NAME | CLI 调用 +me 和本地 auth status，更新外置验收元数据，不读取短信 |
-| --data-dir PATH | 各 onboard 命令和安装器均支持；改变 Skill 数据目录，不改变供应商 OAuth 存储 |
+| verify --profile NAME | CLI 调用 +me 和本地 auth status，更新外置验收元数据，不读取短信；native 后端恒返回需宿主验收（exit 1），不写 verification |
+| confirm --profile NAME --evidence TEXT | 仅 native 后端：宿主真实身份工具验收后记录 `identity_verified_by_host` 与证据文本（8–200 字符），cli 后端拒绝 |
+| set-rules --profile NAME [--route…] [--trusted-sender…] [--service…] [--subject-pattern…] | 只改解析规则；写入前把上一份配置复制为 `<profile>.json.bak`（0600），不动身份、后端、CLI |
+| check_message.py --profile NAME [--message-json PATH] [--after ISO] [--before ISO] | 按 profile 规则判定单条消息，输出 pass/blocked 与原因，只报告验证码长度；默认从 stdin 读消息 JSON |
 | check_access.py --expected-email ADDRESS [--cli PATH] | 只核对 CLI 身份/权限，不读取短信或写设置 |
 | install.py --host codex/workbuddy/custom | 从新下载目录安装/升级，custom 必须配 --skills-dir |
 | install.py --skills-dir PATH | 经目标 Agent 核实的技能父目录；最终子目录为 sms-agent-mail |
 
-profile JSON 的 schema=1，expected_email/cli/backend 是身份与运行配置；phone_routes/subject_pattern/services/trusted_senders 是用户确认的解析规则；verification/checked_at/reported_workspace 是历史身份检查元数据。status 不是实时授权证明，执行读信前仍做身份调用。
+profile JSON 的 schema=1，expected_email/cli/backend 是身份与运行配置；phone_routes/subject_pattern/services/trusted_senders 是用户确认的解析规则；verification/checked_at/reported_workspace/host_evidence 是历史身份检查元数据。status 不是实时授权证明，执行读信前仍做身份调用。`services` 为空、`trusted_senders` 为空或 `phone_routes` 为空时，`check_message.py` 一律判 blocked——缺规则不等于可以放宽，只是不能自动选码。
 
 ## 失败恢复
 
 - 未找到 CLI/依赖：安装官方依赖或恢复原来配置的稳定路径，再 verify；不删除凭据。
 - initial_email_required/invalid_email：提供真实目标邮箱，不用示例地址或复制其他账号授权。
-- existing_profile_differs_not_overwritten：保留原配置；核对是否用错 profile/路径。确需改参数时先保留副本，再由用户授权编辑外置配置。
+- existing_profile_differs_not_overwritten：保留原配置；核对是否用错 profile/路径。要改解析规则用 `set-rules`（自带 `.bak` 副本），不要重跑 init 覆盖；要改身份/后端则新建 profile。
+- invalid_services/invalid_subject_pattern：服务键为小写字母数字连字符、标签非空且不含换行；主题正则须含两个捕获组。先修正再写入。
+- no_rules_supplied：set-rules 至少要给一个规则参数。
+- confirm_only_for_native_backend/invalid_host_evidence：confirm 只用于 native 后端，且证据文本 8–200 字符、不含控制字符；cli 后端走 verify。
 - 私有目录/文件权限错误：Unix 确认属于当前用户，目录 0700、profile 0600；拒绝符号链接、与 Skill 或供应商存储重叠的数据路径。不要通过放宽凭据权限绕过。
 - 身份不符：停止，确认目标宿主和账号；不登出、不自动覆盖现有授权。
-- native 验收返回非零：由 Agent 使用宿主真实身份工具核对，不重新走 CLI 冒充成功。
+- native 验收返回非零：由 Agent 使用宿主真实身份工具核对，再用 confirm 记录证据，不重新走 CLI 冒充成功。
 - 安装器 invalid paths/files：检查源文件是否齐全、是否从新下载目录执行及目标是否与受保护目录重叠；修正后再运行，不删除配置。
 
-退出码：onboard init/prepare/status/paths 成功为 0；verify 的身份或原生验收未通过为 1，执行/配置错误为 2（上游检查可能透传 2）。check_access 成功为 0，身份/权限不匹配为 1，CLI/契约失败为 2。安装器成功为 0，参数、路径或文件错误为 2。
+退出码：onboard 的 prepare/init/status/paths/set-rules/confirm 成功为 0；verify 的身份或原生验收未通过为 1，执行/配置错误为 2（上游检查可能透传 2）。check_message 判定 pass 为 0、blocked 为 1、配置或输入错误为 2；check_access 成功为 0，身份/权限不匹配为 1，CLI/契约失败为 2。安装器成功为 0，参数、路径或文件错误为 2。
 
 ## 升级保护
 
