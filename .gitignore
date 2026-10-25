@@ -26,3 +26,6 @@ id_rsa.pub
 
 # Skill runtime configs — contain real account IDs; only config.example.json is committed
 skills/**/config.json
+
+# 打包/发布产物（可随时由 skills/ 重新生成）
+output/
