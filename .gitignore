@@ -26,6 +26,8 @@ id_rsa.pub
 
 # Skill runtime configs — contain real account IDs; only config.example.json is committed
 skills/**/config.json
+# Skill runtime ledger — 记录本机已发布过的文章，属用户数据，不入库
+skills/**/state/published.json
 
 # 打包/发布产物（可随时由 skills/ 重新生成）
 output/

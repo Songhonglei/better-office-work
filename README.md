@@ -23,6 +23,7 @@
 | [text-humanize](./skills/text-humanize/) | 中英文清晰表达与风格润色：改善冗余、结构、语气、节奏与排版，保留事实、引用及必要披露；不判断作者来源或以规避检测为目标（v1.5.0） |
 | [zhihu-yanghao](./skills/zhihu-yanghao/) | 知乎养号：三线选题模型 + 每日1回答（写→发布→折叠验证）+ 点赞互动（计数差值自校正防误 toggle），依赖 ego-browser |
 | [imagegen-batch](./skills/imagegen-batch/) | 批量生图：防同名覆盖 + 量水印而非猜 + 相框感后期加白边 + 人物「标识包」防塌脸；附 `白纸速写`/`水墨文艺风` 两套命名风格配方 |
+| [mp-article-to-xhs](./skills/mp-article-to-xhs/) | 公众号长文转小红书图文：三条选题路径（URL/标题/热度候选）+ 配图滚动懒加载硬校验一张不漏 + 水印自动裁 + 8 套字体方案 + 默认只推草稿箱，发过的自动跳过（v1.3.0） |
 
 ## Quick Start
 
@@ -40,6 +41,9 @@ cp -r skills/text-humanize ~/.workbuddy/skills/
 cp -r skills/zhihu-yanghao ~/.workbuddy/skills/
 cp -r skills/imagegen-batch ~/.workbuddy/skills/
 cp -r skills/macos-power-control ~/.workbuddy/skills/
+cp -r skills/mp-article-to-xhs ~/.workbuddy/skills/
+# 公众号转小红书依赖 ego-browser 与 xhs-image-note-release，装完跑自检：
+python3 ~/.workbuddy/skills/mp-article-to-xhs/scripts/doctor.py
 # 短信邮件助手用受限安装器保护外置设置，首次使用按 README 完成 onboarding
 python3 skills/sms-agent-mail/scripts/install.py --host codex
 # WorkBuddy 使用 --host workbuddy；其他 Agent 使用 --host custom --skills-dir <已确认的技能目录>

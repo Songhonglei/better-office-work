@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — mp-article-to-xhs v1.3.0（2026-10-27）
+
+新增 skill：公众号长文 → 小红书图文笔记的完整流水线。
+
+- **三条选题路径**：`--mode url` 指定链接 / `--mode title` 标题关键词模糊匹配 / `--mode hot` 按公众号后台阅读数出热度候选池
+- **配图一张不漏**：`fetch_article.js` 反复滚动触发懒加载后枚举 `#js_content img`，`check` 子命令做集合比对，退出码 2 = 下载不全、3 = 校验失败；唯一豁免是合规风险图需显式 `--exclude` 声明
+- **公众号水印自动裁**：右下角「公众号 · 账号名」属小红书站外引流违禁词，按图高 20%（下限 200px、上限 30%）裁底
+- **8 套字体方案**：宋体文气 / 黑体标题 / 柔和文艺 / 站酷小薇古风 / 庆科黄油粗圆 / 马善政毛笔行楷 / Playfair 杂志编辑 / 思源宋卷宗；颜色主题与字体方案正交
+- **字体本地缓存**：三套中文字体首次使用下载到 `~/.cache/mp2xhs/fonts/`（jsDelivr、OFL 授权），之后内嵌 `@font-face` 引本机文件，离线可渲染；下载失败自动回落 CDN，再回落系统字体，不中断出图
+- **默认只推草稿**：`publish.sh` 把 `MODE="draft"` 写死为代码默认，直接发布必须显式 `--publish`；发布前预检标题单引号 / 正文反引号 / 超 18 张图，避免传完图才失败
+- **防重发台账**：`state/published.json` 按 URL + 规范化标题双重排除
+- 附 `doctor.py` 依赖自检（Python/Pillow/Chrome/ego-browser/发布底座/中文字体/字体 CDN/字体缓存），缺项直接打印对应系统安装命令
+
 ### Fixed — invoice-auto-forward v1.0.10（2026-10-20）
 
 - 修复**静默漏发**：`detect_fmt_from_magic` 原判定为「首字符是 `<` 即视为 XML」，而邮件正文 HTML 同样以 `<` 开头且 MIME 树中排在附件之前，导致正文被当发票 → 六要素全空 → 抬头比对失败 → 记为 `skipped`。实测近 7 天 4 张抬头全部命中的发票被整体漏转，报告却显示为「跳过 4」，看似正常过滤。
