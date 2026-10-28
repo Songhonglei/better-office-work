@@ -10,7 +10,9 @@ description: >
   卡片主题、布局、背景图、遮罩强度、模糊、颗粒等参数均可自由配置。
   当用户要求发小红书、发布图文笔记、上传到小红书、小红书发帖、存草稿、推到草稿箱或涉及小红书内容发布时触发此技能。
   前置依赖：ego-browser (ego-lite) 已安装且正在运行，小红书账号已登录。
-version: 1.7.1
+slug: xhs-image-note-release
+displayName: 小红书图文笔记发布
+version: 1.7.2
 bins: [node, python3]
 ---
 
@@ -30,8 +32,8 @@ bins: [node, python3]
 |------|------|------|----------|------|
 | **ego-browser** (ego-lite) | CLI 工具 + Skill | 浏览器自动化引擎，提供 CDP、snapshot、fillInput 等 API | 参考 [ego-browser skill](https://github.com/Songhonglei/better-office-work-flow) 安装 | `ego-browser --version` 能正常输出版本号 |
 | **小红书账号** | 平台账号 | 需在 ego-lite 浏览器中已登录小红书 | 手动在 ego-lite 中登录 creator.xiaohongshu.com | 打开创作平台能看到发布按钮 |
-| **Google Chrome / Chromium** | 系统浏览器 | 卡片生成器 (`card_generator.py`) 使用 Chrome headless 渲染 PNG | macOS: 从 [google.com/chrome](https://www.google.com/chrome/) 安装；Linux: `apt install chromium-browser` | 终端运行 `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --version` 或 `chromium --version` |
-| **Python 3.8+** | 运行时 | 运行 `card_generator.py`，仅用标准库，无需 pip 安装任何包 | macOS 自带；Linux: `apt install python3` | `python3 --version` 输出 ≥ 3.8 |
+| **Google Chrome / Chromium** | 系统浏览器 | 卡片生成器 (`references/card-generator/card_generator.py`) 使用 Chrome headless 渲染 PNG | macOS: 从 [google.com/chrome](https://www.google.com/chrome/) 安装；Linux: `apt install chromium-browser` | 终端运行 `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --version` 或 `chromium --version` |
+| **Python 3.8+** | 运行时 | 运行卡片生成器脚本，仅用标准库，无需 pip 安装任何包 | macOS 自带；Linux: `apt install python3` | `python3 --version` 输出 ≥ 3.8 |
 
 > **特别提示（仅 WorkBuddy 环境）**：较新版本的 WorkBuddy 需先关闭沙箱功能（设置 → 关闭沙箱），否则运行 ego-browser 会被中断。这**不是本技能的依赖**——在终端或其他 Agent 中直接运行本技能无需任何沙箱相关操作。
 >
@@ -378,7 +380,7 @@ SVG 底层
 
 ### CLI 用法
 
-> ⚠️ 以下命令统一使用生成器的完整路径。若已 `cd` 到 `references/card-generator/`，可简写为 `python3 card_generator.py`。
+> ⚠️ 以下命令统一使用生成器的完整路径。若已 `cd` 到 `references/card-generator/`，可直接用相对路径调用该脚本。
 > **不要在续行符 `\` 后面加行内注释**——`\` 会转义空格而非换行，`#` 之后整条命令被截断，下一行参数会被当作命令执行。
 
 ```bash

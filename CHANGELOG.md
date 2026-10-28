@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — xhs-image-note-release v1.7.2（2026-10-27）
+
+- **发布铁律**：卡片图片、标题、正文、话题里严禁出现「微信搜索」「公众号」「加微信」「扫码」等引流文案，也不得放二维码——小红书对此判得最重，已有笔记被删。只允许 `@账号名` 软性署名，靠内容和评论区自然导流。
+- **frontmatter**：补 `slug` 与 `displayName`（skillhub.cn 发布的硬性要求，只有 `name` 会报「缺少 slug」）。
+- **Docs**：SKILL.md 里 `card_generator.py` 的裸文件名引用改为完整路径 `references/card-generator/card_generator.py`，避免读者按裸名找不到脚本。
+
 ### Added — mp-article-to-xhs v1.3.0（2026-10-27）
 
 新增 skill：公众号长文 → 小红书图文笔记的完整流水线。

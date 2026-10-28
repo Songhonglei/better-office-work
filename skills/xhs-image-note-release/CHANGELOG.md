@@ -3,6 +3,11 @@
 All notable changes to this skill are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+### v1.7.2 (2026-10-27)
+
+- **铁律（Docs）**: SKILL.md 新增「发布前必读」提醒与「注意事项」第 15 条——**内容严禁出现任何引流信息**：卡片图片、标题、正文、话题中不得出现「微信搜索」「公众号」「加微信」「扫码」等引流文案，也不得放置二维码图片，否则有封号风险；只允许 `@账号名` 软性署名，靠内容质量与评论区互动自然导流。
+- **Meta**: frontmatter 补充 `slug` 与 `displayName`（skillhub.cn 发布硬性要求）。
+
 ### v1.7.1 (2026-10-09)
 
 - **Fix (root cause)**: `scripts/publish_note.sh` 修复「登录态过期被误判为已登录」导致报错信息误导的根因。
