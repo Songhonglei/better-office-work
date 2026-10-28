@@ -358,8 +358,10 @@ def main():
     p.add_argument("--cards", required=True)
     p.add_argument("--out", required=True)
     p.add_argument("--theme", default="ink")
-    p.add_argument("--typeface", default=None, choices=["classic", "modern", "soft"],
-                   help="字体方案，不给则用 cards.json 顶层或主题默认")
+    p.add_argument("--typeface", default=None,
+                   help="字体方案，透传给 mp2xhs_card.py 校验：classic/modern/soft/"
+                        "gufeng/qingke/brush/mags/dossier（不在此处限定 choices，"
+                        "避免新增字体时两处不同步；不给则用 cards.json 顶层或主题默认）")
     p.add_argument("--only", type=int, default=0, help="只渲染第 N 页（调样式时省时间）")
     p.set_defaults(func=cmd_render)
 

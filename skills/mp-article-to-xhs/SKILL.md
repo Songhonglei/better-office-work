@@ -293,6 +293,7 @@ bash $SK/scripts/publish.sh \
 | `cannot write mode RGBA as JPEG` | 图片带透明通道 | 保存前 `convert("RGB")` |
 | 环境变量传不进 `ego-browser nodejs` | daemon 不继承 env | 参数走 JSON 文件（`/tmp/mp2xhs_*_params.json`） |
 | 草稿箱里出现「暂无笔记标题」废草稿 | 反复进出编辑页自动产生 | 手动清理，勿在短时间反复跑同一篇 |
+| 个别字变成实心黑方块（「回」「圃」等） | 站酷小薇（ZCOOL XiaoWei）字形缺陷：内轮廓绕向与外轮廓相同，按填充规则被整块填满——Chrome 与 Pillow 表现一致，不是渲染或缓存问题 | 换掉该字，或把方案改成 `brush`/`classic`。**`gufeng` 出图必须逐页看图**，黑块在缩略图上很明显 |
 
 ## 产物结构
 
