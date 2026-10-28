@@ -67,7 +67,12 @@ CSS_DOSSIER = ("https://fonts.font.im/css2?family=Noto+Serif+SC:wght@700"
 
 
 def ensure_local_font(filename, quiet=False):
-    """确保字体文件在本地缓存里；返回绝对路径，失败返回 None。"""
+    """确保字体文件在本地缓存里；返回绝对路径，失败返回 None。
+
+    下载后按 Content-Length 校验字节数：实测 jsDelivr 会中途截断（庆科黄油
+    下到 6.1MB 就断，完整是 8.3MB），截断文件 Pillow 仍能加载、渲染看似正常，
+    但部分字形会错——所以必须比对长度，不能只判 size > 100KB。
+    """
     path = os.path.join(FONT_DIR, filename)
     if os.path.exists(path) and os.path.getsize(path) > 100_000:
         return path
@@ -77,13 +82,21 @@ def ensure_local_font(filename, quiet=False):
         import urllib.request
         if not quiet:
             print(f"↓ 首次下载字体 {fam} …", flush=True)
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=90) as r, open(path + ".part", "wb") as f:  # noqa: S310
-            while True:
-                chunk = r.read(1 << 20)
-                if not chunk:
-                    break
-                f.write(chunk)
+        req = urllib.request.Request(
+            url, headers={"User-Agent": "Mozilla/5.0", "Accept-Encoding": "identity"}
+        )
+        with urllib.request.urlopen(req, timeout=90) as r:  # noqa: S310
+            expected = r.headers.get("Content-Length")
+            got = 0
+            with open(path + ".part", "wb") as f:
+                while True:
+                    chunk = r.read(1 << 20)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    got += len(chunk)
+        if expected and got != int(expected):
+            raise OSError(f"下载不完整：{got} / {expected} 字节")
         os.replace(path + ".part", path)
         if not quiet:
             print(f"✅ 字体已缓存：{path}", flush=True)

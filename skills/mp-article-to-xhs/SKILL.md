@@ -6,7 +6,7 @@ description: >
   裁掉公众号水印，生成「上图下文」3:4 卡片，默认只推送到小红书草稿箱（只有用户明确要求才直接发布）。
   已处理过的文章自动跳过，绝不重发。
   触发词：公众号转小红书、文章生成笔记、生成小红书图文、mp2xhs、把这篇公众号做成卡片。
-version: 1.3.0
+version: 1.3.1
 bins: [node, python3, ego-browser]
 python: [Pillow, PIL]
 depends_on_skills: [xhs-image-note-release]
@@ -112,6 +112,7 @@ python3 $SK/scripts/pipeline.py mark --url "<URL>" --title "<标题>" --status d
 | `scripts/fetch_article.js` | 打开单篇，滚动触发懒加载，抓正文 + 下载全部配图 | `fetch` 子命令经 ego-browser 执行 |
 | `scripts/pipeline.py` | 编排：选题 / 抓取 / 校验 / 渲染 / 登记状态 | 直接跑 |
 | `scripts/mp2xhs_card.py` | 按 `<slug>/cards.json` 渲染 1080×1440 卡片 PNG | `render` 子命令调用 |
+| `scripts/font_audit.py` | 字形审计：逐字渲染查「实心黑块」缺陷字，顺带看覆盖率 | 手动跑，换字体后跑一次 |
 | `scripts/publish.sh` | 发布包装，**默认草稿箱**，仅 `--publish` 才直发 | 直接跑 |
 | `scripts/doctor.py` | 依赖自检，缺什么给安装命令 | 部署后先跑一次 |
 
@@ -209,6 +210,16 @@ python3 $SK/scripts/pipeline.py mark --url "<URL>" --title "<标题>" --status d
 | `dossier` | 思源宋 700 | 思源宋 | 厚重、卷宗档案 | 考据、数据、年代考 |
 
 - 优先级：命令行 `--typeface` > `<slug>/cards.json` 顶层 `"typeface"` > 颜色主题默认（ink/gold → `gufeng`）
+
+**八套方案 ≠ 八个字体文件**，实际来源只有三类：
+
+| 来源 | 涉及方案 | 说明 |
+|---|---|---|
+| 系统自带（宋体 Songti SC / 苹方 PingFang SC） | `classic` `modern` `soft` | 不下载任何东西，靠 CSS 字体栈跨平台 fallback |
+| **本地缓存 TTF（3 个）** | `gufeng`(站酷小薇) `qingke`(庆科黄油) `brush`(马善政) | 单字重、体积 6–8MB，首次下载后离线可用，也能做全量字形审计 |
+| CDN 子集（按需分片） | `mags`(思源宋+Playfair) `dossier`(思源宋+IBM Plex Mono) | 思源宋全量 25MB 且是可变字重，缓存整包不划算，走 `fonts.font.im` 子集 |
+
+所以「三款缓存字体」就是上表第二行；思源宋、Playfair、IBM Plex Mono 走 CDN，没有本地文件（要审计就用 `font_audit.py` 单独指定全量文件路径）。
 - 判断口径：偏叙事怀旧 → `classic`/`gufeng`；偏讲清楚一个知识点 → `modern`；偏情绪和留白 → `soft`；标题短又有书法味 → `brush`
 - 前三套纯系统字体，字体栈写了跨平台 fallback（macOS 宋体/苹方 → Linux 思源/Noto → Windows 雅黑/宋体），换机器不会直接崩
 - **中文字体本地缓存**（v1.3.0）：`gufeng` / `qingke` / `brush` 用到的站酷小薇、庆科黄油、马善政首次渲染时自动下载到 `~/.cache/mp2xhs/fonts/`（jsDelivr 源，OFL 授权），之后直接内嵌 `@font-face` 指本机文件——**离线也能渲染**，单页约 10s
@@ -294,6 +305,7 @@ bash $SK/scripts/publish.sh \
 | 环境变量传不进 `ego-browser nodejs` | daemon 不继承 env | 参数走 JSON 文件（`/tmp/mp2xhs_*_params.json`） |
 | 草稿箱里出现「暂无笔记标题」废草稿 | 反复进出编辑页自动产生 | 手动清理，勿在短时间反复跑同一篇 |
 | 个别字变成实心黑方块（「回」「圃」等） | 站酷小薇（ZCOOL XiaoWei）字形缺陷：内轮廓绕向与外轮廓相同，按填充规则被整块填满——Chrome 与 Pillow 表现一致，不是渲染或缓存问题 | 换掉该字，或把方案改成 `brush`/`classic`。**`gufeng` 出图必须逐页看图**，黑块在缩略图上很明显 |
+| 字体缓存文件被截断仍被当成完整 | 下载无长度校验（jsDelivr 实测会把庆科黄油下到 6.1MB 就断，完整 8.3MB），截断文件 Pillow 照样能加载、渲染看似正常 | v1.3.1 起 `ensure_local_font()` 按 Content-Length 校验；历史缓存怀疑有问题就 `rm -rf ~/.cache/mp2xhs/fonts` 重下 |
 
 ## 产物结构
 
