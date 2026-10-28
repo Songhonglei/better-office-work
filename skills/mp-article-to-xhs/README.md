@@ -16,6 +16,7 @@
 - **图片完整性硬校验**：`check` 子命令做集合比对，退出码 2 = 下载不全、3 = 校验失败；唯一豁免是合规风险图需显式 `--exclude` 声明
 - **公众号水印自动裁掉**：右下角「公众号 · 账号名」属小红书站外引流违禁词，按图高 20%（下限 200px、上限 30%）裁底
 - **8 套字体方案**：宋体文气 / 黑体标题 / 柔和文艺 / 古风站酷小薇 / 粗圆庆科黄油 / 毛笔行楷 / 杂志编辑 / 纸本卷宗，按内容气质选
+- **发布后数据回收**：`stats` 子命令读创作者中心笔记管理页，抓观看/评论/点赞/收藏/分享，写回台账并算互动率（只覆盖最新 10 条）
 - **默认草稿箱**：`publish.sh` 把 `MODE="draft"` 写死为代码默认，直接发布必须显式 `--publish`
 - **发布前预检**：标题英文单引号、正文反引号或 `${`、超过 18 张图，全部在传图之前拦下（否则白等两分钟才失败）
 
@@ -42,6 +43,16 @@ bash $SK/scripts/publish.sh --dir ./<slug>/cards --title "<≤20字>" \
      --body-file ./<slug>/body.txt --topics "历史冷知识,三星堆"
 python3 $SK/scripts/pipeline.py mark --url "<URL>" --title "<标题>" --status drafted --cards 7 --images 6
 ```
+
+发布之后回收数据（看哪类选题在你号上真能带互动）：
+
+```bash
+python3 $SK/scripts/pipeline.py stats             # 抓最新 10 条，打表 + 写回台账
+python3 $SK/scripts/pipeline.py stats --link "公众号标题=小红书标题"   # 标题改过时钉死映射
+python3 $SK/scripts/pipeline.py status            # 台账 + 每条最新数据
+```
+
+指标顺序按图标读：眼睛=观看、气泡=评论、心=点赞、星=收藏、箭头=分享（和小红书网页端顺序不同）。
 
 ## 字体方案（8 套）
 

@@ -7,9 +7,11 @@
   check   校验图片完整性（抓到的 == 用上的）
   render  渲染卡片 PNG
   mark    登记状态（drafted / published），用于防重发
-  status  查看已处理清单
+  stats   回收发布后数据（观看/点赞/收藏/评论/分享），写回台账
+  status  查看已处理清单（含最新数据）
 """
 import argparse
+import difflib
 import json
 import os
 import random
@@ -320,12 +322,185 @@ def cmd_mark(args):
     print(f"已登记: {args.title} -> {args.status}")
 
 
+def _bind_xhs_titles(state, items):
+    """把台账记录与小红书笔记配对。
+
+    小红书标题往往和公众号原标题不同（发笔记时会重命名），所以按四级匹配：
+    xhs_title 精确 → 公众号标题精确 → 双向包含 → 相似度最高且 ≥0.5。
+    """
+    by_title = {norm_title(i["title"]): i for i in items}
+    used = set()
+    pairs, unmatched = [], []
+
+    def take(rec, item):
+        used.add(item["title"])
+        pairs.append((rec, item))
+
+    # 第一轮：精确匹配（先 xhs_title，再公众号标题）
+    rest = []
+    for r in state["records"]:
+        if r.get("status") not in ("published", "drafted"):
+            continue
+        key = norm_title(r.get("xhs_title", "")) or norm_title(r.get("title", ""))
+        item = by_title.get(key)
+        if item and item["title"] not in used:
+            take(r, item)
+        else:
+            rest.append(r)
+
+    # 第二轮：双向包含 + 相似度
+    for r in rest:
+        cand = norm_title(r.get("title", ""))
+        alias = norm_title(r.get("xhs_title", ""))
+        best, best_score = None, 0.0
+        for item in items:
+            if item["title"] in used:
+                continue
+            it = norm_title(item["title"])
+            if not it or not cand:
+                continue
+            # 注意：alias 为空时不能参与 in 判断——空串是任何字符串的子串，
+            # 会让所有候选都得 1.0 分，实测直接配错一格。
+            if it in cand or cand in it or (alias and alias in it):
+                score = 1.0
+            else:
+                score = difflib.SequenceMatcher(None, cand, it).ratio()
+            if score > best_score:
+                best, best_score = item, score
+        if best and best_score >= 0.5:
+            pairs.append((r, best))
+            used.add(best["title"])
+            best["_score"] = round(best_score, 2)
+        else:
+            unmatched.append(r)
+
+    # 第三轮：时间兜底。小红书标题常被大改（「西班牙赢了阿根廷…」→「拉美人，从来不是一种人」），
+    # 标题相似度撑不住时，用「推草稿时间 ≈ 小红书发布时间」配对，差值最小且 < 72 小时。
+    def parse_dt(t):
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+            try:
+                return datetime.strptime(t.strip(), fmt)
+            except (ValueError, AttributeError):
+                continue
+        return None
+
+    if unmatched:
+        cands = []
+        for r in unmatched:
+            rt = parse_dt(r.get("created_at", ""))
+            if not rt:
+                continue
+            for item in items:
+                if item["title"] in used:
+                    continue
+                it = parse_dt(item.get("time", ""))
+                if not it:
+                    continue
+                hours = abs((it - rt).total_seconds()) / 3600
+                if hours <= 72:
+                    cands.append((hours, r, item))
+        # 贪心：每次取时间最接近的一对，配完即移除，避免两条记录抢同一条笔记
+        cands.sort(key=lambda x: x[0])
+        paired = set()
+        for hours, r, item in cands:
+            if id(r) in paired or item["title"] in used:
+                continue
+            pairs.append((r, item))
+            used.add(item["title"])
+            paired.add(id(r))
+            item["_matched_by"] = f"time(~{hours:.1f}h)"
+            if r in unmatched:
+                unmatched.remove(r)
+
+    orphans = [i for i in items if i["title"] not in used]
+    return pairs, unmatched, orphans
+
+
+def cmd_stats(args):
+    state = load_state()
+
+    for pair in args.link or []:
+        if "=" not in pair:
+            sys.exit(f"[ERROR] --link 格式应为「公众号标题=小红书标题」，收到：{pair}")
+        src, dst = pair.split("=", 1)
+        rec = find_record(state, title=src.strip())
+        if not rec:
+            sys.exit(f"[ERROR] 台账里没有这篇：{src}")
+        rec["xhs_title"] = dst.strip()
+        rec["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"已建立映射: {src.strip()} → {dst.strip()}")
+    if args.link:
+        save_state(state)
+
+    out = "/tmp/mp2xhs_stats.json"
+    params = {"out": out}
+    print("正在读取小红书笔记管理页（约 30 秒）…", flush=True)
+    run_ego("fetch_stats.js", params, "/tmp/mp2xhs_stats_params.json")
+
+    data = read_json(out, "笔记数据")
+    items = data.get("items") or []
+    if not items:
+        sys.exit("[ERROR] 没抓到任何笔记。多半是创作者中心未登录，或页面改版选择器失效")
+
+    pairs, unmatched, orphans = _bind_xhs_titles(state, items)
+    stamp = data.get("captured_at", "")[:19].replace("T", " ")
+
+    for rec, item in pairs:
+        snap = {k: item[k] for k in ("views", "likes", "collects", "comments", "shares")}
+        snap["captured_at"] = stamp
+        snap["state"] = item.get("state", "")
+        rec["stats"] = snap
+        hist = rec.get("stats_history") or []
+        hist.append(snap)
+        rec["stats_history"] = hist[-30:]
+        if item.get("state") == "published" and rec.get("status") == "drafted":
+            rec["status"] = "published"
+            rec["note"] = (rec.get("note", "") + " ｜ stats 发现已发布，状态自动更新").strip()
+        rec["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    save_state(state)
+
+    if args.json:
+        print(json.dumps({"pairs": [{"record": r.get("title"), "xhs": i} for r, i in pairs],
+                          "unmatched": [r.get("title") for r in unmatched],
+                          "orphans": [i["title"] for i in orphans]}, ensure_ascii=False, indent=1))
+        return
+
+    total = data.get("total_on_page") or len(items)
+    extra = f"（账号共 {total} 条，只回收最新 {len(items)} 条）" if total > len(items) else ""
+    print(f"\n抓到 {len(items)} 条笔记，匹配上台账 {len(pairs)} 条{extra}（{stamp}）\n")
+    if pairs:
+        head = f"{'公众号标题':30s} {'观看':>6s} {'点赞':>5s} {'收藏':>5s} {'评论':>5s} {'分享':>5s} {'互动率':>7s}"
+        print(head)
+        print("-" * 78)
+        for rec, item in sorted(pairs, key=lambda p: p[1]["views"], reverse=True):
+            v = item["views"] or 0
+            eng = item["likes"] + item["collects"] + item["comments"]
+            rate = f"{(eng / v * 100):.1f}%" if v else "—"
+            title = rec.get("title", "")[:28]
+            print(f"{title:30s} {v:6d} {item['likes']:5d} {item['collects']:5d} "
+                  f"{item['comments']:5d} {item['shares']:5d} {rate:>7s}")
+    if unmatched:
+        print(f"\n⚠️  台账里这 {len(unmatched)} 条对不上小红书笔记（标题改过？用 --link 建立映射）：")
+        for r in unmatched:
+            print(f"   · {r.get('title', '')[:40]}")
+    if orphans:
+        print(f"\nℹ️  小红书还有 {len(orphans)} 条笔记不在台账里（非本 skill 产出或未登记）：")
+        for i in orphans[:6]:
+            print(f"   · {i['title'][:32]}  {i['views']} 观看")
+        if len(orphans) > 6:
+            print(f"   … 另有 {len(orphans) - 6} 条")
+
+
 def cmd_status(args):
     state = load_state()
     recs = state["records"]
     print(f"共 {len(recs)} 条记录")
     for r in sorted(recs, key=lambda x: x.get("updated_at", ""), reverse=True):
-        print(f"  [{r.get('status','?'):9}] {r.get('updated_at','')}  {r.get('title','')}")
+        s = r.get("stats") or {}
+        tail = ""
+        if s:
+            tail = f"  | 观看 {s.get('views', 0)}  赞 {s.get('likes', 0)}  藏 {s.get('collects', 0)}  评 {s.get('comments', 0)}"
+        print(f"  [{r.get('status','?'):9}] {r.get('updated_at','')}  {r.get('title','')}{tail}")
 
 
 def main():
@@ -373,6 +548,12 @@ def main():
     p.add_argument("--cards", type=int, default=0)
     p.add_argument("--images", type=int, default=0)
     p.set_defaults(func=cmd_mark)
+
+    p = sub.add_parser("stats", help="回收发布后数据并写回台账")
+    p.add_argument("--json", action="store_true", help="输出 JSON，便于二次处理")
+    p.add_argument("--link", action="append", metavar="公众号标题=小红书标题",
+                   help="建立标题映射（小红书标题改过时用），可重复")
+    p.set_defaults(func=cmd_stats)
 
     p = sub.add_parser("status")
     p.set_defaults(func=cmd_status)

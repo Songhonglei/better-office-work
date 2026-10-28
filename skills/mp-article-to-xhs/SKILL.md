@@ -6,7 +6,7 @@ description: >
   裁掉公众号水印，生成「上图下文」3:4 卡片，默认只推送到小红书草稿箱（只有用户明确要求才直接发布）。
   已处理过的文章自动跳过，绝不重发。
   触发词：公众号转小红书、文章生成笔记、生成小红书图文、mp2xhs、把这篇公众号做成卡片。
-version: 1.3.1
+version: 1.4.0
 bins: [node, python3, ego-browser]
 python: [Pillow, PIL]
 depends_on_skills: [xhs-image-note-release]
@@ -113,6 +113,7 @@ python3 $SK/scripts/pipeline.py mark --url "<URL>" --title "<标题>" --status d
 | `scripts/pipeline.py` | 编排：选题 / 抓取 / 校验 / 渲染 / 登记状态 | 直接跑 |
 | `scripts/mp2xhs_card.py` | 按 `<slug>/cards.json` 渲染 1080×1440 卡片 PNG | `render` 子命令调用 |
 | `scripts/font_audit.py` | 字形审计：逐字渲染查「实心黑块」缺陷字，顺带看覆盖率 | 手动跑，换字体后跑一次 |
+| `scripts/fetch_stats.js` | 读小红书「笔记管理」页，抓观看/评论/点赞/收藏/分享 | `stats` 子命令经 ego-browser 执行 |
 | `scripts/publish.sh` | 发布包装，**默认草稿箱**，仅 `--publish` 才直发 | 直接跑 |
 | `scripts/doctor.py` | 依赖自检，缺什么给安装命令 | 部署后先跑一次 |
 
@@ -294,6 +295,36 @@ bash $SK/scripts/publish.sh \
 
 > 草稿存在**当前浏览器本地**（小红书页面原话："草稿存储于当前使用的浏览器本地，在清除浏览器数据时会被删除"），不跨设备、手机上更看不到。推完要提醒用户趁现在去草稿箱点发布，别以为已经进账号云端了。
 
+## 发布后：数据回收（stats）
+
+```bash
+python3 $SK/scripts/pipeline.py stats        # 抓最新 10 条，打表并写回台账
+python3 $SK/scripts/pipeline.py stats --json # 同上，给程序读
+python3 $SK/scripts/pipeline.py status       # 台账 + 每条的最新数据
+```
+
+回收指标：**观看 / 评论 / 点赞 / 收藏 / 分享 + 互动率**，互动率 = (赞+藏+评)/观看。数据存进台账每条的 `stats`，同时压进 `stats_history`（保留最近 30 次），方便看增长曲线。
+
+**指标顺序必须按图标认，不能按常识猜。** 创作者中心的顺序是：
+
+| 位次 | 图标 | 含义 |
+|---|---|---|
+| 1 | 眼睛 | 观看 |
+| 2 | 气泡 | 评论 |
+| 3 | 心 | 点赞 |
+| 4 | 星 | 收藏 |
+| 5 | 箭头 | 分享 |
+
+小红书**网页端**常见顺序是「点赞在前」，创作者中心不是。第一版按常识写成「观看/点赞/收藏/评论/分享」，结果「拉美人」那条拿到了「拿破仑」的数据——整体错位一格，看起来还挺"合理"，不交叉核对根本发现不了。
+
+**标题对不上就建映射。** 小红书标题常被改短（「西班牙赢了阿根廷——聊一聊拉丁美洲人是怎么来的」→「拉美人，从来不是一种人」），匹配走四级：`xhs_title` 精确 → 公众号标题精确 → 双向包含 → 相似度 ≥0.5，最后按「推草稿时间 ≈ 小红书发布时间（<72 小时）」贪心兜底。想彻底稳：
+
+```bash
+python3 $SK/scripts/pipeline.py stats --link "公众号标题=小红书标题"   # 可重复，写进台账
+```
+
+**只回收最新 10 条。** 笔记管理页一次只渲染 10 条，没有分页器、body 不可滚动；`?page=N` 只在"全新导航"时生效，ego-browser 复用 tab 拿不到第 2 页（`location.reload()`、`about:blank` 都试过无效）。历史笔记的数据抓不到，要就去「数据看板」手动导。
+
 ## 已知坑
 
 | 现象 | 原因 | 处理 |
@@ -305,6 +336,8 @@ bash $SK/scripts/publish.sh \
 | 环境变量传不进 `ego-browser nodejs` | daemon 不继承 env | 参数走 JSON 文件（`/tmp/mp2xhs_*_params.json`） |
 | 草稿箱里出现「暂无笔记标题」废草稿 | 反复进出编辑页自动产生 | 手动清理，勿在短时间反复跑同一篇 |
 | 个别字变成实心黑方块（「回」「圃」等） | 站酷小薇（ZCOOL XiaoWei）字形缺陷：内轮廓绕向与外轮廓相同，按填充规则被整块填满——Chrome 与 Pillow 表现一致，不是渲染或缓存问题 | 换掉该字，或把方案改成 `brush`/`classic`。**`gufeng` 出图必须逐页看图**，黑块在缩略图上很明显 |
+| 数据整体错位一格（拉美人拿到拿破仑的数） | 解析时「从 title 向上找含 stat 的祖先」会越界到列表容器；`[class*=note-card]` 会把 10 张卡数成 230 个 | 必须遍历 `.note-card` 精确类名，标题/时间/指标全从同一张卡里取；取完和页面文本核一遍 |
+| 创作中心接口 406 拿不到数据 | 接口要 X-s 签名，直接 fetch 一律 406 | 不逆向签名，走 DOM 解析；页面改版就得重探选择器 |
 | 字体缓存文件被截断仍被当成完整 | 下载无长度校验（jsDelivr 实测会把庆科黄油下到 6.1MB 就断，完整 8.3MB），截断文件 Pillow 照样能加载、渲染看似正常 | v1.3.1 起 `ensure_local_font()` 按 Content-Length 校验；历史缓存怀疑有问题就 `rm -rf ~/.cache/mp2xhs/fonts` 重下 |
 
 ## 产物结构
