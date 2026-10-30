@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Small Joys（2026-10-30）
+
+- 新增 `smalljoys/` 工作小乐趣栏目，涵盖皮肤、虚拟宠物、放松小游戏和趣味插件。
+- 首批收录自制宠物素材，附动画预览、完整 v2 精灵图、配置、独立 ZIP 和使用说明。
+
 ### Changed — xhs-image-note-release v1.7.2（2026-10-27）
 
 - **发布铁律**：卡片图片、标题、正文、话题里严禁出现「微信搜索」「公众号」「加微信」「扫码」等引流文案，也不得放二维码——小红书对此判得最重，已有笔记被删。只允许 `@账号名` 软性署名，靠内容和评论区自然导流。
