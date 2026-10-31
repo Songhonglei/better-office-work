@@ -3,6 +3,20 @@
 All notable changes to this skill are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+### v1.7.0 (2026-10-31)
+
+**Changed**
+
+- 版本号推进到 1.7.0，仅为**整理发布面**：编辑规则、加载条件、安全边界与 v1.6.0 完全一致，无行为变更。
+
+**Removed**
+
+- 清除仓库内三个旧名残留参考文件（`ai-smells-cn.md`、`ai-smells-en.md`、`ai-smells-r-cn.md`）。v1.5.0 已把三者易名为 `style-patterns-cn.md` / `style-patterns-en.md` / `rhetoric-cn.md`，但仓库侧只加了新文件、没删旧文件，导致同一个 skill 里同时存在新旧两套参考——按旧名加载会读到过期内容。本次删除后，`references/` 只有现行四个文件。
+
+**Docs**
+
+- 复核 `SKILL.md`、`README.md` 与 `references/*.md` 的互引：全部指向新文件名，无残留旧路径。
+
 ### v1.6.0 (2026-10-18)
 
 **Added**

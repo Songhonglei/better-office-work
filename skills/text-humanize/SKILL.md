@@ -10,7 +10,7 @@ description: >
   detection, or required disclosure.
 ---
 
-- **Version**: 1.6.0
+- **Version**: 1.7.0
 - **License**: MIT
 - **Author**: Evan Song · [github.com/Songhonglei](https://github.com/Songhonglei)
 - **Repository**: https://github.com/Songhonglei/better-office-work-flow/tree/main/skills/text-humanize
