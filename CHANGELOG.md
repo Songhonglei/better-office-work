@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — sms-agent-mail v1.5.1（2026-11-02，Codex review 修复）
+
+- **校验门**（P1）：host bridge 的每条候选消息先交给 `check_message.py`，参数为本次 `--after/--before`、`--service`、`--route`、`--purpose login`；只有 `verdict=pass` 才取码填入。此前 webmail 扫全页文本、IMAP 取最后 N 条后直接正则取数，绕过了发件人白名单、收件人、品牌、路由、用途、原短信/收信时间与正文完整性判定；`has_body_time` 只判断「有没有时间串」。回执新增 `code_source`（`verified` / `regex_unverified`）与 `message_verified`。
+- **回执脱敏**（P1）：错误只输出白名单内的固定错误码，`stderr` 直接丢弃。此前 `String(err.message).slice(0, 100)` 可能把 `page.fill` 的填入值或子进程 stdout 里的验证码写进 `blocker`。新增静态守卫测试，禁止 `err.message` / `err.stack` / `stderr` 出现在回执路径。
+- **路径去作者化**（P2）：入口从 `os.homedir()` 推导，配置可用 `skill_dir` 覆盖；此前写死 `/Users/songhonglei/...`。
+- **手机号**（P2）：`target.phone` 必须是完整 11 位号码，`phone_routes` 只用于校验尾号，尾号不一致报 `target_phone_tail_mismatch`。此前 `phone=auto` 会把四位尾号当完整号码填入，旧测试还断言了这个错误行为。
+- **frontmatter**（P2）：只保留 `name / description / license / metadata`，`version` 回 `metadata.version`、移除 `python_optional`，通过 Codex `quick_validate.py`；`playwright` 依赖改在正文声明（`skill-release-audit` 模块5 因此保留一条 WARN，属刻意取舍）。
+- 测试 107 → 116。
+
 ### Added — sms-agent-mail v1.5.0（2026-11-02）
 
 - 新增 host bridge（`skills/sms-agent-mail/scripts/host_bridge/`）：面向**只有宿主原生邮箱连接器、拿不到 CLI 凭据**的 Agent。原生连接器的正文与摘要必然进工具结果，不能用于取码；host bridge 把取码与填码放进同一个 ego-browser Node 进程，回执记 `code_handoff: host-memory`（`end-to-end.md` 认可的第三档，不等同 `manual`）。

@@ -1,18 +1,28 @@
 # SMS Agent Mail
 
-Version **1.5.0** · [MIT](LICENSE)
+Version **1.5.1** · [MIT](LICENSE)
 
 让 Agent 从专用邮箱读取手机转发的短信，核对服务、号码与时间，协助用户授权的网站登录。支持既有原生邮箱工具、腾讯官方 Agently CLI，或在没有 CLI 凭据的宿主上用 host bridge 完成同进程交接。
 
 需要手机已能自动转发到目标邮箱。包内没有个人邮箱/号码默认值、授权码、token 或真实短信样本。每台设备在首次接入时确认参数并独立授权。
 
-## 1.5.0 变更
+## 1.5.1 变更（Codex review 修复）
+
+- **校验门**：host bridge 的每条候选消息先交给 `check_message.py`（本次 after/before + 服务 + 路由 + login 用途），只有 `verdict=pass` 才填码。此前两种新邮件源直接正则取数，绕过了发件人白名单、收件人、品牌、路由、用途、时效与正文完整性检查——已修。
+- **回执不再拼接外部文本**：错误只输出固定错误码，`stderr` 直接丢弃。此前 `err.message` 可能携带 `page.fill` 的填入值或子进程输出中的验证码——已修，并加静态守卫测试。
+- **路径去作者化**：入口从 `os.homedir()` 推导，配置可用 `skill_dir` 覆盖。此前写死作者绝对路径。
+- **手机号**：`target.phone` 必须是完整 11 位号码，`phone_routes` 只用于校验尾号。此前 `auto` 会把四位尾号当完整号码填入（旧测试甚至断言了这个错误行为）。
+- **frontmatter**：只保留 `name / description / license / metadata`，`version` 回 `metadata.version`、去掉 `python_optional`，通过 Codex skill 校验器；`playwright` 依赖改在正文声明。
+- 测试 107 → 116（新增校验门、路径、异常脱敏、号码规则等守卫）。
 
 - 新增 host bridge：解决「有原生连接器、但拿不到 CLI 凭据」的宿主。原生连接器的正文/摘要必然进工具结果，不能用来取码；host bridge 把取码与填码放进同一个进程，回执记 `code_handoff: host-memory`。
 - 新增两条邮箱源：`webmail`（宿主浏览器已登录网页版收件箱）与 `imap`（转发件落在有 IMAP 的邮箱；`imap.qq.com` 可用，`agent.qq.com` 无 IMAP/POP）。
 - 新增 `scripts/host_bridge/config_check.py`：目标必须 https、五个选择器必填、等待窗口 30–300 秒、IMAP 密码只给文件路径并校验 0600 与非符号链接；校验器不读取密码内容。
 - 新增 `scripts/host_bridge/run.mjs`：ego-browser Node 运行时下单进程执行，内含 `self_test`（合成页面验整链）与 `mail_only`（只验取码）两种自检，对外只输出一行脱敏 RESULT。
-- 新增 10 条离线测试（`tests/test_host_bridge.py`）。CLI 与原生流程不变，旧 profile 无需重建。
+- **每条候选消息先过 `check_message.py`**（本次 after/before + 服务 + 路由 + login 用途），只有 `verdict=pass` 才填码；发件人、收件人、品牌、路由、用途、时效、正文完整性任一不符即阻断。回执用 `code_source` 区分 `verified` 与 `regex_unverified`。
+- 回执只允许固定错误码，不拼接异常文本或 `stderr`（二者可能携带验证码）；`target.phone` 必须是完整手机号，`phone_routes` 只用于校验尾号。
+- 路径改为 `os.homedir()` 推导并在配置中可覆盖 `skill_dir`；frontmatter 只保留宿主通用字段，`version` 回 `metadata.version`。
+- 新增 24 条离线测试（`tests/test_host_bridge.py`），全套 92 → 116。CLI 与原生流程不变，旧 profile 无需重建。
 
 ## 1.4.0 变更
 

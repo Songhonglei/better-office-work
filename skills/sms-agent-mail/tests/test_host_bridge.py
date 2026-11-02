@@ -30,6 +30,8 @@ def base_config(mail_source='webmail'):
     return {
         'schema': 1,
         'mail_source': mail_source,
+        'service': 'baidu',
+        'route': 'SIM1_8512',
         'webmail': {'list_url': 'https://agent.qq.com/page/list', 'row_selector': None},
         'imap': {'host': 'imap.qq.com', 'user': 'u@qq.com',
                  'password_file': 'PLACEHOLDER', 'sender': 's@qq.com'},
@@ -125,6 +127,8 @@ class ConfigCheckTest(unittest.TestCase):
             'schema': 1,
             'mail_source': 'webmail',
             'mail_only': True,
+            'service': 'baidu',
+            'route': 'SIM1_8512',
             'webmail': {'list_url': 'https://agent.qq.com/page/list'},
         }
         resolved = validate(cfg, self.root)
@@ -132,15 +136,43 @@ class ConfigCheckTest(unittest.TestCase):
         self.assertIsNone(resolved['target'])
 
     def test_mail_only_still_validates_mail_source(self):
-        cfg = {'schema': 1, 'mail_source': 'imap', 'mail_only': True}
+        cfg = {'schema': 1, 'mail_source': 'imap', 'mail_only': True,
+               'service': 'baidu', 'route': 'SIM1_8512'}
         with self.assertRaises(ValueError) as ctx:
             validate(cfg, self.root)
         self.assertEqual(ctx.exception.args[0], 'imap_host_missing')
+
+    def test_service_and_route_are_required(self):
+        cfg = base_config()
+        cfg.pop('service')
+        with self.assertRaises(ValueError) as ctx:
+            validate(cfg, self.root)
+        self.assertEqual(ctx.exception.args[0], 'service_missing')
+
+        cfg = base_config()
+        cfg['route'] = 'SIM9'
+        with self.assertRaises(ValueError) as ctx:
+            validate(cfg, self.root)
+        self.assertEqual(ctx.exception.args[0], 'invalid_route')
+
+    def test_short_tail_is_not_a_phone_number(self):
+        """phone_routes 的值是四位尾号，不能当完整手机号填入。"""
+        cfg = base_config()
+        cfg['target']['phone'] = '8512'
+        with self.assertRaises(ValueError) as ctx:
+            validate(cfg, self.root)
+        self.assertEqual(ctx.exception.args[0], 'target_phone_not_full_number')
+
+        cfg['target']['phone'] = 'auto'
+        with self.assertRaises(ValueError) as ctx:
+            validate(cfg, self.root)
+        self.assertEqual(ctx.exception.args[0], 'target_phone_not_full_number')
 
     def test_profile_inherits_trusted_sender_for_imap(self):
         profile = {
             'schema': 1, 'expected_email': 'e@agent.qq.com', 'backend': 'native',
             'phone_routes': {'SIM1_8512': '8512'},
+            'services': {'baidu': '【百度】'},
             'trusted_senders': ['281568337@qq.com'],
         }
         (self.root / 'profiles' / 'workbuddy.json').write_text(
@@ -149,10 +181,33 @@ class ConfigCheckTest(unittest.TestCase):
         cfg['profile'] = 'workbuddy'
         cfg['imap'] = {'host': 'imap.qq.com', 'user': 'u@qq.com',
                        'password_file': str(self.secret)}
-        cfg['target']['phone'] = 'auto'
+        cfg['target']['phone'] = '13800008512'
         resolved = validate(cfg, self.root)
         self.assertEqual(resolved['imap']['sender'], '281568337@qq.com')
-        self.assertEqual(resolved['target']['phone'], '8512')
+        self.assertEqual(resolved['target']['phone'], '13800008512')
+
+    def test_phone_tail_must_match_route(self):
+        profile = {
+            'schema': 1, 'expected_email': 'e@agent.qq.com', 'backend': 'native',
+            'phone_routes': {'SIM1_8512': '8512'},
+            'services': {'baidu': '【百度】'},
+            'trusted_senders': ['281568337@qq.com'],
+        }
+        (self.root / 'profiles' / 'workbuddy.json').write_text(
+            json.dumps(profile), encoding='utf-8')
+        cfg = base_config()
+        cfg['profile'] = 'workbuddy'
+        cfg['target']['phone'] = '13800001218'  # 尾号与 SIM1_8512 不符
+        with self.assertRaises(ValueError) as ctx:
+            validate(cfg, self.root)
+        self.assertEqual(ctx.exception.args[0], 'target_phone_tail_mismatch')
+
+    def test_regex_fallback_must_be_boolean(self):
+        cfg = base_config()
+        cfg['webmail']['allow_regex_fallback'] = 'yes'
+        with self.assertRaises(ValueError) as ctx:
+            validate(cfg, self.root)
+        self.assertEqual(ctx.exception.args[0], 'webmail_allow_regex_fallback_invalid')
 
     def test_missing_profile_reported(self):
         cfg = base_config()
@@ -160,6 +215,39 @@ class ConfigCheckTest(unittest.TestCase):
         with self.assertRaises(ValueError) as ctx:
             validate(cfg, self.root)
         self.assertEqual(ctx.exception.args[0], 'profile_not_found')
+
+
+class BridgeSourceGuardTest(unittest.TestCase):
+    """静态守卫：回执不得拼接外部异常/命令输出（可能含验证码）。"""
+
+    def setUp(self):
+        self.root = Path(__file__).resolve().parent.parent
+        source = (self.root / 'scripts' / 'host_bridge' / 'run.mjs').read_text(encoding='utf-8')
+        # 去掉行注释后再扫描，避免注释里提到 stderr 造成误判
+        self.code = '\n'.join(line.split('//')[0] for line in source.splitlines())
+
+    def test_no_external_error_text_in_receipt(self):
+        for pattern in ('err.message', 'error.message', 'e.message', 'exception.message',
+                        'err.stack', 'String(err)'):
+            self.assertNotIn(pattern, self.code,
+                             f'代码不得读取 {pattern}，可能把验证码带进回执')
+
+    def test_stderr_is_only_discarded(self):
+        self.assertEqual(self.code.count('stderr'), 1,
+                         'stderr 只允许出现一次（丢弃），其余路径不得引用')
+        self.assertIn('child.stderr.on', self.code)
+
+    def test_receipt_uses_fixed_code_whitelist(self):
+        self.assertIn('SAFE_CODES', self.code)
+        self.assertIn('isSafeCode', self.code)
+
+    def test_no_hardcoded_author_home_path(self):
+        self.assertNotIn('/Users/songhonglei', self.code)
+        self.assertIn('os.homedir()', self.code)
+
+    def test_every_candidate_goes_through_verifier(self):
+        self.assertIn('check_message.py', self.code)
+        self.assertIn('gateMessage', self.code)
 
 
 class InstallManifestTest(unittest.TestCase):

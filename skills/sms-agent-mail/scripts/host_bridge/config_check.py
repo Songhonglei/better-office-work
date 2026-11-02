@@ -8,12 +8,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import stat
 import sys
 from pathlib import Path
 
 SCHEMA = 1
 MAIL_SOURCES = ('webmail', 'imap')
+ROUTE_RE = re.compile(r'SIM[1-9]_[0-9]{4}')
+PHONE_RE = re.compile(r'1[3-9][0-9]{9}')
 TARGET_KEYS = ('url', 'phone', 'phone_selector', 'send_selector',
                'code_selector', 'submit_selector', 'account_marker')
 DEFAULT_DATA_DIR = Path.home() / '.local' / 'share' / 'sms-agent-mail'
@@ -72,6 +75,7 @@ def validate(config: dict, data_dir: Path) -> dict:
             raise ValueError(f'invalid_{key}')
 
     profile_settings = _resolve_profile(config, resolved, data_dir)
+    _resolve_target_identity(config, resolved, profile_settings)
 
     target = config.get('target') or {}
     if not isinstance(target, dict):
@@ -96,17 +100,40 @@ def validate(config: dict, data_dir: Path) -> dict:
     if agree:
         resolved_target['agree_selector'] = agree
 
-    # 允许用 profile 里已确认的号码/来源填空，但不覆盖显式配置
-    if profile_settings:
-        phones = profile_settings.get('phone_routes') or {}
-        if resolved_target['phone'] in ('', 'auto'):
-            if len(set(phones.values())) != 1:
-                raise ValueError('phone_not_resolvable_from_profile')
-            resolved_target['phone'] = next(iter(phones.values()))
+    resolved_target['phone'] = _resolve_phone(resolved_target['phone'], resolved, profile_settings)
 
     _resolve_mail_source(config, resolved, profile_settings)
     resolved['target'] = resolved_target
     return resolved
+
+
+def _resolve_target_identity(config: dict, resolved: dict, profile_settings) -> None:
+    """服务与路由是校验器的必填输入，缺了就不许自动选码。"""
+    service = config.get('service')
+    if not _nonempty_str(service):
+        raise ValueError('service_missing')
+    services = (profile_settings or {}).get('services') or {}
+    if profile_settings and service not in services:
+        raise ValueError('service_not_in_profile')
+    resolved['service'] = service
+
+    route = config.get('route')
+    if not _nonempty_str(route) or not ROUTE_RE.fullmatch(route):
+        raise ValueError('invalid_route')
+    rows = (profile_settings or {}).get('phone_routes') or {}
+    if profile_settings and route not in rows:
+        raise ValueError('route_not_in_profile')
+    resolved['route'] = route
+
+
+def _resolve_phone(phone: str, resolved: dict, profile_settings) -> str:
+    """只接受完整手机号；尾号无法反推完整号码，因此不做任何补猜。"""
+    if not PHONE_RE.fullmatch(phone or ''):
+        raise ValueError('target_phone_not_full_number')
+    expected_tail = ((profile_settings or {}).get('phone_routes') or {}).get(resolved['route'])
+    if expected_tail and not phone.endswith(expected_tail):
+        raise ValueError('target_phone_tail_mismatch')
+    return phone
 
 
 def _resolve_profile(config: dict, resolved: dict, data_dir: Path):
@@ -156,7 +183,11 @@ def _resolve_mail_source(config: dict, resolved: dict, profile_settings) -> None
         row = webmail.get('row_selector')
         if row is not None and not _nonempty_str(row):
             raise ValueError('webmail_row_selector_invalid')
-        resolved['webmail'] = {'list_url': webmail['list_url'], 'row_selector': row}
+        fallback = webmail.get('allow_regex_fallback', True)
+        if not isinstance(fallback, bool):
+            raise ValueError('webmail_allow_regex_fallback_invalid')
+        resolved['webmail'] = {'list_url': webmail['list_url'], 'row_selector': row,
+                               'allow_regex_fallback': fallback}
 
 
 def main() -> int:

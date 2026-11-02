@@ -3,22 +3,25 @@
   "task_space": "workbuddy sms login",
   "profile": "workbuddy",
   "mail_source": "webmail",
+  "service": "baidu",
+  "route": "SIM1_8512",
   "code_wait_seconds": 240,
   "poll_interval_seconds": 4,
   "webmail": {
     "list_url": "https://agent.qq.com/page/list",
-    "row_selector": null
+    "row_selector": null,
+    "allow_regex_fallback": true
   },
   "imap": {
     "host": "imap.qq.com",
     "user": "someone@qq.com",
     "password_file": "~/.local/share/sms-agent-mail/bridge/imap.secret",
     "sender": "281568337@qq.com",
-    "limit": 5
+    "limit": 10
   },
   "target": {
     "url": "https://example.com/login",
-    "phone": "13800000000",
+    "phone": "13800008512",
     "phone_selector": "#phone",
     "send_selector": "loc=role:button[name='发送验证码']",
     "code_selector": "#code",

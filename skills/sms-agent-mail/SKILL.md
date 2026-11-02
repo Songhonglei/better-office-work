@@ -1,10 +1,9 @@
 ---
 name: sms-agent-mail
-version: "1.5.0"
 description: 从手机转发的专用邮箱查询并校验短信验证码；用于短信收信验收及用户指定网站的短信登录，支持 CLI 自动读信与同进程浏览器填写。
-python_optional: [playwright]
+license: MIT
 metadata:
-  version: "1.5.0"
+  version: "1.5.1"
 ---
 
 # 短信邮件助手
