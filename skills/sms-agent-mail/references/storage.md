@@ -46,7 +46,7 @@
 | verify --profile NAME | CLI 调用 +me 和本地 auth status，更新外置验收元数据，不读取短信；native 后端恒返回需宿主验收（exit 1），不写 verification |
 | confirm --profile NAME --evidence TEXT | 仅 native 后端：宿主真实身份工具验收后记录 `identity_verified_by_host` 与证据文本（8–200 字符），cli 后端拒绝 |
 | set-rules --profile NAME [--route…] [--trusted-sender…] [--service…] [--subject-pattern…] | 只改解析规则；写入前把上一份配置复制为 `<profile>.json.bak`（0600），不动身份、后端、CLI |
-| check_message.py --profile NAME [--message-json PATH] [--after ISO] [--before ISO] | 按 profile 规则判定单条消息，输出 pass/blocked 与原因，只报告验证码长度；默认从 stdin 读消息 JSON |
+| check_message.py --profile NAME --service KEY --route SIM --purpose login --after ISO --before ISO [--message-json SYNTHETIC_PATH] | 按 profile 规则判定单条消息，输出 pass/blocked 与原因，只报告验证码长度；默认从 stdin 读消息 JSON |
 | check_access.py --expected-email ADDRESS [--cli PATH] | 只核对 CLI 身份/权限，不读取短信或写设置 |
 | install.py --host codex/workbuddy/custom | 从新下载目录安装/升级，custom 必须配 --skills-dir |
 | install.py --skills-dir PATH | 经目标 Agent 核实的技能父目录；最终子目录为 sms-agent-mail |

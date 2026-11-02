@@ -1,17 +1,17 @@
 # SMS Agent Mail
 
-Version **1.3.0** · [MIT](LICENSE)
+Version **1.3.1** · [MIT](LICENSE)
 
 让 Agent 从专用邮箱读取手机转发的短信，核对服务、号码与时间，协助用户授权的网站登录。支持既有原生邮箱工具，或腾讯官方 Agently CLI；不需要 ECS，不发送或删除邮件，不修改宿主 MCP 配置。
 
 需要手机已能自动转发到目标邮箱。包内没有个人邮箱/号码默认值、授权码、token 或真实短信样本。每台设备在首次接入时确认参数并独立授权。
 
-## 1.3.0 变更
+## 1.3.1 变更
 
-- 新增 `scripts/check_message.py`：按 profile 规则做确定性判定，输出 `verdict`/`blockers`/`warnings` 与验证码长度（不回显验证码），把"读 prose 自己判断"换成可复现的校验
-- `onboard.py` 新增 `set-rules`（只改解析规则，自动留 `.bak` 副本）与 `confirm`（原生后端宿主验收留痕）
-- `init` 支持 `--service NAME=TAG` 与 `--subject-pattern`，不再只能改 JSON 才能换服务或换转发模板
-- 文档补充：手机拦截箱导致"手机有、邮箱没有"的排查顺序、`after` 与点击必须在同一次执行内完成、人工交接是验证码交付的默认路径
+- 校验器必须绑定本次服务、SIM 路由和 login 用途；多服务混杂或用途不符即阻断。
+- 必须提供带时区的 after/before（最长五分钟），同时检查原短信时间、收信时间、当前时间与短信更短有效期；非法日期与窗口返回明确失败。
+- 4–8 位码按完整数字识别，不截取长数字；报告不再输出原始主题或地址。
+- 旧 profile 无需重建；调用 check_message.py 时必须新增 --service、--route、--purpose login，缺参数会明确报错。
 
 ## 下载和安装
 
@@ -67,7 +67,7 @@ python3 scripts/onboard.py confirm --profile codex --evidence "host GetMe matche
 
 ## 验证
 
-不需要邮箱凭据即可运行离线检查（当前 53 项，覆盖身份契约、接入边界、安装器保护与消息判定）：
+不需要邮箱凭据即可运行离线检查（覆盖身份契约、接入边界、安装器保护与消息判定）：
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -76,7 +76,7 @@ python3 -m unittest discover -s tests -v
 拿到一条消息后可以直接做确定性判定，输出只有结论与验证码长度：
 
 ```bash
-python3 scripts/check_message.py --profile codex --message-json message.json --after 2026-01-01T00:00:00Z --before 2026-01-01T00:05:00Z
+python3 scripts/check_message.py --profile codex --message-json message.json --after 2026-01-01T00:00:00Z --before 2026-01-01T00:05:00Z --service baidu --route SIM2_1234 --purpose login
 ```
 
 实际端到端由目标机器分别完成：安装 → onboarding → 身份 → 新短信搜索/完整正文 → 可信时间/服务/号码核对 → 在条件具备时完成网站登录 → 升级保留授权。只有 created_at 而无正文时间、缺浏览器、或不能安全共享内存时，停止自动填写并记录阻塞（default 走人工交接），不宣称完整登录通过。手机有短信但邮箱没有转发件时，先查手机拦截箱。
