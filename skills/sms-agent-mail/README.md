@@ -1,10 +1,18 @@
 # SMS Agent Mail
 
-Version **1.4.0** · [MIT](LICENSE)
+Version **1.5.0** · [MIT](LICENSE)
 
-让 Agent 从专用邮箱读取手机转发的短信，核对服务、号码与时间，协助用户授权的网站登录。支持既有原生邮箱工具，或腾讯官方 Agently CLI；不需要 ECS，不发送或删除邮件，不修改宿主 MCP 配置。
+让 Agent 从专用邮箱读取手机转发的短信，核对服务、号码与时间，协助用户授权的网站登录。支持既有原生邮箱工具、腾讯官方 Agently CLI，或在没有 CLI 凭据的宿主上用 host bridge 完成同进程交接。
 
 需要手机已能自动转发到目标邮箱。包内没有个人邮箱/号码默认值、授权码、token 或真实短信样本。每台设备在首次接入时确认参数并独立授权。
+
+## 1.5.0 变更
+
+- 新增 host bridge：解决「有原生连接器、但拿不到 CLI 凭据」的宿主。原生连接器的正文/摘要必然进工具结果，不能用来取码；host bridge 把取码与填码放进同一个进程，回执记 `code_handoff: host-memory`。
+- 新增两条邮箱源：`webmail`（宿主浏览器已登录网页版收件箱）与 `imap`（转发件落在有 IMAP 的邮箱；`imap.qq.com` 可用，`agent.qq.com` 无 IMAP/POP）。
+- 新增 `scripts/host_bridge/config_check.py`：目标必须 https、五个选择器必填、等待窗口 30–300 秒、IMAP 密码只给文件路径并校验 0600 与非符号链接；校验器不读取密码内容。
+- 新增 `scripts/host_bridge/run.mjs`：ego-browser Node 运行时下单进程执行，内含 `self_test`（合成页面验整链）与 `mail_only`（只验取码）两种自检，对外只输出一行脱敏 RESULT。
+- 新增 10 条离线测试（`tests/test_host_bridge.py`）。CLI 与原生流程不变，旧 profile 无需重建。
 
 ## 1.4.0 变更
 

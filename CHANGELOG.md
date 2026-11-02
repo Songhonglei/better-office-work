@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — sms-agent-mail v1.5.0（2026-11-02）
+
+- 新增 host bridge（`skills/sms-agent-mail/scripts/host_bridge/`）：面向**只有宿主原生邮箱连接器、拿不到 CLI 凭据**的 Agent。原生连接器的正文与摘要必然进工具结果，不能用于取码；host bridge 把取码与填码放进同一个 ego-browser Node 进程，回执记 `code_handoff: host-memory`（`end-to-end.md` 认可的第三档，不等同 `manual`）。
+- 两条邮箱源：`webmail`（宿主浏览器已登录网页版收件箱）与 `imap`（`imap.qq.com` 可用；`agent.qq.com` 无 IMAP/POP，已实测 DNS 无记录）。
+- `config_check.py`：目标必须 https、五个选择器必填、等待窗口 30–300 秒、IMAP 密码只给文件路径并校验 0600 与非符号链接；校验器不读取密码内容。
+- `run.mjs`：`self_test`（合成页面验整链）与 `mail_only`（只验取码）两种自检，对外只输出一行脱敏 RESULT，验证码不落 stdout/文件/工具参数。
+
+### Changed — sms-agent-mail v1.5.0（2026-11-02）
+
+- `SKILL.md` 增「原生连接器宿主（host-memory）」入口，并在登录约束里明确该路径不是「先读正文再填表」的降级；frontmatter 补顶层 `version` 与 `python_optional: [playwright]`。
+- `references/storage.md` 增补 host bridge 配置位置与权限；`references/end-to-end.md` §4 补充 `host-memory` 与 `manual` 的区别。
+- `install.py` 固定清单登记 6 个新文件，并加打包清单守卫测试，防止升级时静默丢文件。
+- 测试 92 → 107 条；`glic-check` 与 `skill-release-audit` 均通过（6/6 模块 PASS）。
+
 ### Added — Small Joys（2026-10-30）
 
 - 新增 `smalljoys/` 工作小乐趣栏目，涵盖皮肤、虚拟宠物、放松小游戏和趣味插件。

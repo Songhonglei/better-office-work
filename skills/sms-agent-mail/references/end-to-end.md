@@ -4,7 +4,7 @@
 
 ## 1. 安装和离线检查
 
-下载完整目录，用 install.py 安装到目标 Agent 实际技能目录；重新加载后确认可选 sms-agent-mail，metadata.version=1.4.0。然后在该技能目录执行：
+下载完整目录，用 install.py 安装到目标 Agent 实际技能目录；重新加载后确认可选 sms-agent-mail，metadata.version=1.5.0。然后在该技能目录执行：
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -47,6 +47,7 @@ CLI 自动化可直接按 [自动读信与登录](automation.md) 运行；下列
 
 - **默认路径是人工交接**：把当前窗口交给用户（浏览器控制方通常提供 handoff/takeOver 语义），由用户自己输入 6 位码，Agent 只读取交接后的页面状态。
 - 只有在同一进程内可安全共享内存时才程序化填入。任何需要把真实码写进工具参数、命令、终端、文件、截图或调试日志的方式，都算不能安全交接，应当交接并记录 `code_handoff: manual`。
+- 没有 CLI 凭据的宿主用 [host bridge](host-bridge.md) 完成同一进程内的取码与填码，回执记 `code_handoff: host-memory`；它不等同于 `manual`，也不是「先读正文再填表」。
 - 图形验证、滑块、人脸等一律交给用户完成。
 
 完成后检查页面实际登录状态（跳转后的 URL、账号标识等）；没有跳转或登录态证据就不能写 `login_passed=true`。不能安全交接、没有浏览器、遇到未完成的人工验证时，报告具体阻塞，不通过聊天显示真实码。
@@ -59,7 +60,7 @@ CLI 自动化可直接按 [自动读信与登录](automation.md) 运行；下列
 
 ```json
 {
-  "skill_version":"1.4.0",
+  "skill_version":"1.5.0",
   "install_passed":true,
   "offline_tests_passed":true,
   "identity_matched":true,

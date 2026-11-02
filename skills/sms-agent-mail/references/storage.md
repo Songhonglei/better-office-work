@@ -12,6 +12,7 @@
 | macOS CLI OAuth 候选路径 | `~/Library/Application Support/agently-cli/agents/<workspace>/bootstrap_token.enc` |
 | macOS 配套密钥 | 登录钥匙串；已核实分区采用 service `agently-cli/agents/<workspace>`，account `master.key` |
 | 原生邮箱连接器 | 宿主管理；未核实具体位置时说明未知，不声称它使用 CLI 目录 |
+| host bridge 配置 | 用户主目录 `.local/share/sms-agent-mail/bridge/config.json`（目录 0700、文件 0600）；只含站点选择器与邮箱参数，不含验证码；IMAP 密码另存 0600 文件，配置里只写路径 |
 
 `workspace` 来自 CLI 本次真实 `auth status`，不伪造宿主环境变量。verify/paths 仅在实际观察到候选文件时将其报告为 OAuth 文件，否则显示候选路径和未观察状态。钥匙串数据库 `~/Library/Keychains/login.keychain-db` 还含其他应用数据，不复制它。供应商根目录其他历史文件保持原样，不猜测或清理。
 

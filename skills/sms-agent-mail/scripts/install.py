@@ -17,6 +17,9 @@ FILES = ('scripts/read_sms.py', 'scripts/browser_handoff.py', 'scripts/workflow_
          'scripts/install.py', 'references/migration.md', 'references/cli-recipes.md',
          'references/storage.md', 'references/end-to-end.md',
          'tests/test_access.py', 'tests/test_onboarding.py', 'tests/test_message.py',
+         'scripts/host_bridge/run.mjs', 'scripts/host_bridge/mail_imap.py',
+         'scripts/host_bridge/config_check.py', 'scripts/host_bridge/config.example.json',
+         'references/host-bridge.md', 'tests/test_host_bridge.py',
          'README.md', 'LICENSE', '.gitignore', 'SKILL.md')
 
 
