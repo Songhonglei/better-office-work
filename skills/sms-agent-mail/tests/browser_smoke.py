@@ -60,13 +60,15 @@ class Handler(BaseHTTPRequestHandler):
 FAKE_CLI = '''#!/usr/bin/env python3
 from datetime import datetime, timezone, timedelta
 import json,sys
+from pathlib import Path
 args=sys.argv[1:]
 if args==['+me']:
  data={'aliases':[{'email':'fixture@example.invalid'}],'scopes':['mail:read']}
 elif args[:2]==['message','+search']:
+ Path(__file__).with_name('synthetic-stamp.txt').write_text(args[args.index('--before')+1])
  data={'data':[{'message_id':'msg_fixture'}], 'pagination':{'has_more':False}}
 elif args[:2]==['message','+read']:
- stamp=datetime.now(timezone.utc).replace(microsecond=0)
+ stamp=datetime.fromisoformat(Path(__file__).with_name('synthetic-stamp.txt').read_text()).replace(microsecond=0)
  body='106809281150240 【百度】验证码：778812，您正在登录，有效期60秒。 SIM2_1218 '+stamp.astimezone(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')
  data={'message_id':'msg_fixture','dir':{'dir_id':1,'dir_name':'inbox'},
        'from':{'email':'forwarder@example.invalid'},'to':[{'email':'fixture@example.invalid'}],
