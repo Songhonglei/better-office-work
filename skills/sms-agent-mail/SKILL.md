@@ -2,7 +2,7 @@
 name: sms-agent-mail
 description: 当用户要查询手机转发的短信或协助网站短信登录时使用；通过 Agent 专用邮箱按服务、SIM、号码尾号和时间核对，提供脱敏收信验收。
 metadata:
-  version: "1.3.0"
+  version: "1.3.1"
 ---
 
 # 短信邮件助手
@@ -22,7 +22,7 @@ metadata:
 1. 运行 `scripts/onboard.py status --profile <本机profile>`，读取 expected_email、cli、phone_routes、subject_pattern、services、trusted_senders。未配置先接入；有参数缺口时先补外置设置，不猜测账号、来源或号码。
 2. 调用目标宿主的真实邮箱身份工具，或 CLI `+me`；确认包含目标邮箱且有 mail:read。`scripts/check_access.py --expected-email <邮箱> --cli <配置的CLI>` 可检查 CLI 身份；它不搜索或读取短信。原生工具名称和 schema 以目标宿主本次清单为准。
 3. 明确用户指定的服务、号码、登录目标和用途。发短信前记录带时区的 after，冻结本次查询 before，只查 inbox。按正文品牌、收件邮箱和时间搜索，翻页保留原条件；没有完整分页或正文时不宣称找到最新验证码。调用及安全捕获见 [CLI 约定](references/cli-recipes.md)。
-4. 核对完整正文中的服务/登录用途、可信发件白名单、目标邮箱、SIM/尾号和时间。主题只用于号码路由，不证明服务或来源可信；正文号码与主题冲突则停止。路由/主题格式来自外置配置，可随用户转发模板改变。把候选消息 JSON 交给 `scripts/check_message.py --profile <本机profile> --after <after> --before <before>` 做确定性判定：它只输出 pass/blocked 与原因、验证码长度，绝不回显验证码。脚本 blocked 时不得自行放宽标准。
+4. 核对完整正文中的服务/登录用途、可信发件白名单、目标邮箱、SIM/尾号和时间。主题只用于号码路由，不证明服务或来源可信；正文号码与主题冲突则停止。路由/主题格式来自外置配置，可随用户转发模板改变。把候选消息 JSON 交给 `scripts/check_message.py --profile <本机profile> --after <after> --before <before> --service <服务键> --route <SIM路由> --purpose login` 做确定性判定：必须提供本次服务、路由和 login 用途；它只输出 pass/blocked 与原因、验证码长度，不回显原始主题、地址或验证码。脚本 blocked 时不得自行放宽标准。
 5. 只处理本次请求之后且仍有效的消息：默认最长 5 分钟，短信更短时取短值；正文存在原始短信时间时同时检查，拒绝迟到旧短信。只接受无歧义的 4–8 位验证码；同时间冲突或缺可信时间来源时停止自动选码，不靠结果顺序猜测。
 6. 把验证码交给页面的默认方式是人工交接（见 [端到端验收](references/end-to-end.md)）：由用户在自己可见的窗口里输入，Agent 只读页面结果。只在确实存在同进程安全共享内存的执行环境时才允许程序化填入；任何需要把码写进工具参数、命令、脚本、日志或文件的路径都视为不能安全交接，改为交接并报告限制。
 7. 输出脱敏回执：邮箱匹配、目标服务/尾号、号码标识、时间字段及可信依据、正文完整性与最终状态。未找到只在本任务有限轮询，不反复发送短信或创建定时任务。

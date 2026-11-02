@@ -4,7 +4,7 @@
 
 ## 1. 安装和离线检查
 
-下载完整目录，用 install.py 安装到目标 Agent 实际技能目录；重新加载后确认可选 sms-agent-mail，metadata.version=1.3.0。然后在该技能目录执行：
+下载完整目录，用 install.py 安装到目标 Agent 实际技能目录；重新加载后确认可选 sms-agent-mail，metadata.version=1.3.1。然后在该技能目录执行：
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -24,10 +24,10 @@ python3 -m unittest discover -s tests -v
 
    ```bash
    python3 scripts/check_message.py --profile <本机profile> \
-     --message-json <消息JSON> --after <after> --before <before>
+     --after <after> --before <before> --service <服务键> --route <SIM路由> --purpose login
    ```
 
-   它按 profile 的 `phone_routes`、`subject_pattern`、`services`、`trusted_senders` 逐项判定，输出 `verdict`、`blockers`、`warnings` 与验证码**长度**（不含验证码本身）。已知会拦截的情况：来源不在白名单、收件人不符、品牌标签缺失、主题路由未注册或尾号不符、主题与正文路由冲突、正文截断、`created_at` 落在窗口外、正文无原始时间只有 `created_at`、`created_at` 与正文时间偏差超限、验证码缺失或出现多个候选、候选码实为短信端口片段。`warnings` 里的 `extra_recipient:` 表示这封短信还投给了别的地址，属于验证码外泄面，应当告知用户。
+   真实邮件由调用方通过 stdin 内存管道传入，禁止先落盘；`--message-json` 仅供合成测试。它按 profile 的 `phone_routes`、`subject_pattern`、`services`、`trusted_senders` 逐项判定，输出 `verdict`、`blockers`、`warnings` 与验证码**长度**（不含验证码本身）。已知会拦截的情况：来源不在白名单、收件人不符、品牌标签缺失、主题路由未注册或尾号不符、主题与正文路由冲突、正文截断、`created_at` 落在窗口外、正文无原始时间只有 `created_at`、`created_at` 与正文时间偏差超限、验证码缺失或出现多个候选、候选码实为短信端口片段。`warnings` 里的 `extra_recipients_present` 表示这封短信还投给了别的地址，属于验证码外泄面，应当告知用户。
 4. 记录主题路由是否符合配置、正文是否完整、具体时间字段名及可信依据。正文通常为固定骨架：短信端口号 / 品牌与内容 / 路由（如 `SIM2_1218`）/ `SubId` / 原始短信时间 / 设备名——首行的长数字是端口，不是验证码。只有 `created_at` 且没有独立语义证据时，时间项标为 blocked（校验器会返回 `body_time_missing`）；可以确认收信/读信链路，不能标记自动登录通过。
 
 ### 未收到转发件时先查手机，不要怀疑链路
@@ -57,7 +57,7 @@ python3 -m unittest discover -s tests -v
 
 ```json
 {
-  "skill_version":"1.3.0",
+  "skill_version":"1.3.1",
   "install_passed":true,
   "offline_tests_passed":true,
   "identity_matched":true,
