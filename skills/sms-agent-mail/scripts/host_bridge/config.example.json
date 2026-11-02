@@ -12,7 +12,8 @@
     "row_selector": ".botmail-mail-list-item",
     "subject_selector": ".mail-item-subject",
     "body_selector": ".botmail-mail-reader-body-content",
-    "allow_regex_fallback": true
+    "allow_regex_fallback": true,
+    "header_selector": ".botmail-mail-reader-body-basic"
   },
   "imap": {
     "host": "imap.qq.com",

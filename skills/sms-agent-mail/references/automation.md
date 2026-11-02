@@ -1,4 +1,4 @@
-# 自动读信与登录（1.5.2）
+# 自动读信与登录（1.5.3）
 
 先有手机自动转发、有效 CLI profile 和专用邮箱授权。`read_sms.py` 每次实时检查邮箱身份与 mail:read，不使用 onboarding 历史状态作凭据。profile 的服务、SIM/尾号和可信发件人沿用现有配置。native 后端返回 `native_backend_use_host_workflow`，继续由宿主调用原生工具，见 cli-recipes.md；本入口不桥接原生连接器。
 

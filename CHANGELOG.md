@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — sms-agent-mail v1.5.3（2026-11-02，webmail 接入完整校验门）
+
+- webmail 源此前只能做「行作用域部分校验」，发件人与收件人取不到，回执标注 `sender_unverified` / `recipient_unverified`。复查发现详情头 `.botmail-mail-reader-body-basic` 的 `basic-item` 里同时有发件人、收件人与时间，于是改为归一化成完整消息并交给 `check_message.py`。
+- webmail 与 IMAP 现在走同一个校验门，`code_source` 只剩 `verified` 与 `regex_unverified`；后者仅在未配 `row_selector` 时出现。
+- 头字段解析失败返回 `header_incomplete` 继续轮询，不退化为只看正文的部分校验。
+- 实测真实运行阻断理由：`created_at_outside_window`、`login_purpose_not_confirmed`、`service_target_mismatch`；同一次运行中 `sender_trusted` 与 `recipient_matched` 通过，证明这两个字段确实取到并参与判定。
+- 新增配置 `webmail.header_selector`（默认 `.botmail-mail-reader-body-basic`）。
+
 ### Changed — sms-agent-mail v1.5.2（2026-11-02，webmail 接入真实 DOM）
 
 - webmail 源接入 agent.qq.com 实测选择器：行 `.botmail-mail-list-item`、主题 `.mail-item-subject`、正文 `.botmail-mail-reader-body-content`；只在前 5 行中挑主题路由匹配的一条，不再扫全页文本（此前会把页面文案里的「验证码」当候选）。

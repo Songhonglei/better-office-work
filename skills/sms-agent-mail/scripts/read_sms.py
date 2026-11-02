@@ -14,7 +14,7 @@ from onboard import (data_directory, load_profile, profile_path, _valid_routes,
                      _valid_services, _valid_senders, _valid_subject_pattern)
 from workflow_errors import WorkflowError
 
-VERSION = '1.5.2'
+VERSION = '1.5.3'
 MAX_PAGES, MAX_MESSAGES, MAX_OUTPUT = 20, 100, 3_000_000
 
 

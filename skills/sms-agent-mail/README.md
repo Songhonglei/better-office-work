@@ -1,12 +1,18 @@
 # SMS Agent Mail
 
-Version **1.5.2** · [MIT](LICENSE)
+Version **1.5.3** · [MIT](LICENSE)
 
 让 Agent 从专用邮箱读取手机转发的短信，核对服务、号码与时间，协助用户授权的网站登录。支持既有原生邮箱工具、腾讯官方 Agently CLI，或在没有 CLI 凭据的宿主上用 host bridge 完成同进程交接。
 
 需要手机已能自动转发到目标邮箱。包内没有个人邮箱/号码默认值、授权码、token 或真实短信样本。每台设备在首次接入时确认参数并独立授权。
 
-## 1.5.2 变更（webmail 接入真实 DOM）
+## 1.5.3 变更（webmail 走完整校验门）
+
+- webmail 源改为解析详情头 `.botmail-mail-reader-body-basic` 的四条 `basic-item`（发件人 / 收件人 / 附件数 / 时间），归一化成 `{from, to[], subject, body, created_at}`，与 IMAP 走**同一个** `check_message.py` 校验门。
+- 因此 webmail 也能得到 `code_source: verified`；此前只能做「行作用域部分校验」并标注 `sender_unverified` / `recipient_unverified`，该妥协已删除。
+- 头字段解析失败返回 `header_incomplete` 继续轮询，不退化成只看正文的部分校验。
+- 实测真实阻断：`created_at_outside_window` + `login_purpose_not_confirmed` + `service_target_mismatch`，而 `sender_trusted` / `recipient_matched` 通过——证明发件人与收件人确实取到并校验了。
+- 新增配置 `webmail.header_selector`。
 
 - webmail 源接入 agent.qq.com 真实选择器：行 `.botmail-mail-list-item`、主题 `.mail-item-subject`、正文 `.botmail-mail-reader-body-content`；只在前 5 行里挑主题路由匹配的那一条，不再扫全页文本。
 - 新增行作用域确定性校验（主题路由、正文路由、品牌标签、非登录用途词、单码唯一、正文原始时间落在窗口内且未过期），通过记 `code_source: webmail_dom_checked`。

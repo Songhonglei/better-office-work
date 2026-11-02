@@ -193,6 +193,7 @@ def _resolve_mail_source(config: dict, resolved: dict, profile_settings) -> None
             'list_url': webmail['list_url'],
             'row_selector': row,
             'subject_selector': webmail.get('subject_selector') or '.mail-item-subject',
+            'header_selector': webmail.get('header_selector') or '.botmail-mail-reader-body-basic',
             'body_selector': webmail.get('body_selector') or '.botmail-mail-reader-body-content',
             'allow_regex_fallback': fallback,
         }
