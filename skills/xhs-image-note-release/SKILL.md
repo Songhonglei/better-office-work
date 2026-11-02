@@ -3,7 +3,9 @@ name: xhs-image-note-release
 description: >
   小红书笔记自动发布技能（图文 + 视频，自动判断类型）。通过 ego-browser 自动化完成素材上传、
   标题填写、正文编辑、话题标签、发布（或存草稿）等全流程。**按素材扩展名自动识别**：mp4/mov/flv
-  等走视频笔记，png/jpg/webp 等走图文笔记，无需手动指定。支持三种收尾模式：直接发布（_onPublish）、
+  等走视频笔记，png/jpg/webp 等走图文笔记，无需手动指定。视频笔记支持用 `COVER_IMAGE` 指定
+  自定义封面（默认取视频第一帧）。
+  支持三种收尾模式：直接发布（_onPublish）、
   存草稿（_onSave，草稿箱按钮文本为「暂存离开」）、以及 stage 模式（只准备好内容停在页面，不触发
   任何保存/发布动作，用户自行检查后手动点发布），用户可要求「发小红书」或「推到草稿箱自己点发布」
   或「准备好页面我自己发布」。
@@ -14,7 +16,7 @@ description: >
   前置依赖：ego-browser (ego-lite) 已安装且正在运行，小红书账号已登录。
 slug: xhs-image-note-release
 displayName: 小红书笔记发布（图文/视频）
-version: 1.8.0
+version: 1.9.0
 bins: [node, python3]
 ---
 
@@ -45,7 +47,9 @@ bins: [node, python3]
 | 上传方式 | 逐个 `uploadFile()`，批量只留空占位 | 单文件 `uploadFile()` |
 | 完成判定 | CDN 缩略图数 ≥ 文件数 或「图片编辑 N/18」 | 出现「重新上传」+ 标题输入框 |
 | 等待时长 | 每张 6s + 汇总 10s | 转码轮询，最多 40×3s（约 2 分钟） |
-| 额外步骤 | 无 | 封面默认取第一帧，可留默认不处理 |
+| 封面 | 无 | 默认第一帧；可用 `COVER_IMAGE` 指定图片（见 3c） |
+
+封面选用规则：`COVER_IMAGE` 留空 → 完全不碰封面，走小红书默认的第一帧；传了图片 → 走 3c 的四步链路替换。`COVER_IMAGE` 只在视频模式生效，图文模式会忽略并在启动时提示。
 
 ## Dependencies
 
@@ -229,6 +233,63 @@ for (let attempt = 0; attempt < 40; attempt++) {   // 最多约 2 分钟
 >
 > 注意 `video` 元素在页面上可能有 4 个（预览、封面候选等），不要用 `videoCount === 1` 做判定。
 
+#### 3c. 设置视频封面（可选，`COVER_IMAGE`）
+
+默认封面是视频第一帧，留空就什么都不做。要用自己的图片当封面时传绝对路径：
+
+```bash
+COVER_IMAGE=/absolute/path/cover.png   # 建议 3:4 竖图，1080x1440 及以上
+```
+
+真实交互链路，四步缺一不可：
+
+```js
+// 1. 用 CDP 派发真实鼠标悬停 —— 「编辑封面」按钮平时 boundingRect 是 0×0，
+//    只有 CSS :hover 生效才渲染出来，js 的 el.click() 和 scrollIntoView 都无效
+await cdp('Input.dispatchMouseEvent', {
+  type: 'mouseMoved',
+  x: rect.x + 65,                       // 缩略图在 .cover 左侧约 130px 宽，右侧是智能推荐区
+  y: rect.y + Math.round(rect.h / 2),
+  button: 'none'
+})
+await wait(1.5)
+
+// 2. 点「编辑封面」，打开封面编辑器
+await click('.cover-edit-entry', { label: 'open cover editor', timeout: 8000 })
+await wait(4)
+
+// 3. 编辑器打开后页面会多出一个 accept 含 image 的 file input，直接上传即可
+await uploadFile('input[type="file"][accept*="image/png"]', coverPath)
+await wait(5)
+
+// 4. 点「完成」——按钮在视口外右侧（innerWidth 900 时 x≈1128），必须先滚动再点
+await js(`(() => {
+  const el = [...document.querySelectorAll('span')].find(e =>
+    e.textContent.trim() === '完成' && String(e.className).includes('circle-button'))
+  if (!el) return false
+  el.scrollIntoView({ block: 'center', inline: 'center' })
+  el.click()
+  return true
+})()`)
+await wait(4)
+```
+
+关键选择器与坑：
+
+| 元素 | 选择器 | 说明 |
+|---|---|---|
+| 封面预览容器 | `.cover` | 632×160，左侧缩略图 + 右侧「智能推荐封面」 |
+| 编辑入口 | `.cover-edit-entry` | 文本「编辑封面」，**平时 0×0，必须 hover 才出现** |
+| 封面图片 input | `input[type="file"][accept*="image/png"]` | 编辑器打开后才存在（页面此时有 2 个 file input） |
+| 完成按钮 | `span.circle-button-content`（文本「完成」） | 在视口外，需 `scrollIntoView` |
+| 编辑器容器 | `.d-modal.cover-modal` | 关闭判定：`!m || m.offsetParent === null` |
+
+- **不要点「上传」按钮**：编辑器打开后 image input 已在 DOM 里，直接 `uploadFile` 就能替换封面，省一步。
+- **PK 封面引导气泡会遮挡**：`.pk-cover-guide-tooltip` / `.pk-cover-guide` 首屏可能自动弹出，先 `display: none` 掉（纯视觉层，不影响提交数据）。
+- **不要用「智能推荐封面/一键生成」**：那是 AI 生成封面，会消耗 HeyGen 类额度且不可控，本技能只做「上传自己的图」。
+- **校验信号**：完成回到编辑页后，页面出现「✅ 封面效果评估通过，未发现封面质量问题」即封面已被服务端接受。
+- **失败即中止**：任一环节失败（悬停没出按钮 / 编辑器没开 / 找不到完成按钮 / 弹窗没关）脚本会 `exit 1`，不会带着错误封面继续发。
+
 ### 4. 填写标题
 
 ```js
@@ -382,6 +443,7 @@ bash ~/.workbuddy/skills/xhs-image-note-release/scripts/publish_note.sh
 ```bash
 MEDIA_DIR="/path/to/assets"
 MEDIA_FILES="video.mp4"                     # 视频只能 1 个
+COVER_IMAGE="/path/to/cover.png"            # 可选，留空=默认第一帧
 TITLE="标题"
 BODY='正文内容'
 TOPICS="话题1,话题2"
@@ -397,6 +459,8 @@ MEDIA_DIR=/abs/path MEDIA_FILES=video.mp4 TITLE="标题" BODY='正文' TOPICS="�
 ```
 
 参数演进说明（v1.8.0）：`IMAGE_DIR` / `IMAGES` 仍可作为 `MEDIA_DIR` / `MEDIA_FILES` 的别名使用，老调用方式不破。新增 `MEDIA_TYPE=image|video` 用于强制指定（默认 `auto`）。
+
+封面参数（v1.9.0）：新增 `COVER_IMAGE`，仅对视频笔记生效；留空则保留小红书默认的第一帧。
 
 > **draft 模式说明**：`MODE="draft"` 时脚本走 `_onSave()` 存草稿箱，不实际发布。用户可在小红书创作平台「草稿箱」里自行检查并点发布。多笔记场景建议先全部存草稿，再手动间隔 ≥5 分钟逐一发布以避风控。
 
@@ -644,6 +708,8 @@ done
 18. **`.header-draft`（草稿箱入口）必须用真实鼠标点击**：在 `js()` 里 `el.click()` 不会展开面板，必须 `click('.header-draft', { label: 'open draft box' })`。展开后能看到「视频笔记(N) / 图文笔记(N)」+ 缩略图 + 标题 + 保存时间，这是校验草稿是否真的存进去最直接的方式。
 
 19. **`/publish/note-manage` 和 `?tab=draft` 都已 404（2026-11-02）**：别再拼 URL 找笔记管理页，直接从侧栏 `.header-draft` 点进去。另外访问 `creator.xiaohongshu.com/` 根路径会跳 `/login`，但 `/publish/publish` 登录态是正常的——别被根路径的重定向误导成"未登录"。
+
+20. **视频自定义封面必须真实 hover 才出按钮（2026-11-02）**：`.cover-edit-entry`（「编辑封面」）平时 `boundingRect` 是 `0×0`，`el.click()`、`scrollIntoView`、`getByText` 全都不触发。唯一可行路径是 `cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none' })` 把鼠标移到 `.cover` 左侧缩略图上（x 约 +65），等 1.5s 后再 `click('.cover-edit-entry')`。「完成」按钮在视口外右侧（`innerWidth: 900` 时 `x≈1128`），必须先 `scrollIntoView` 才能点到。首屏自动弹出的 `.pk-cover-guide-tooltip` 会遮挡该区域，先 `display: none`。
 
 ## Resources
 

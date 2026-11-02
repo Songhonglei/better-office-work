@@ -17,6 +17,7 @@ BODY="${BODY:-}"                                # 笔记正文（支持 \n 换�
 TOPICS="${TOPICS:-}"                            # 话题标签，逗号分隔（不要带 #）
 MODE="${MODE:-publish}"                         # publish=直接发布；draft=存草稿箱；stage=只准备好停在页面
 MEDIA_TYPE="${MEDIA_TYPE:-auto}"                # auto=按扩展名判断；image=强制图文；video=强制视频
+COVER_IMAGE="${COVER_IMAGE:-}"                  # 可选：视频封面图片绝对路径。留空=默认取视频第一帧
 # ---- 参数配置结束 ----
 
 if [ -z "$MEDIA_DIR" ] || [ -z "$MEDIA_FILES" ] || [ -z "$TITLE" ] || [ -z "$BODY" ]; then
@@ -47,11 +48,11 @@ fi
 PARAMS_FILE="/tmp/xhs_publish_params.json"
 
 # 判断媒体类型 + 写参数 JSON，并把最终类型打印给 shell
-RESOLVED_TYPE=$(python3 - "$MEDIA_DIR" "$MEDIA_FILES" "$TITLE" "$BODY" "$TOPICS" "$MODE" "$MEDIA_TYPE" "$PARAMS_FILE" <<'PYEOF'
+RESOLVED_TYPE=$(python3 - "$MEDIA_DIR" "$MEDIA_FILES" "$TITLE" "$BODY" "$TOPICS" "$MODE" "$MEDIA_TYPE" "$COVER_IMAGE" "$PARAMS_FILE" <<'PYEOF'
 import json, os, sys
 
 (media_dir, files_str, title, body, topics_str,
- mode, forced_type, path) = sys.argv[1:9]
+ mode, forced_type, cover_image, path) = sys.argv[1:10]
 
 VIDEO_EXT = {'.mp4', '.mov', '.flv', '.f4v', '.mkv', '.rm', '.rmvb', '.m4v', '.mpg', '.mpeg', '.ts'}
 IMAGE_EXT = {'.png', '.jpg', '.jpeg', '.webp', '.heic', '.bmp'}
@@ -81,6 +82,17 @@ elif media_type == 'video' and len(files) != 1:
 elif media_type == 'image' and len(files) > 18:
     err = '图文笔记最多 18 张，当前 %d 张' % len(files)
 
+# 封面图：仅视频笔记使用；图文笔记静默忽略
+cover = (cover_image or '').strip()
+if cover:
+    if not os.path.isfile(cover):
+        err = 'COVER_IMAGE 文件不存在: %s' % cover
+    elif os.path.splitext(cover)[1].lower() not in IMAGE_EXT:
+        err = 'COVER_IMAGE 必须是图片（支持 %s），当前: %s' % (
+            '/'.join(sorted(IMAGE_EXT)), cover)
+    elif media_type != 'video':
+        cover = ''   # 图文笔记没有封面概念，忽略即可
+
 params = {
     "mediaDir": media_dir,
     "files": files,
@@ -89,6 +101,7 @@ params = {
     "body": body,
     "topics": [t.strip().lstrip('#') for t in topics_str.split(',') if t.strip()],
     "mode": mode,
+    "coverImage": cover,
     "error": err,
 }
 with open(path, 'w', encoding='utf-8') as f:
@@ -117,6 +130,15 @@ echo "  素材目录: $MEDIA_DIR"
 echo "  文件数量: ${#FILE_ARRAY[@]}"
 echo "  标题: $TITLE"
 [ -n "$TOPICS" ] && echo "  话题: $TOPICS"
+if [ "$RESOLVED_TYPE" = "video" ]; then
+  if [ -n "$COVER_IMAGE" ]; then
+    echo "  封面: $COVER_IMAGE"
+  else
+    echo "  封面: 默认（视频第一帧）"
+  fi
+elif [ -n "$COVER_IMAGE" ]; then
+  echo "  封面: 忽略（COVER_IMAGE 仅对视频笔记生效）"
+fi
 echo "  模式: $MODE"
 echo "=========================================="
 echo ""
@@ -144,6 +166,76 @@ const VIDEO_SEL = 'input[type="file"][accept*=".mp4"]'
 const IMAGE_SEL = 'input[type="file"][accept*=".png"]'
 const UPLOAD_SEL = isVideo ? VIDEO_SEL : IMAGE_SEL
 const TAB_TEXT = isVideo ? '上传视频' : '上传图文'
+const coverImage = params.coverImage || ''
+
+// 设置视频自定义封面：hover 缩略图 → 点「编辑封面」→ 上传图片 → 点「完成」
+// 「编辑封面」按钮平时 boundingRect 为 0×0，只有鼠标真的悬停在封面缩略图上才渲染出来，
+// 所以必须用 CDP 派发 mouseMoved，用 el.click() 或 scrollIntoView 都不行。
+async function setVideoCover(coverPath) {
+  // 「PK封面」引导气泡会在首屏自动弹出并可能盖住封面区域，先隐藏掉（纯视觉层，不影响数据）
+  await js(`(() => {
+    document.querySelectorAll('.pk-cover-guide-tooltip, .pk-cover-guide').forEach(e => { e.style.display = 'none' })
+    return true
+  })()`)
+
+  const rect = await js(`(() => {
+    const c = document.querySelector('.cover')
+    if (!c) return null
+    const r = c.getBoundingClientRect()
+    if (r.width < 50) return null
+    return {
+      x: Math.round(r.x), y: Math.round(r.y),
+      w: Math.round(r.width), h: Math.round(r.height)
+    }
+  })()`)
+  if (!rect) return 'NO_COVER_AREA'
+  cliLog('cover area: ' + JSON.stringify(rect))
+
+  // 悬停在缩略图（左侧约 130px 宽）中部，右侧是「智能推荐封面」不响应 hover
+  await cdp('Input.dispatchMouseEvent', {
+    type: 'mouseMoved',
+    x: rect.x + 65,
+    y: rect.y + Math.round(rect.h / 2),
+    button: 'none'
+  })
+  await wait(1.5)
+
+  const entryShown = await js(`(() => {
+    const el = document.querySelector('.cover-edit-entry')
+    if (!el) return false
+    const r = el.getBoundingClientRect()
+    return r.width > 0 && r.height > 0
+  })()`)
+  if (!entryShown) return 'EDIT_ENTRY_NOT_SHOWN'
+
+  await click('.cover-edit-entry', { label: 'open cover editor', timeout: 8000 })
+  await wait(4)
+
+  // 封面编辑器打开后，页面会多出一个 accept 含 image 的 file input
+  const editorReady = await js(`!!document.querySelector('input[type="file"][accept*="image/png"]')`)
+  if (!editorReady) return 'EDITOR_NOT_OPEN'
+
+  await uploadFile('input[type="file"][accept*="image/png"]', coverPath)
+  await wait(5)
+
+  // 「完成」按钮在视口外右侧（innerWidth 900 时 x≈1128），必须先 scrollIntoView 再点
+  const doneClicked = await js(`(() => {
+    const el = [...document.querySelectorAll('span')].find(e =>
+      e.textContent.trim() === '完成' && String(e.className).includes('circle-button'))
+    if (!el) return false
+    el.scrollIntoView({ block: 'center', inline: 'center' })
+    el.click()
+    return true
+  })()`)
+  if (!doneClicked) return 'NO_DONE_BUTTON'
+  await wait(4)
+
+  const closed = await js(`(() => {
+    const m = document.querySelector('.d-modal.cover-modal')
+    return !m || m.offsetParent === null
+  })()`)
+  return closed ? 'OK' : 'MODAL_STILL_OPEN'
+}
 
 cliLog('Media type: ' + params.mediaType + ' | files: ' + filePaths.length)
 
@@ -267,6 +359,21 @@ if (isVideo) {
     process.exit(1)
   }
   cliLog('Video uploaded and transcoded')
+
+  // 可选：设置自定义封面。留空则保留小红书默认的第一帧，不做任何操作
+  if (coverImage) {
+    cliLog('Setting custom cover: ' + coverImage)
+    const coverResult = await setVideoCover(coverImage)
+    cliLog('Cover result: ' + coverResult)
+    if (coverResult !== 'OK') {
+      cliLog('ERROR: 封面设置失败（' + coverResult + '），中止以免发出封面错误的笔记')
+      await completeTaskSpace(task.id, { keep: false })
+      process.exit(1)
+    }
+    cliLog('Custom cover applied')
+  } else {
+    cliLog('Cover: keep default first frame')
+  }
 } else {
   // 图文：小红书对批量 setFileInputFiles 只建空占位，必须逐个 uploadFile
   cliLog('Uploading ' + filePaths.length + ' images one by one...')

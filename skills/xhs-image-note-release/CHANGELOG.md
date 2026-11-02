@@ -3,6 +3,18 @@
 All notable changes to this skill are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+### v1.9.0 (2026-11-02)
+
+- **Feature**: 视频笔记支持**自定义封面**。新增 `COVER_IMAGE` 参数（绝对路径），留空则完全保留小红书默认的第一帧。
+  - 自动链路：CDP 派发真实 `mouseMoved` 悬停 `.cover` 缩略图 → 点 `.cover-edit-entry`（「编辑封面」）→ 向封面编辑器新出现的 `input[type="file"][accept*="image/png"]` 上传图片 → `scrollIntoView` 后点「完成」→ 校验 `.d-modal.cover-modal` 已关闭。
+  - 任一环节失败即 `exit 1` 中止，不会带着错误封面继续发布。
+  - `COVER_IMAGE` 仅对视频笔记生效；图文模式传入会在启动提示中标注「忽略」。
+  - 失败前已校验：文件存在、扩展名属于图片集合，均在启动浏览器之前完成。
+- **Root cause (为什么不能直接点)**：`.cover-edit-entry` 平时 `boundingRect` 为 `0×0`，只有 CSS `:hover` 生效才渲染。`el.click()`、`scrollIntoView`、文本定位全部无效——必须用 CDP 发真实鼠标移动。「完成」按钮在视口外右侧（`innerWidth: 900` 时 `x≈1128`），需先滚动。
+- **Fix**: 首屏自动弹出的 `.pk-cover-guide-tooltip` / `.pk-cover-guide` 会遮挡封面区域，脚本进入封面流程前先 `display: none`（纯视觉层，不影响提交数据）。
+- **Docs**: SKILL.md 新增 3c「设置视频封面」小节（四步链路 + 选择器对照表 + 校验信号）、注意事项新增第 20 条；快速复用补充 `COVER_IMAGE` 示例。
+- **验证**: 22.8s mp4 + `card_05.png` 作封面，stage 模式实测 `Cover result: OK`，回到编辑页封面缩略图显示第 5 张卡片，并出现「✅ 封面效果评估通过，未发现封面质量问题」。
+
 ### v1.8.0 (2026-11-02)
 
 - **Feature**: 支持**视频笔记**，并与图文**自动区分**。
