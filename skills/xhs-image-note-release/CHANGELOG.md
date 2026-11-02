@@ -3,6 +3,23 @@
 All notable changes to this skill are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+### v1.8.0 (2026-11-02)
+
+- **Feature**: 支持**视频笔记**，并与图文**自动区分**。
+  - 新增 `MEDIA_DIR` / `MEDIA_FILES` 参数（`IMAGE_DIR` / `IMAGES` 保留为别名，老调用不破）。
+  - 按第一个文件的扩展名判定类型：`.mp4/.mov/.flv/.f4v/.mkv/.rm/.rmvb/.m4v/.mpg/.mpeg/.ts` → 视频；`.png/.jpg/.jpeg/.webp/.heic/.bmp` → 图文。判定与约束校验放在启动浏览器**之前**，失败不产生废草稿。
+  - 新增 `MEDIA_TYPE=auto|image|video` 可强制指定类型。
+  - 新增视频上传分支：单文件 `uploadFile()` + 转码轮询（「重新上传」+ 标题输入框同时出现即完成，最多 40×3s）；图文分支逻辑保持不变。
+  - 约束：视频一次只能 1 个文件，图文最多 18 张，混合类型直接报错。
+- **Fix (根因纠正)**: 旧脚本无法用于视频，**不是 ego-browser 升级导致 API 失效**。实测 ego-browser 0.6.2.5 同时提供旧全局函数与新 TaskSpace/Page 两套 API，旧函数（`useOrCreateTaskSpace`/`js`/`fillInput`/`uploadFile`/`completeTaskSpace` 等）全部存在且整条流程可跑通；`ego-browser skill` 指南 v2.1.0 只列新 API 是文档收敛，不是移除。真实原因是脚本三处硬编码只认图文：① 强制点「上传图文」tab；② 选择器 `[accept*=".png"]` 匹配不到视频 input（`accept=".mp4,..."`）；③ 最多 18 张 + CDN 缩略图校验不适用于单视频。
+- **Fix (视频页编辑器)**: 图文页与视频页的编辑器现在都是 tiptap ProseMirror（`div.tiptap`）。脚本改为按 `div.tiptap` → `[contenteditable="true"]` 顺序探测，不再写死。
+- **Fix (话题错位)**: tiptap 不响应 `Control+End`，光标停在原处会把 `#话题` 插进正文中间（表现为「给同#人生感悟样走在这段路上的人」）。改为每次插入话题前用 Selection API（`selectNodeContents` + `collapse(false)`）显式把光标收敛到末尾。
+- **Docs**: SKILL.md 新增「媒体类型自动判断」章节（含两条路径差异对照表）、重写第 2 步为「切换到对应上传 tab」、第 3 步拆为图文/视频两小节、补充 tiptap 光标定位与 `xhs-publish-btn` 拦截指针事件的说明、新增 API 双轨对照表、注意事项新增第 16–19 条（选择器不可混用 / 视频需等转码 / `.header-draft` 需真实点击 / `note-manage` 已 404）。
+- **验证**: 两条路径均实测跑通（stage 模式，未提交）——
+  - 视频：10.3MB / 22.8s mp4，第 0 次轮询即 `readyState:4` + 「重新上传」出现，标题/正文/2 个话题全部精确挂载。
+  - 图文：3 张 2160×2880 png，`图片编辑 3/18`、`cdnImages 6`，标题/正文/2 个话题正常。
+  - `bash -n` 语法检查通过；类型误判（.txt）、多视频文件两种错误分支均在启动浏览器前退出。
+
 ### v1.7.2 (2026-10-27)
 
 - **铁律（Docs）**: SKILL.md 新增「发布前必读」提醒与「注意事项」第 15 条——**内容严禁出现任何引流信息**：卡片图片、标题、正文、话题中不得出现「微信搜索」「公众号」「加微信」「扫码」等引流文案，也不得放置二维码图片，否则有封号风险；只允许 `@账号名` 软性署名，靠内容质量与评论区互动自然导流。

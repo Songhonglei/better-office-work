@@ -1,18 +1,20 @@
 ---
 name: xhs-image-note-release
 description: >
-  小红书图文笔记自动发布技能。通过 ego-browser 自动化完成图片上传、标题填写、正文编辑、
-  话题标签、发布（或存草稿）等全流程。支持三种收尾模式：直接发布（_onPublish）、存草稿
-  （_onSave，草稿箱按钮文本为「暂存离开」）、以及 stage 模式（只准备好内容停在页面，不触发
+  小红书笔记自动发布技能（图文 + 视频，自动判断类型）。通过 ego-browser 自动化完成素材上传、
+  标题填写、正文编辑、话题标签、发布（或存草稿）等全流程。**按素材扩展名自动识别**：mp4/mov/flv
+  等走视频笔记，png/jpg/webp 等走图文笔记，无需手动指定。支持三种收尾模式：直接发布（_onPublish）、
+  存草稿（_onSave，草稿箱按钮文本为「暂存离开」）、以及 stage 模式（只准备好内容停在页面，不触发
   任何保存/发布动作，用户自行检查后手动点发布），用户可要求「发小红书」或「推到草稿箱自己点发布」
   或「准备好页面我自己发布」。
   附带 28 种多样式风格卡片生成器（含 3 种照片背景氛围主题），
   卡片主题、布局、背景图、遮罩强度、模糊、颗粒等参数均可自由配置。
-  当用户要求发小红书、发布图文笔记、上传到小红书、小红书发帖、存草稿、推到草稿箱或涉及小红书内容发布时触发此技能。
+  当用户要求发小红书、发布图文笔记、发布视频笔记、上传到小红书、小红书发帖、存草稿、推到草稿箱
+  或涉及小红书内容发布时触发此技能。
   前置依赖：ego-browser (ego-lite) 已安装且正在运行，小红书账号已登录。
 slug: xhs-image-note-release
-displayName: 小红书图文笔记发布
-version: 1.7.2
+displayName: 小红书笔记发布（图文/视频）
+version: 1.8.0
 bins: [node, python3]
 ---
 
@@ -22,7 +24,28 @@ bins: [node, python3]
 
 # xhs-image-note-release
 
-通过 ego-browser 自动化发布小红书图文笔记。覆盖从打开创作平台到发布成功的完整流程，包含图片批量上传、标题/正文填写、话题标签、一键发布等。附带 28 种多样式风格卡片生成器（含 3 种照片背景氛围主题），卡片参数可自由配置。
+通过 ego-browser 自动化发布小红书笔记。覆盖从打开创作平台到发布成功的完整流程，包含素材批量上传、标题/正文填写、话题标签、一键发布等。**图文与视频两条路径自动选择**，详见「媒体类型自动判断」。附带 28 种多样式风格卡片生成器（含 3 种照片背景氛围主题），卡片参数可自由配置。
+
+## 媒体类型自动判断（v1.8.0 新增）
+
+`publish_note.sh` 按第一个文件的扩展名决定走哪条路径，不需要手动指定：
+
+| 扩展名 | 判定 | 上传入口 | file input 选择器 |
+|--------|------|----------|-------------------|
+| `.mp4` `.mov` `.flv` `.f4v` `.mkv` `.rm` `.rmvb` `.m4v` `.mpg` `.mpeg` `.ts` | `video` | 上传视频 tab | `input[type="file"][accept*=".mp4"]` |
+| `.png` `.jpg` `.jpeg` `.webp` `.heic` `.bmp` | `image` | 上传图文 tab | `input[type="file"][accept*=".png"]` |
+
+约束：**视频一次只能 1 个文件；图文最多 18 张**。判定失败或混合类型时脚本在启动浏览器之前就报错退出（不会产生废草稿）。要强制指定用 `MEDIA_TYPE=video` 或 `MEDIA_TYPE=image`。
+
+两条路径的差异（这是 v1.7.2 之前只支持图文的根因）：
+
+| 环节 | 图文 | 视频 |
+|------|------|------|
+| 落地页 | `/publish/publish` 默认是视频页，需切「上传图文」 | 默认就是，无需切换 |
+| 上传方式 | 逐个 `uploadFile()`，批量只留空占位 | 单文件 `uploadFile()` |
+| 完成判定 | CDN 缩略图数 ≥ 文件数 或「图片编辑 N/18」 | 出现「重新上传」+ 标题输入框 |
+| 等待时长 | 每张 6s + 汇总 10s | 转码轮询，最多 40×3s（约 2 分钟） |
+| 额外步骤 | 无 | 封面默认取第一帧，可留默认不处理 |
 
 ## Dependencies
 
@@ -37,7 +60,25 @@ bins: [node, python3]
 
 > **特别提示（仅 WorkBuddy 环境）**：较新版本的 WorkBuddy 需先关闭沙箱功能（设置 → 关闭沙箱），否则运行 ego-browser 会被中断。这**不是本技能的依赖**——在终端或其他 Agent 中直接运行本技能无需任何沙箱相关操作。
 >
-> **ego-browser API**：本技能代码中使用的 `useOrCreateTaskSpace`、`openOrReuseTab`、`snapshotText`、`click`、`fillInput`、`typeText`、`pressKey`、`cdp`、`js`、`pageInfo`、`completeTaskSpace`、`captureScreenshot`、`wait`、`waitForNetworkIdle`、`cliLog` 均为 ego-browser 提供的 API，需先 `Skill("ego-browser")` 加载后使用。
+> **ego-browser API（2026-11-02 核实）**：ego-browser 0.6.2.x **同时提供两套 API，且都能正常调用**。`ego-browser skill` 打印的指南 v2.1.0 只列了新的一套，容易被误判成旧 API 已被移除——实测旧全局函数全部存在且整条流程可跑通。
+>
+> | 全局函数（本技能使用） | TaskSpace/Page 对象 API |
+> |---|---|
+> | `useOrCreateTaskSpace(name)` | `taskSpace(name)` |
+> | `openOrReuseTab(url, {wait, timeout})` | `page.goto(url)` |
+> | `js(codeString)` | `page.evaluate(fn, arg)` |
+> | `fillInput(sel, value)` | `page.fill(sel, value)` |
+> | `typeText(text)` | `page.keyboard.insertText(text)` |
+> | `click(refOrSel, {label})` | `page.click(sel)` |
+> | `uploadFile(sel, absPath)` | `page.setInputFiles(sel, [absPath])` |
+> | `pageInfo()` | `page.url()` / `page.info()` |
+> | `captureScreenshot()` | `page.screenshot({path})` |
+> | `wait(n)`（**单位：秒**） | `page.waitForTimeout(ms)`（**单位：毫秒**） |
+> | `completeTaskSpace(id, {keep})` | `task.finish({ keep: [...] })` |
+>
+> 本技能继续使用全局函数：`uploadFile()` 的逐文件上传语义直接关系到「图文批量只留空占位」这个坑，换新 API 需要重新验证多图批量上传。**注意 `wait()` 是秒，新 API 是毫秒，混用会差 1000 倍。**
+>
+> 上述 API 需先 `Skill("ego-browser")` 加载后使用。
 
 ## 前置条件
 
@@ -49,12 +90,14 @@ bins: [node, python3]
 
 > **特别提示（仅 WorkBuddy 环境）**：较新版本的 WorkBuddy 需先关闭沙箱功能（设置 → 关闭沙箱），否则运行 ego-browser 会被中断。这不是本技能的依赖，在终端或其他 Agent 中直接运行无需此操作。
 
-## 核心流程（9 步）
+## 核心流程（10 步）
 
 ```
-创建 task space → 打开创作平台 → 等待 SPA 渲染(15s) → 进入图文发布页(自动兼容 tab/下拉)
-→ 上传图片(uploadFile 单文件循环) → 填标题 → 填正文 → 逐个话题从下拉列表选择
-→ 调用 _onPublish() 发布 或 _onSave() 存草稿（由 MODE 决定）→ 校验结果 → 清理 task space
+判断媒体类型(按扩展名) → 创建 task space → 打开创作平台 → 等待 SPA 渲染(15s)
+→ 切到对应上传 tab(视频/图文，自动兼容 tab/下拉)
+→ 上传素材(图文=uploadFile 循环；视频=单文件+转码轮询) → 填标题 → 填正文
+→ 逐个话题从下拉列表选择 → 调用 _onPublish() 发布 或 _onSave() 存草稿（由 MODE 决定）
+→ 校验结果 → 清理 task space
 ```
 
 **收尾模式（MODE）**：
@@ -75,14 +118,16 @@ EOF
 
 **关键点**：小红书创作平台是 Vue SPA，`<div id="app">` 初始为空，`waitForNetworkIdle` 不够，必须 `await wait(15)`。
 
-### 2. 进入图文发布页
+### 2. 切换到对应上传 tab
 
-创作平台支持两种入口进入图文编辑页，脚本会**自动兼容**两种 UI：
+`/publish/publish` 落地时**默认就是「上传视频」页**，所以视频不用切换，图文要切。判断依据是目标 file input 是否已存在，不要靠页面文案猜。
 
-- **方式 A（顶部 tab）**：页面顶部有「上传视频 / 上传图文 / 写长文」tab 导航，点击「上传图文」
-- **方式 B（下拉菜单）**：页面有「发布笔记」下拉按钮，点击展开后选「上传图文」
+支持两种入口，脚本**自动兼容**：
 
-脚本逻辑：先试方式 A（按文本遍历点击），检查是否出现图片 file input（`input[type="file"][accept*=".png"]`）；如果没有，回退到方式 B（snapshotText 匹配 ref 点击）。
+- **方式 A（顶部 tab）**：页面顶部有「上传视频 / 上传图文 / 写长文」tab 导航
+- **方式 B（下拉菜单）**：页面有「发布笔记」下拉按钮，点击展开后选对应项
+
+脚本逻辑：先检测 `input[type="file"][accept*=".mp4"]`（视频）或 `[accept*=".png"]`（图文）是否已存在；不存在则试方式 A（按文本遍历点击）；仍未出现再回退方式 B（snapshotText 匹配 ref 点击）。
 
 ```js
 // 方式 A：点击顶部「上传图文」tab
@@ -126,7 +171,9 @@ if (!await js(`!!document.querySelector('input[type="file"][accept*=".png"]')`))
 
 > **注意**：两种 UI 可能同时存在或随版本切换，脚本以图片 file input 是否出现为判断标准，自动选择可用入口。
 
-### 3. 上传图片（uploadFile 单文件循环）
+### 3. 上传素材
+
+#### 3a. 图文（`uploadFile` 单文件循环）
 
 小红书 Web 端对批量 `DOM.setFileInputFiles` 只创建空占位、不真正上传图片，因此改用 **`uploadFile()` 逐个上传**，每次调用都会触发真实的文件选择/change 事件，图片能真正落到 CDN。
 
@@ -149,6 +196,39 @@ await wait(10)   // 最后批量等待 CDN 缩略图
 > - 用 `uploadFile()` 单文件循环上传，每次只传 1 张，可确保每张图真正上传到小红书 CDN。
 > - 校验时以「图片编辑 N/18」的 **N**（`editCount`）为准，并辅以 `img[src*="xhscdn.com"]` / `spectrum/` 预览图数量判断。
 
+#### 3b. 视频（单文件 + 转码轮询）
+
+视频页的 file input 是 `input[type="file"][accept*=".mp4"]`（accept 为 `.mp4,.mov,.flv,.f4v,.mkv,.rm,.rmvb,.m4v,.mpg,.mpeg,.ts`），**只有一个 input，无 multiple**，`uploadFile()` 一次传完即可。
+
+视频上传后要等服务端转码，不能只看瞬时状态。判定完成的信号是**同时出现「重新上传」文案和标题输入框**：
+
+```js
+await uploadFile('input[type="file"][accept*=".mp4"]', filePath)
+await wait(5)
+
+let videoOk = false
+for (let attempt = 0; attempt < 40; attempt++) {   // 最多约 2 分钟
+  await wait(3)
+  const v = await js(`(() => {
+    const text = document.body.innerText
+    return {
+      hasReupload: text.includes('重新上传'),
+      hasTitleInput: !!document.querySelector('input[placeholder="填写标题会有更多赞哦"]'),
+      hasSetCover: text.includes('设置封面'),
+      videoCount: document.querySelectorAll('video').length,
+      readyState: Math.max(0, ...[...document.querySelectorAll('video')].map(el => el.readyState || 0))
+    }
+  })()`)
+  if (v.hasReupload && v.hasTitleInput) { videoOk = true; break }
+}
+```
+
+> 实测：10MB / 22.8s 的 mp4，第 0 次轮询（上传后 8 秒）就已 `readyState: 4` 且「重新上传」出现，基本不需要等。
+>
+> 封面默认截取视频第一帧，**不需要额外操作**。要换封面需在页面上手动操作（「智能推荐封面」「PK封面」都在设置封面区），脚本不处理。
+>
+> 注意 `video` 元素在页面上可能有 4 个（预览、封面候选等），不要用 `videoCount === 1` 做判定。
+
 ### 4. 填写标题
 
 ```js
@@ -157,17 +237,27 @@ await fillInput('css:input[placeholder="填写标题会有更多赞哦"]', '标�
 
 ### 5. 填写正文与话题标签
 
-正文区域是 `contenteditable="true"` 的富文本编辑器：
+正文区域是 `contenteditable="true"` 的富文本编辑器。**2026-11 起图文页与视频页的编辑器都已换成 tiptap ProseMirror**（外层 `div.tiptap`，内层仍有 `contenteditable="true"`），建议按下面的顺序探测，别写死：
+
+```js
+const editorSel = await js(`(() => {
+  if (document.querySelector('div.tiptap')) return 'div.tiptap'
+  if (document.querySelector('[contenteditable="true"]')) return '[contenteditable="true"]'
+  return ''
+})()`)
+```
 
 ```js
 // 先 focus 编辑器并输入正文（不带 #话题）
-await js(`document.querySelector('[contenteditable="true"]').focus()`)
+// 注意：用 js 里的 focus()，不要用 click()——发布按钮浮层会拦截指针事件
+await js(`document.querySelector('${editorSel}').focus()`)
 await typeText('正文内容...')
 await wait(1)
 
 // 逐个话题从下拉列表选择，确保生成真正可点击的话题标签
 const topics = ['话题1', '话题2']
 for (const topic of topics) {
+  await moveCaretToEnd()   // 见下方「tiptap 光标定位」，每次都要重置光标
   await typeText('#' + topic, { label: 'type topic' })
   await wait(4)  // 等待下拉列表返回
 
@@ -175,12 +265,14 @@ for (const topic of topics) {
     const container = document.getElementById('creator-editor-topic-container')
     if (!container) return
     const items = [...container.querySelectorAll('.item')]
-    let item = items.find(el => {
+    // 优先精确匹配（名称首行等于 #话题），否则退到第一个
+    const exact = items.find(el => {
       const nameEl = el.querySelector('.name')
-      return nameEl && (nameEl.innerText === '#' + topic || nameEl.innerText.includes(topic))
+      return nameEl && nameEl.innerText.trim().split('\n')[0] === '#' + topic
     })
-    if (!item && items.length) item = items[0]
-    item && item.click()
+    const item = exact || items[0]
+    if (!item) return
+    ;(item.querySelector('.name') || item).click()
   })('${topic}')`)
 
   await wait(1.5)
@@ -190,6 +282,25 @@ for (const topic of topics) {
 ```
 
 > **注意**：直接粘贴 `#话题1 #话题2` 只会生成纯文本，不会真正挂载到话题词条。必须从 `#` 触发下拉列表后点击选中。
+>
+> ⚠️ **tiptap 光标定位（2026-11-02 实测）**：tiptap 不认 `Control+End`，按了之后光标不会到末尾，后续 `#话题` 会被插进正文中间（表现为「给同#人生感悟样走在这段路上的人」）。不要用快捷键，用 Selection API 显式收敛光标：
+>
+> ```js
+> await js(`(() => {
+>   const el = document.querySelector('div.tiptap')
+>   el.focus()
+>   const r = document.createRange()
+>   r.selectNodeContents(el)
+>   r.collapse(false)          // false = 折叠到末尾
+>   const s = window.getSelection()
+>   s.removeAllRanges()
+>   s.addRange(r)
+> })()`)
+> ```
+>
+> 每次 `typeText('#话题')` 前都要重新定位一次光标。写错了用 `pressKey('Control+z')` 可以整段撤销上一次 `typeText`。
+>
+> ⚠️ **点编辑器会被发布按钮挡住**：`click('div.tiptap')` 报 `ElementResolutionError: <xhs-publish-btn> intercepts pointer events`。**用 `js()` 里的 `el.focus()` 或 `page.focus()`，不要用 click。**
 
 ### 6. 触发发布 / 存草稿
 
@@ -251,13 +362,14 @@ await completeTaskSpace(task.id, { keep: false })
 
 ## 快速复用
 
-### 发布已有图片
+### 发布已有素材（图文 or 视频）
 
-修改 `scripts/publish_note.sh` 中的 4 个参数后直接运行：
+修改 `scripts/publish_note.sh` 顶部参数，或直接用环境变量传入。**类型不需要声明**，按扩展名自动判断。
 
+图文：
 ```bash
-IMAGE_DIR="/path/to/images"
-IMAGES="img1.png,img2.png,img3.png"
+MEDIA_DIR="/path/to/assets"
+MEDIA_FILES="img1.png,img2.png,img3.png"   # 最多 18 张
 TITLE="标题"
 BODY='正文内容'
 TOPICS="话题1,话题2,话题3"
@@ -265,6 +377,26 @@ MODE="publish"   # publish=直接发布；draft=存草稿箱；stage=只准备�
 
 bash ~/.workbuddy/skills/xhs-image-note-release/scripts/publish_note.sh
 ```
+
+视频：
+```bash
+MEDIA_DIR="/path/to/assets"
+MEDIA_FILES="video.mp4"                     # 视频只能 1 个
+TITLE="标题"
+BODY='正文内容'
+TOPICS="话题1,话题2"
+MODE="stage"
+
+bash ~/.workbuddy/skills/xhs-image-note-release/scripts/publish_note.sh
+```
+
+一行式（不改文件）：
+```bash
+MEDIA_DIR=/abs/path MEDIA_FILES=video.mp4 TITLE="标题" BODY='正文' TOPICS="话题1,话题2" MODE=stage \
+  bash ~/.workbuddy/skills/xhs-image-note-release/scripts/publish_note.sh
+```
+
+参数演进说明（v1.8.0）：`IMAGE_DIR` / `IMAGES` 仍可作为 `MEDIA_DIR` / `MEDIA_FILES` 的别名使用，老调用方式不破。新增 `MEDIA_TYPE=image|video` 用于强制指定（默认 `auto`）。
 
 > **draft 模式说明**：`MODE="draft"` 时脚本走 `_onSave()` 存草稿箱，不实际发布。用户可在小红书创作平台「草稿箱」里自行检查并点发布。多笔记场景建议先全部存草稿，再手动间隔 ≥5 分钟逐一发布以避风控。
 
@@ -505,10 +637,18 @@ done
 
 15. **⚠️ 铁律：内容里严禁出现任何引流信息（2026-10-27 实战教训）**：卡片文案、标题、正文、话题、图片中**都不得**直接出现「微信搜索」「微信公众号」「加我微信」「扫码关注」等引流文案，也**不得**放置二维码图片——小红书对站外引流判定极严，直接引流极易**封号**。需要沉淀私域时，只允许用**账号署名**（如右下角 `@账号名`）这类软性露出，靠内容质量和评论区互动自然导流；发布前自查一遍所有图片和文字。
 
+16. **图文与视频的 file input 选择器不能混用（2026-11-02 根因）**：视频页 `accept=".mp4,.mov,.flv,..."`，图文页 `accept=".png,..."`。用 `[accept*=".png"]` 去传视频会抛 `ElementResolutionError`，看起来像"浏览器坏了"，实际是选错了上传路径。脚本现在按扩展名先判定类型再选选择器。
+
+17. **视频必须等转码，不能只看上传进度**：判定信号是「重新上传」文案 + 标题输入框**同时**出现。视频页 `video` 元素可能有 4 个（预览/封面候选），别用数量判定。封面默认第一帧，脚本不处理换封面。
+
+18. **`.header-draft`（草稿箱入口）必须用真实鼠标点击**：在 `js()` 里 `el.click()` 不会展开面板，必须 `click('.header-draft', { label: 'open draft box' })`。展开后能看到「视频笔记(N) / 图文笔记(N)」+ 缩略图 + 标题 + 保存时间，这是校验草稿是否真的存进去最直接的方式。
+
+19. **`/publish/note-manage` 和 `?tab=draft` 都已 404（2026-11-02）**：别再拼 URL 找笔记管理页，直接从侧栏 `.header-draft` 点进去。另外访问 `creator.xiaohongshu.com/` 根路径会跳 `/login`，但 `/publish/publish` 登录态是正常的——别被根路径的重定向误导成"未登录"。
+
 ## Resources
 
 ### scripts/
-- `scripts/publish_note.sh` — 一键发布脚本，修改 4 个参数即可复用
+- `scripts/publish_note.sh` — 一键发布脚本，图文/视频自动判断，改参数后直接跑（见「快速复用」）
 
 ### references/
 - `references/publish-method.md` — 完整方法文档，含 `_onPublish`/`_onSave` 两种收尾方案的失败方案对比表、技术原理与「暂存离开」坑点详解。**按需加载**：当需要了解发布/存草稿按钮各失败方案的完整对比、或需要排查发布/存草稿相关问题时阅读此文件；正常流程无需提前加载
