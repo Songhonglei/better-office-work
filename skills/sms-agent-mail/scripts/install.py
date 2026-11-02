@@ -11,7 +11,9 @@ from onboard import DEFAULT_DATA_DIR, SKILL_ROOT, data_directory, overlaps
 
 # Copy resources first and publish the updated instructions last. Unknown files,
 # runtime state and credentials are never copied from the extracted directory.
-FILES = ('scripts/check_access.py', 'scripts/check_message.py', 'scripts/onboard.py',
+FILES = ('scripts/read_sms.py', 'scripts/browser_handoff.py', 'scripts/workflow_errors.py',
+         'references/automation.md', 'tests/test_workflow.py', 'tests/browser_smoke.py',
+         'scripts/check_access.py', 'scripts/check_message.py', 'scripts/onboard.py',
          'scripts/install.py', 'references/migration.md', 'references/cli-recipes.md',
          'references/storage.md', 'references/end-to-end.md',
          'tests/test_access.py', 'tests/test_onboarding.py', 'tests/test_message.py',

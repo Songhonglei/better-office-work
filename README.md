@@ -20,7 +20,7 @@
 
 | Skill | Description |
 |---|---|
-| [sms-agent-mail](./skills/sms-agent-mail/) | 手机短信邮件读取：原生邮箱工具或 Agently CLI，首次接入配置邮箱与 SIM/尾号，外置设置与凭据升级保留，附跨 Agent 端到端验收（v1.2.0） |
+| [sms-agent-mail](./skills/sms-agent-mail/) | 手机短信邮件读取：原生邮箱工具或 Agently CLI，支持一键读信与同进程浏览器登录；核对服务、SIM/尾号和有效期，保留外置配置与授权（v1.4.0） |
 | [qq-mail-manage](./skills/qq-mail-manage/) | QQ 邮箱管理：Python HTTP 直连无需 Codex，兼容 Codex OAuth；支持现代无初始化 MCP、账号与权限隔离、附件 CLI、发送及确认后移至垃圾箱；可审计核验兼容及中断恢复（v1.5.1） |
 | [macos-power-control](./skills/macos-power-control/) | macOS 合盖与电源设置：一句话需求解析，设置前确认，区分电池/接电、临时防休眠与持久策略，附验证和恢复流程 |
 | [invoice-auto-forward](./skills/invoice-auto-forward/) | 邮箱发票自动转发：IMAP 扫描 + 发票解析（PDF/OFD/XML）+ SMTP 转发，支持 QQ/163/126 多邮箱、链接型发票下载、抬头白名单与定时无人值守 |

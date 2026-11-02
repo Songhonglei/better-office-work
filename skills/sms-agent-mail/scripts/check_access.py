@@ -16,6 +16,8 @@ def check_identity(cli: str, expected_email: str) -> tuple[int, dict]:
         return 2, {'ok': False, 'reason': 'cli_timeout'}
     except (OSError, UnicodeError):
         return 2, {'ok': False, 'reason': 'cli_unavailable'}
+    if result.returncode == 127:
+        return 2, {'ok': False, 'reason': 'cli_runtime_not_found', 'cli_exit': 127}
     if result.returncode:
         return 2, {'ok': False, 'reason': 'cli_identity_failed', 'cli_exit': result.returncode}
     try:

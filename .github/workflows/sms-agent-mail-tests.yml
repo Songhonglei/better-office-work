@@ -39,3 +39,21 @@ jobs:
       - name: Run synthetic checks without mailbox credentials
         working-directory: skills/sms-agent-mail
         run: python3 -m unittest discover -s tests -v
+
+  browser-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Install isolated browser test dependencies
+        run: |
+          python3 -m pip install playwright==1.56.0
+          python3 -m playwright install --with-deps chromium
+      - name: Exercise real Chromium with synthetic mailbox and localhost page
+        working-directory: skills/sms-agent-mail
+        run: python3 tests/browser_smoke.py
