@@ -65,11 +65,13 @@ def validate(config: dict, data_dir: Path) -> dict:
         'mail_source': config.get('mail_source'),
         'code_wait_seconds': config.get('code_wait_seconds', 240),
         'poll_interval_seconds': config.get('poll_interval_seconds', 4),
+        'body_offset_hours': config.get('body_offset_hours', 8),
     }
     if resolved['mail_source'] not in MAIL_SOURCES:
         raise ValueError('invalid_mail_source')
     for key, low, high in (('code_wait_seconds', 30, 300),
-                           ('poll_interval_seconds', 2, 30)):
+                           ('poll_interval_seconds', 2, 30),
+                           ('body_offset_hours', -23, 23)):
         value = resolved[key]
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not low <= value <= high:
             raise ValueError(f'invalid_{key}')
@@ -116,6 +118,7 @@ def _resolve_target_identity(config: dict, resolved: dict, profile_settings) -> 
     if profile_settings and service not in services:
         raise ValueError('service_not_in_profile')
     resolved['service'] = service
+    resolved['service_tag'] = services.get(service)
 
     route = config.get('route')
     if not _nonempty_str(route) or not ROUTE_RE.fullmatch(route):
@@ -186,8 +189,13 @@ def _resolve_mail_source(config: dict, resolved: dict, profile_settings) -> None
         fallback = webmail.get('allow_regex_fallback', True)
         if not isinstance(fallback, bool):
             raise ValueError('webmail_allow_regex_fallback_invalid')
-        resolved['webmail'] = {'list_url': webmail['list_url'], 'row_selector': row,
-                               'allow_regex_fallback': fallback}
+        resolved['webmail'] = {
+            'list_url': webmail['list_url'],
+            'row_selector': row,
+            'subject_selector': webmail.get('subject_selector') or '.mail-item-subject',
+            'body_selector': webmail.get('body_selector') or '.botmail-mail-reader-body-content',
+            'allow_regex_fallback': fallback,
+        }
 
 
 def main() -> int:

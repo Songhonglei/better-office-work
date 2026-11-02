@@ -9,7 +9,9 @@
   "poll_interval_seconds": 4,
   "webmail": {
     "list_url": "https://agent.qq.com/page/list",
-    "row_selector": null,
+    "row_selector": ".botmail-mail-list-item",
+    "subject_selector": ".mail-item-subject",
+    "body_selector": ".botmail-mail-reader-body-content",
     "allow_regex_fallback": true
   },
   "imap": {
@@ -28,5 +30,6 @@
     "submit_selector": "loc=role:button[name='登录']",
     "account_marker": "#account-name",
     "agree_selector": null
-  }
+  },
+  "body_offset_hours": 8
 }

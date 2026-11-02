@@ -28,7 +28,7 @@ const SAFE_CODES = new Set([
 ]);
 
 const report = {
-  skill_version: "1.5.1",
+  skill_version: "1.5.2",
   executor: "ego-browser-host-bridge",
   code_handoff: "host-memory",
   mail_source: null,
@@ -146,8 +146,11 @@ async function fetchImapMessages(python, skillDir, cfg, after) {
   return Array.isArray(parsed.messages) ? parsed.messages : [];
 }
 
-// webmail：优先取详情；取不到时按配置决定是否降级为正则兜底
-async function fetchWebmailMessages(task, cfg) {
+// webmail：只取「最新行 + 该行详情」，在行作用域内做确定性校验。
+// agent.qq.com 的列表行不含发件人地址（只有显示名），详情里也无法可靠隔离
+// from/to，因此这里**不冒充**完整校验：只核对主题路由、正文路由、品牌标签、
+// 单码与时效，并在 warnings 里明确标注发件人/收件人未校验。
+async function fetchWebmailCandidate(task, cfg) {
   let page = null;
   for (const t of await task.tabs()) {
     if (t.url && t.url.includes("agent.qq.com")) { page = t.page; break; }
@@ -155,46 +158,97 @@ async function fetchWebmailMessages(task, cfg) {
   if (!page) page = await task.newPage();
   await page.goto(cfg.webmail.list_url);
 
-  if (cfg.webmail.row_selector) {
-    await page.waitForSelector(cfg.webmail.row_selector, { state: "visible", timeout: 8000 });
-  } else {
+  if (!cfg.webmail.row_selector) {
+    if (!cfg.webmail.allow_regex_fallback) throw problem("webmail_detail_unavailable");
     await sleep(2500);
+    const preview = await page.evaluate(() => (document.body ? document.body.innerText : ""));
+    return { scoped: false, preview };
   }
 
-  const view = await page.evaluate((selector) => {
-    const text = document.body ? document.body.innerText : "";
-    if (/扫码登录|请登录|登录后查看/.test(text) && !/验证码/.test(text)) {
-      return { state: "not_logged_in" };
-    }
-    if (selector) {
-      const row = document.querySelector(selector);
-      if (row) {
-        const detail = document.querySelector("[data-mail-body]");
-        if (detail) {
-          return {
-            state: "detail",
-            message: {
-              from: (row.getAttribute("data-from") || ""),
-              to: (row.getAttribute("data-to") || ""),
-              subject: (row.getAttribute("data-subject") || ""),
-              body: detail.innerText || "",
-              body_format: "text",
-              created_at: row.getAttribute("data-created-at") || null,
-            },
-          };
-        }
-        return { state: "list_only", preview: row.innerText || "" };
-      }
-    }
-    return { state: "list_only", preview: text };
-  }, cfg.webmail.row_selector || null);
-
-  if (view.state === "not_logged_in") throw problem("webmail_not_logged_in");
-  if (view.state === "detail" && view.message && view.message.from && view.message.body) {
-    return { verifiedSource: true, messages: [view.message] };
+  try {
+    await page.waitForSelector(cfg.webmail.row_selector, { state: "visible", timeout: 8000 });
+  } catch {
+    const loginWall = await page.evaluate(() => {
+      const text = document.body ? document.body.innerText : "";
+      return /扫码登录|请登录|登录后查看/.test(text) && !/验证码/.test(text);
+    });
+    if (loginWall) throw problem("webmail_not_logged_in");
+    throw problem("webmail_detail_unavailable");
   }
-  if (!cfg.webmail.allow_regex_fallback) throw problem("webmail_detail_unavailable");
-  return { verifiedSource: false, preview: view.preview || "" };
+
+  const rows = await page.evaluate((sel) => {
+    const list = Array.from(document.querySelectorAll(sel.row)).slice(0, 5);
+    return list.map((row, index) => ({
+      index,
+      subject: (row.querySelector(sel.subject) || {}).innerText || "",
+      digest: (row.querySelector(".mail-item-digest") || {}).innerText || "",
+    }));
+  }, { row: cfg.webmail.row_selector, subject: cfg.webmail.subject_selector });
+
+  if (!rows.length) return { scoped: false, preview: "" };
+
+  // 最新一条不一定属于本次；在候选中挑主题路由匹配的那一行
+  const target = rows.find((r) => {
+    const m = String(r.subject || "").trim().match(/^(SIM[1-9]_\d{4})的短信验证码$/);
+    return m && m[1] === cfg.route;
+  });
+  if (!target) {
+    return { scoped: true, subject: String(rows[0].subject || "").trim(),
+             digest: rows[0].digest, body: "" };
+  }
+
+  // 用 DOM 点击选中行，避免选择器不唯一时把候选正文带进报错
+  await page.evaluate((sel) => {
+    const row = document.querySelectorAll(sel.row)[sel.index];
+    if (row) row.click();
+  }, { row: cfg.webmail.row_selector, index: target.index });
+  await sleep(1200);
+
+  const bodyText = await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    return el ? (el.innerText || "") : "";
+  }, cfg.webmail.body_selector);
+
+  return { scoped: true, subject: target.subject, digest: target.digest, body: bodyText };
+}
+
+// webmail 行作用域内的确定性校验（发件人/收件人无法从 DOM 取得，单独标注）
+function checkWebmailCandidate(candidate, cfg, after, before) {
+  const skip = ["sender_unverified", "recipient_unverified"];
+  const body = candidate.body || "";
+  const digest = candidate.digest || "";
+  const subject = (candidate.subject || "").trim();
+
+  const subjectRoute = subject.match(/^(SIM[1-9]_\d{4})的短信验证码$/);
+  if (!subjectRoute || subjectRoute[1] !== cfg.route) {
+    return { ok: false, reason: "subject_route_mismatch" };
+  }
+  if (!body) return { ok: false, reason: "webmail_detail_unavailable" };
+  if (!body.includes(cfg.route)) return { ok: false, reason: "body_route_missing" };
+  if (!cfg.service_tag || !body.includes(cfg.service_tag)) {
+    return { ok: false, reason: "body_service_missing" };
+  }
+  if (/重置|找回|修改密码|注册|支付|转账/.test(body)) {
+    return { ok: false, reason: "purpose_not_login" };
+  }
+  const codes = extractCode(body);
+  if (codes.length !== 1) return { ok: false, reason: "code_ambiguous_or_missing" };
+
+  const stamp = body.match(/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/);
+  if (!stamp) return { ok: false, reason: "body_time_missing" };
+  const smsTime = new Date(stamp[1].replace(" ", "T") + "Z");
+  smsTime.setHours(smsTime.getHours() - cfg.body_offset_hours); // 正文时间按手机时区
+  const t0 = Date.parse(after);
+  const t1 = Date.parse(before);
+  const ageSeconds = (Date.now() - smsTime.getTime()) / 1000;
+  if (Number.isNaN(t0) || Number.isNaN(t1)) return { ok: false, reason: "window_invalid" };
+  if (smsTime.getTime() < t0 - 300_000 || smsTime.getTime() > t1) {
+    return { ok: false, reason: "sms_time_outside_window" };
+  }
+  if (ageSeconds > 310) return { ok: false, reason: "sms_time_expired" };
+
+  if (digest && !digest.includes(cfg.route)) skip.push("digest_mismatch");
+  return { ok: true, code: codes[0], warnings: skip };
 }
 
 // ---------------- 校验门 ----------------
@@ -242,21 +296,19 @@ async function waitForCode(task, cfg, python, skillDir, after) {
         report.warnings.push(...(verdict.blockers || []).slice(0, 3));
       }
     } else {
-      const found = await fetchWebmailMessages(task, cfg);
-      if (found.verifiedSource) {
-        const message = found.messages[0];
-        const codes = extractCode(message.body);
-        if (codes.length === 1) {
-          const verdict = await gateMessage(python, skillDir, cfg, message, after, before);
-          if (verdict.verdict === "pass") {
-            report.message_verified = true;
-            report.code_source = "verified";
-            return { code: codes[0], length: codes[0].length };
-          }
-          report.warnings.push(...(verdict.blockers || []).slice(0, 3));
+      const candidate = await fetchWebmailCandidate(task, cfg);
+      if (candidate.scoped) {
+        sawCandidate = true;
+        const verdict = checkWebmailCandidate(candidate, cfg, after, before);
+        if (verdict.ok) {
+          report.code_source = "webmail_dom_checked";
+          report.warnings.push(...verdict.warnings);
+          return { code: verdict.code, length: verdict.code.length };
         }
+        report.warnings.push(verdict.reason);
       } else {
-        const codes = extractCode(found.preview);
+        // 无选择器时按配置降级为全页正则（更弱的路径，必须显式标注）
+        const codes = extractCode(candidate.preview);
         if (codes.length === 1) {
           report.code_source = "regex_unverified";
           report.warnings.push("message_unverified_regex_fallback");

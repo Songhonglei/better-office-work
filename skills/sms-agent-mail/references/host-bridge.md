@@ -1,4 +1,4 @@
-# 原生连接器宿主：host bridge（1.5.1）
+# 原生连接器宿主：host bridge（1.5.2）
 
 适用于**只有宿主原生邮箱连接器、拿不到 CLI 凭据**的 Agent。典型症状：
 `onboard.py verify` 恒失败，或 `auth login` 被服务端以「已存在智能体邮箱」拒绝。
@@ -42,8 +42,25 @@
 
 | 值 | 含义 |
 |---|---|
-| `verified` | 走了校验门且 pass |
-| `regex_unverified` | webmail 详情不可得，按配置降级为正则兜底（**未校验**） |
+| `verified` | 走了完整校验门且 pass（IMAP 路径） |
+| `webmail_dom_checked` | 行作用域内做过确定性校验，但发件人/收件人无法从 DOM 取得，见下 |
+| `regex_unverified` | 未配选择器时按配置降级为全页正则（**几乎未校验**） |
+
+### webmail 的行作用域校验（能做到什么）
+
+agent.qq.com 的列表行只给显示名，不给发件人地址；详情里也无法把 from/to 与
+侧栏账号信息可靠隔离。因此 webmail 路径**不冒充**完整校验，只做能确定的部分：
+
+1. 主题必须匹配 `^(SIM[1-9]_\d{4})的短信验证码$` 且路由等于本次 `route`
+2. 详情正文必须含同一路由串
+3. 正文必须含 profile 里该 `service` 的品牌标签
+4. 正文不得出现重置/找回/注册/支付等非登录用途词
+5. 正文内验证码候选必须唯一
+6. 正文原始短信时间必须落在 `after`–`before` 内、且距今不超过 310 秒
+
+通过后记 `code_source: webmail_dom_checked`，并**必然**带上
+`warnings: ["sender_unverified", "recipient_unverified"]`——这两项是真的没验，
+不是没发现问题。要完整校验就用 IMAP 源。
 
 `regex_unverified` 会同时写 `warnings: ["message_unverified_regex_fallback"]`。
 不想要这条降级路径就把 `webmail.allow_regex_fallback` 设为 `false`。
@@ -72,7 +89,9 @@ IMAP 侧按 `FROM <可信发件人> SINCE <after-1d>` 搜索后取全部候选�
 | `skill_dir` | 可选；默认 `~/.workbuddy/skills/sms-agent-mail`，自定义安装位置时必填 |
 | `code_wait_seconds` | 轮询上限，30–300，默认 240（验证码一般 5 分钟有效） |
 | `poll_interval_seconds` | 轮询间隔，2–30，默认 4 |
-| `webmail.list_url` / `row_selector` / `allow_regex_fallback` | 收件箱地址、行选择器、降级开关 |
+| `webmail.list_url` / `row_selector` / `subject_selector` / `body_selector` | 收件箱地址、行、主题、正文选择器；agent.qq.com 实测为 `.botmail-mail-list-item` / `.mail-item-subject` / `.botmail-mail-reader-body-content` |
+| `webmail.allow_regex_fallback` | 无选择器时是否允许降级为全页正则 |
+| `body_offset_hours` | 正文时间相对 UTC 的偏移，默认 8；按手机时区配 |
 | `imap.host/user/password_file/sender/limit` | 密码只给文件路径，校验 0600 且非符号链接 |
 | `target.*` | 登录页 URL 与五个选择器，外加可选 `agree_selector` |
 
@@ -115,7 +134,9 @@ ego-browser nodejs < ~/.workbuddy/skills/sms-agent-mail/scripts/host_bridge/run.
 | blocker | 含义 | 处置 |
 |---|---|---|
 | `webmail_not_logged_in` | 浏览器未登录邮箱 | 停止，请用户在该浏览器登录 |
-| `webmail_detail_unavailable` | 取不到详情且未允许降级 | 补 `row_selector` 或开 `allow_regex_fallback` |
+| `webmail_detail_unavailable` | 取不到详情且未允许降级 | 补选择器或开 `allow_regex_fallback` |
+| `subject_route_mismatch` | 前几行没有属于本次路由的短信 | 确认 `route` 与短信实际路由一致 |
+| `body_service_missing` | 正文没有该服务的品牌标签 | 确认 `service` 与短信品牌一致（如抖音不是今日头条） |
 | `gate_rejected` | 有候选但全部未通过校验门 | 看 `warnings` 里的 blockers，核对来源/窗口/用途 |
 | `code_not_found_before_deadline` | 窗口内没有候选 | 先查手机拦截箱；不连续重发 |
 | `mail_command_failed` / `mail_payload_invalid` | 子进程失败或输出异常 | 查 IMAP 配置与网络，不回显原始错误 |

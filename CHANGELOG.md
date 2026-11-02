@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — sms-agent-mail v1.5.2（2026-11-02，webmail 接入真实 DOM）
+
+- webmail 源接入 agent.qq.com 实测选择器：行 `.botmail-mail-list-item`、主题 `.mail-item-subject`、正文 `.botmail-mail-reader-body-content`；只在前 5 行中挑主题路由匹配的一条，不再扫全页文本（此前会把页面文案里的「验证码」当候选）。
+- 新增行作用域确定性校验：主题路由、正文路由、品牌标签、非登录用途词、单码唯一、正文原始时间落在窗口内且未过期；通过后记 `code_source: webmail_dom_checked`。
+- 该路径必然标注 `sender_unverified` / `recipient_unverified`——列表行不含发件人地址，详情无法把 from/to 与侧栏账号信息可靠隔离。**要完整校验请用 IMAP 源**，不要用 webmail 路径做无人值守登录。
+- 实测两条失败路径均 fail closed：路由不符 → `subject_route_mismatch`；品牌不符（抖音 vs 今日头条）→ `body_service_missing`。
+- 新增配置 `webmail.subject_selector` / `webmail.body_selector` / `body_offset_hours`。
+
 ### Fixed — sms-agent-mail v1.5.1（2026-11-02，Codex review 修复）
 
 - **校验门**（P1）：host bridge 的每条候选消息先交给 `check_message.py`，参数为本次 `--after/--before`、`--service`、`--route`、`--purpose login`；只有 `verdict=pass` 才取码填入。此前 webmail 扫全页文本、IMAP 取最后 N 条后直接正则取数，绕过了发件人白名单、收件人、品牌、路由、用途、原短信/收信时间与正文完整性判定；`has_body_time` 只判断「有没有时间串」。回执新增 `code_source`（`verified` / `regex_unverified`）与 `message_verified`。

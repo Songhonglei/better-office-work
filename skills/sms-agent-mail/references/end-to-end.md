@@ -4,7 +4,7 @@
 
 ## 1. 安装和离线检查
 
-下载完整目录，用 install.py 安装到目标 Agent 实际技能目录；重新加载后确认可选 sms-agent-mail，metadata.version=1.5.1。然后在该技能目录执行：
+下载完整目录，用 install.py 安装到目标 Agent 实际技能目录；重新加载后确认可选 sms-agent-mail，metadata.version=1.5.2。然后在该技能目录执行：
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -60,7 +60,7 @@ CLI 自动化可直接按 [自动读信与登录](automation.md) 运行；下列
 
 ```json
 {
-  "skill_version":"1.5.1",
+  "skill_version":"1.5.2",
   "install_passed":true,
   "offline_tests_passed":true,
   "identity_matched":true,

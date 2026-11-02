@@ -1,12 +1,18 @@
 # SMS Agent Mail
 
-Version **1.5.1** · [MIT](LICENSE)
+Version **1.5.2** · [MIT](LICENSE)
 
 让 Agent 从专用邮箱读取手机转发的短信，核对服务、号码与时间，协助用户授权的网站登录。支持既有原生邮箱工具、腾讯官方 Agently CLI，或在没有 CLI 凭据的宿主上用 host bridge 完成同进程交接。
 
 需要手机已能自动转发到目标邮箱。包内没有个人邮箱/号码默认值、授权码、token 或真实短信样本。每台设备在首次接入时确认参数并独立授权。
 
-## 1.5.1 变更（Codex review 修复）
+## 1.5.2 变更（webmail 接入真实 DOM）
+
+- webmail 源接入 agent.qq.com 真实选择器：行 `.botmail-mail-list-item`、主题 `.mail-item-subject`、正文 `.botmail-mail-reader-body-content`；只在前 5 行里挑主题路由匹配的那一条，不再扫全页文本。
+- 新增行作用域确定性校验（主题路由、正文路由、品牌标签、非登录用途词、单码唯一、正文原始时间落在窗口内且未过期），通过记 `code_source: webmail_dom_checked`。
+- 该路径**必然**标注 `sender_unverified` / `recipient_unverified`：列表行不含发件人地址，详情无法把 from/to 与侧栏账号信息隔离。要完整校验请用 IMAP 源。
+- 实测：路由不符 → `subject_route_mismatch`；品牌不符（抖音 vs 今日头条）→ `body_service_missing`；均 fail closed，不填不提交。
+- 新增配置 `webmail.subject_selector` / `webmail.body_selector` / `body_offset_hours`。
 
 - **校验门**：host bridge 的每条候选消息先交给 `check_message.py`（本次 after/before + 服务 + 路由 + login 用途），只有 `verdict=pass` 才填码。此前两种新邮件源直接正则取数，绕过了发件人白名单、收件人、品牌、路由、用途、时效与正文完整性检查——已修。
 - **回执不再拼接外部文本**：错误只输出固定错误码，`stderr` 直接丢弃。此前 `err.message` 可能携带 `page.fill` 的填入值或子进程输出中的验证码——已修，并加静态守卫测试。
