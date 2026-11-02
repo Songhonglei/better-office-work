@@ -26,6 +26,7 @@
 | [invoice-auto-forward](./skills/invoice-auto-forward/) | 邮箱发票自动转发：IMAP 扫描 + 发票解析（PDF/OFD/XML）+ SMTP 转发，支持 QQ/163/126 多邮箱、链接型发票下载、抬头白名单与定时无人值守 |
 | [wb-token-analyzer](./skills/wb-token-analyzer/) | WorkBuddy Token/Credit 使用量分析：按天/模型汇总、Top N 消耗任务排名、6 类优化建议、自定义模型支持、Neon Dashboard 可视化报告 |
 | [xhs-image-note-release](./skills/xhs-image-note-release/) | 小红书笔记自动发布（图文/视频按扩展名自动判断）：ego-browser 驱动全流程，逐文件上传 + 视频转码轮询，穿透 closed Shadow DOM 调用 `_onPublish()` / `_onSave()` |
+| [video-multi-release](./skills/video-multi-release/) | 口播视频制作与三平台发布：Qwen TTS 情感配音 → 音频驱动时间轴 → 混音 → 发小红书/视频号/抖音。抖音卡在短信验证只能半自动，另两平台可全自动 |
 | [text-humanize](./skills/text-humanize/) | 中英文清晰表达与风格润色：改善冗余、结构、语气、节奏与排版，保留事实、引用及必要披露；不判断作者来源或以规避检测为目标（v1.5.0） |
 | [zhihu-yanghao](./skills/zhihu-yanghao/) | 知乎养号：三线选题模型 + 每日1回答（写→发布→折叠验证）+ 点赞互动（计数差值自校正防误 toggle），依赖 ego-browser |
 | [imagegen-batch](./skills/imagegen-batch/) | 批量生图：防同名覆盖 + 量水印而非猜 + 相框感后期加白边 + 人物「标识包」防塌脸；附 `白纸速写`/`水墨文艺风` 两套命名风格配方 |
