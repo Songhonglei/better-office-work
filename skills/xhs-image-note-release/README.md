@@ -119,8 +119,8 @@ python3 references/card-generator/card_generator.py \
 
 ```bash
 # 从本仓库安装
-git clone https://github.com/Songhonglei/better-office-work-flow.git
-cp -r better-office-work-flow/skills/xhs-image-note-release ~/.workbuddy/skills/
+git clone https://github.com/Songhonglei/better-office-work.git
+cp -r better-office-work/skills/xhs-image-note-release ~/.workbuddy/skills/
 ```
 
 ## Usage

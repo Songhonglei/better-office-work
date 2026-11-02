@@ -20,7 +20,7 @@ bins: [node, python3]
 
 - **License**: MIT
 - **Author**: Evan Song · [github.com/Songhonglei](https://github.com/Songhonglei)
-- **Repository**: https://github.com/Songhonglei/better-office-work-flow
+- **Repository**: https://github.com/Songhonglei/better-office-work
 
 # xhs-image-note-release
 
@@ -53,7 +53,7 @@ bins: [node, python3]
 
 | 依赖 | 类型 | 用途 | 安装方式 | 验证 |
 |------|------|------|----------|------|
-| **ego-browser** (ego-lite) | CLI 工具 + Skill | 浏览器自动化引擎，提供 CDP、snapshot、fillInput 等 API | 参考 [ego-browser skill](https://github.com/Songhonglei/better-office-work-flow) 安装 | `ego-browser --version` 能正常输出版本号 |
+| **ego-browser** (ego-lite) | CLI 工具 + Skill | 浏览器自动化引擎，提供 CDP、snapshot、fillInput 等 API | 参考 [ego-browser skill](https://github.com/Songhonglei/better-office-work) 安装 | `ego-browser --version` 能正常输出版本号 |
 | **小红书账号** | 平台账号 | 需在 ego-lite 浏览器中已登录小红书 | 手动在 ego-lite 中登录 creator.xiaohongshu.com | 打开创作平台能看到发布按钮 |
 | **Google Chrome / Chromium** | 系统浏览器 | 卡片生成器 (`references/card-generator/card_generator.py`) 使用 Chrome headless 渲染 PNG | macOS: 从 [google.com/chrome](https://www.google.com/chrome/) 安装；Linux: `apt install chromium-browser` | 终端运行 `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --version` 或 `chromium --version` |
 | **Python 3.8+** | 运行时 | 运行卡片生成器脚本，仅用标准库，无需 pip 安装任何包 | macOS 自带；Linux: `apt install python3` | `python3 --version` 输出 ≥ 3.8 |
