@@ -3,6 +3,17 @@
 All notable changes to this skill are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+### v2.0.0 (2026-11-02)
+
+**主版本号变更原因**：脚本从单文件拆成 `.sh` + `.mjs` 两个文件，只拷贝 `publish_note.sh` 会直接 `E_DEP_MJS` 退出；退出码从「0 / 非 0」细分为 12 档。对外参数（`MEDIA_DIR` / `TITLE` / `BODY` / `TOPICS` / `MODE` / `COVER_IMAGE` / `MEDIA_TYPE`）语义不变，`IMAGE_DIR`/`IMAGES` 别名仍可用。
+
+- **Feature**: draft 模式新增**端到端草稿核对**——直接读浏览器 IndexedDB 的 `draft-database-v1` → `video-draft` / `image-draft`，按 `timeStamp` 取最新一条、递归提取 `title` 字段，与本次标题比对。成功时输出 `draft verified: 标题「…」，保存于 …`，能证明「内容真的存进去了」，而不只是计数 +1。
+- **Fix**: 放弃上一版「点草稿箱面板核对」的做法——小红书把草稿入口从左侧栏挪到了右上角 `.header-draft`，点击后不一定展开面板，会导致核对静默失败。IndexedDB 读法不受 UI 改版影响。
+- **Validation (真实跑完整流程，draft 模式，不发布)**：
+  - 图文 3 张：`exit 0`，`draft count 13→14`，`draft verified: 标题「图文-2.0.0验证」，保存于 2026/11/2 17:57:51（库内共 5 条）`
+  - 视频 + 自定义封面：`exit 0`，`draft count 14→15`，封面 CDN URL 变化，`draft verified: 标题「视频-2.0.0验证」，保存于 2026/11/2 17:58:42（库内共 10 条）`
+- **Note**: 本 skill 仅作个人工作流维护，**不再发布到 clawhub 与 skillhub.cn**，只同步 GitHub。
+
 ### v1.10.0 (2026-11-02)
 
 **运维性重构：稳定 + 可维护 + 失败可续**。功能与 v1.9.0 一致，不改任何对外参数语义。

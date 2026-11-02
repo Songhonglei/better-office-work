@@ -11,7 +11,7 @@ description: >
   前置依赖：ego-browser (ego-lite) 运行中，小红书已登录。
 slug: xhs-image-note-release
 displayName: 小红书笔记发布（图文/视频）
-version: 1.10.0
+version: 2.0.0
 bins: [node, python3]
 ---
 
@@ -510,6 +510,8 @@ MEDIA_DIR=/abs/path MEDIA_FILES=video.mp4 TITLE="标题" BODY='正文' TOPICS="�
 
 > **draft 模式说明**：`MODE="draft"` 时脚本走 `_onSave()` 存草稿箱，不实际发布。用户可在小红书创作平台「草稿箱」里自行检查并点发布。多笔记场景建议先全部存草稿，再手动间隔 ≥5 分钟逐一发布以避风控。
 
+> **draft 的自动核对**（v2.0.0）：存完草稿后脚本会直接读浏览器 IndexedDB（`draft-database-v1` → `video-draft` / `image-draft`），按时间取最新一条比对标题，成功时打印 `draft verified: 标题「…」，保存于 …`。这比「点草稿箱面板看」可靠——小红书把草稿入口从左侧栏挪到了右上角，点击不一定能展开。核对失败只告警不判失败，因为本地库结构可能再变。
+
 ### 先用本技能生成卡片，再发布
 
 本技能附带统一风格卡片生成器，位于 `references/card-generator/card_generator.py`。
@@ -638,6 +640,8 @@ python3 "$CG" --theme cinematic --background ./bg.png --lines "文案" --account
 19. **`/publish/note-manage` 和 `?tab=draft` 都已 404（2026-11-02）**：别再拼 URL 找笔记管理页，直接从侧栏 `.header-draft` 点进去。另外访问 `creator.xiaohongshu.com/` 根路径会跳 `/login`，但 `/publish/publish` 登录态是正常的——别被根路径的重定向误导成"未登录"。
 
 20. **视频自定义封面必须真实 hover 才出按钮（2026-11-02）**：`.cover-edit-entry`（「编辑封面」）平时 `boundingRect` 是 `0×0`，`el.click()`、`scrollIntoView`、`getByText` 全都不触发。唯一可行路径是 `cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none' })` 把鼠标移到 `.cover` 左侧缩略图上（x 约 +65），等 1.5s 后再 `click('.cover-edit-entry')`。「完成」按钮在视口外右侧（`innerWidth: 900` 时 `x≈1128`），必须先 `scrollIntoView` 才能点到。首屏自动弹出的 `.pk-cover-guide-tooltip` 会遮挡该区域，先 `display: none`。
+
+21. **草稿箱入口已从左侧栏挪到右上角（2026-11-02 改版）**：`.header-draft` 现在位于页面右上角 `upload-container` 的 header 里（约 `x=980, y=81`），左侧导航只剩首页/笔记管理/数据看板等，没有「草稿箱(N)」。该入口点击后**不一定会展开面板**（实测真实 click 与 CDP 鼠标事件均无反应），所以不要再走「点面板读列表」这条路核对草稿——改用 IndexedDB 直读（见「快速复用」的 draft 核对说明）。用户要看草稿，让他自己在浏览器右上角点。
 
 ## Resources
 

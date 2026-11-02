@@ -359,6 +359,55 @@ await step('upload-media', async () => {
   }
 })
 
+// 核对草稿是否真的写进了浏览器本地库。
+// 不走「点草稿箱面板」那条路：小红书的草稿入口位置改过版（原左侧栏 → 现右上角 .header-draft），
+// 且点击不一定能展开面板，容易误判。直接读 IndexedDB 更稳：
+//   draft-database-v1 → video-draft / image-draft，每条的 content 里递归找 title 字段
+async function verifyDraftEntry(expectedTitle) {
+  try {
+    const st = await js(`(async () => {
+      const storeName = ${JSON.stringify(isVideo ? 'video-draft' : 'image-draft')}
+      const want = ${JSON.stringify(expectedTitle || '')}
+      const db = await new Promise(function (res, rej) {
+        const r = indexedDB.open('draft-database-v1')
+        r.onsuccess = function () { res(r.result) }
+        r.onerror = function () { rej(r.error || new Error('open failed')) }
+      })
+      const all = await new Promise(function (res) {
+        try {
+          const tx = db.transaction([storeName], 'readonly')
+          const req = tx.objectStore(storeName).getAll()
+          req.onsuccess = function () { res(req.result || []) }
+          req.onerror = function () { res([]) }
+        } catch (e) { res([]) }
+      })
+      db.close()
+      if (!all.length) return { ok: false, reason: 'store ' + storeName + ' 为空' }
+      all.sort(function (a, b) { return Number(b.timeStamp) - Number(a.timeStamp) })
+      const latest = all[0]
+      const titles = []
+      const walk = function (o, d) {
+        if (!o || typeof o !== 'object' || d > 5) return
+        Object.keys(o).forEach(function (k) {
+          const v = o[k]
+          if (k.toLowerCase().indexOf('title') >= 0 && typeof v === 'string' && v.trim()) titles.push(v.trim())
+          else if (v && typeof v === 'object') walk(v, d + 1)
+        })
+      }
+      walk(latest.content, 0)
+      return {
+        ok: titles.indexOf(want) >= 0,
+        count: all.length,
+        latestTitle: titles[0] || '(无标题字段)',
+        latestTime: new Date(Number(latest.timeStamp)).toLocaleString('zh-CN')
+      }
+    })()`)
+    return st
+  } catch (e) {
+    return { ok: false, reason: String((e && e.message) || e).slice(0, 120) }
+  }
+}
+
 // ---- 5. 视频封面（可选）----
 async function setVideoCover(coverPath) {
   // 读取封面缩略图当前的 background-image，作为最终「是否真的换掉」的校验基准
@@ -739,6 +788,17 @@ if (MODE === 'stage') {
           '页面可能已跳转，接管后到草稿箱确认是否已保存',
           '草稿存于当前浏览器本地，换浏览器就看不到',
         ])
+      }
+
+      // 计数 +1 只能证明「多了条草稿」，不能证明「内容对」。
+      // 再从 IndexedDB 读最新草稿的标题做端到端核对；读不到只告警、不判失败，
+      // 避免本地库结构变化把成功误判成失败。
+      const verified = await verifyDraftEntry(title)
+      if (verified.ok) {
+        log('draft verified: 标题「' + verified.latestTitle + '」，保存于 ' + verified.latestTime + '（库内共 ' + verified.count + ' 条）')
+      } else {
+        log('WARN: 未能核对草稿内容（' + (verified.reason || ('最新草稿标题是「' + verified.latestTitle + '」')) + '）')
+        log('      草稿计数已增长，请在创作平台右上角「草稿箱」手动确认内容')
       }
     } else {
       const r2 = await waitFor('publish-done', async () => {
