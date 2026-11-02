@@ -66,6 +66,8 @@ profile JSON 的 schema=1，expected_email/cli/backend 是身份与运行配置�
 - native 验收返回非零：由 Agent 使用宿主真实身份工具核对，再用 confirm 记录证据，不重新走 CLI 冒充成功。
 - 安装器 invalid paths/files：检查源文件是否齐全、是否从新下载目录执行及目标是否与受保护目录重叠；修正后再运行，不删除配置。
 
+自动化 read/login 的参数、独立站点配置与退出码见 [自动化说明](automation.md)；站点 JSON 和专用浏览器会话也保存在 Skill 外，安装器不覆盖。
+
 退出码：onboard 的 prepare/init/status/paths/set-rules/confirm 成功为 0；verify 的身份或原生验收未通过为 1，执行/配置错误为 2（上游检查可能透传 2）。check_message 判定 pass 为 0、blocked 为 1、配置或输入错误为 2；check_access 成功为 0，身份/权限不匹配为 1，CLI/契约失败为 2。安装器成功为 0，参数、路径或文件错误为 2。
 
 ## 升级保护

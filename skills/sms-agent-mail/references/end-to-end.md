@@ -4,7 +4,7 @@
 
 ## 1. 安装和离线检查
 
-下载完整目录，用 install.py 安装到目标 Agent 实际技能目录；重新加载后确认可选 sms-agent-mail，metadata.version=1.3.1。然后在该技能目录执行：
+下载完整目录，用 install.py 安装到目标 Agent 实际技能目录；重新加载后确认可选 sms-agent-mail，metadata.version=1.4.0。然后在该技能目录执行：
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -15,6 +15,8 @@ python3 -m unittest discover -s tests -v
 ## 2. 首次接入和身份
 
 按 storage.md 说明位置、确认邮箱、SIM/尾号与可信转发发件人，选择原生或 CLI 后端，完成 onboarding。缺授权时由用户在官方页面操作。真实身份响应须包含期望邮箱并具备 mail:read；不能使用缓存、别的账号或只改 --to 条件。
+
+CLI 自动化可直接按 [自动读信与登录](automation.md) 运行；下列原生工具流程仍适用。自动化的 `browser_memory` 表示同进程内存填写，不能由其他工具模拟这个状态。
 
 ## 3. 新短信完整读取
 
@@ -57,7 +59,7 @@ python3 -m unittest discover -s tests -v
 
 ```json
 {
-  "skill_version":"1.3.1",
+  "skill_version":"1.4.0",
   "install_passed":true,
   "offline_tests_passed":true,
   "identity_matched":true,
@@ -72,4 +74,4 @@ python3 -m unittest discover -s tests -v
 }
 ```
 
-`message_verdict` 取校验器结论（pass/blocked/未执行），`code_handoff` 记录验证码交给页面的方式（manual/host-memory）。这里的 JSON 是回执格式示例，不能复制它作为验收结果。请填本机实际证据，并明确区分"未执行""失败""已通过"。
+`message_verdict` 取校验器结论（pass/blocked/未执行），`code_handoff` 记录验证码交给页面的方式（manual/browser_memory/host-memory）。这里的 JSON 是回执格式示例，不能复制它作为验收结果。请填本机实际证据，并明确区分"未执行""失败""已通过"。

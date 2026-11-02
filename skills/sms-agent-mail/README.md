@@ -1,12 +1,33 @@
 # SMS Agent Mail
 
-Version **1.3.1** · [MIT](LICENSE)
+Version **1.4.0** · [MIT](LICENSE)
 
 让 Agent 从专用邮箱读取手机转发的短信，核对服务、号码与时间，协助用户授权的网站登录。支持既有原生邮箱工具，或腾讯官方 Agently CLI；不需要 ECS，不发送或删除邮件，不修改宿主 MCP 配置。
 
 需要手机已能自动转发到目标邮箱。包内没有个人邮箱/号码默认值、授权码、token 或真实短信样本。每台设备在首次接入时确认参数并独立授权。
 
-## 1.3.1 变更
+## 1.4.0 变更
+
+- 新增 `read_sms.py read`：本次身份核对、有限轮询、冻结窗口完整分页、候选去重及最新短信判定，一条命令完成。
+- 新增 `read_sms.py login`：连接用户指定的本机 Chromium 页面，核对号码尾号、记录时间并点击一次发码，校验后在同进程内存填写、提交一次并确认登录结果。
+- 根据实机观察到的转发延迟，邮箱默认等待三分钟（可配 0–240 秒），保留五分钟总有效期与短信更短有效期；失败回执保留本次起点及脱敏阻断原因。
+- 真实消息不写入文件或命令参数；只输出脱敏结果。没有浏览器连接、需要图形验证或登录态未确认时明确阻断。
+- 保留 1.3.1 的目标、时效、脱敏与数字边界修复；旧 profile 无需重建。自动化入口只支持 CLI 后端，原生连接继续走宿主工具流程。
+
+## 快速使用
+
+首次仍按下文接入邮箱；已有正确 profile 和授权直接复用。自动化的参数、浏览器首次连接及失败恢复见 [自动读信与登录](references/automation.md)。
+
+```bash
+# 读信：after 必须是本次点击发码之前记录的带时区时间，不要照抄历史日期
+python3 scripts/read_sms.py read --profile codex --service baidu --route SIM2_1234 --after '<本次发送前时间>'
+# 登录：沿用已确认的站点配置；程序负责记录时间、发码、填写和确认结果
+python3 scripts/read_sms.py login --profile codex --service baidu --route SIM2_1234 --browser-config '<外置站点配置路径>'
+```
+
+`read` 成功只说明消息已校验，`login` 成功才说明配置的登录态标识已出现。自动化不会填写完整手机号、主动打开网页、创建 CDP 端口、购买 ECS 或反复发短信；目标页面和手机号由用户/宿主先准备，首次只需配置一次站点选择器。
+
+### 1.3.1 修复
 
 - 校验器必须绑定本次服务、SIM 路由和 login 用途；多服务混杂或用途不符即阻断。
 - 必须提供带时区的 after/before（最长五分钟），同时检查原短信时间、收信时间、当前时间与短信更短有效期；非法日期与窗口返回明确失败。
@@ -67,13 +88,13 @@ python3 scripts/onboard.py confirm --profile codex --evidence "host GetMe matche
 
 ## 验证
 
-不需要邮箱凭据即可运行离线检查（覆盖身份契约、接入边界、安装器保护与消息判定）：
+不需要邮箱凭据即可运行离线检查（覆盖身份契约、接入边界、安装器保护、消息判定与自动读信）：
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
-拿到一条消息后可以直接做确定性判定，输出只有结论与验证码长度：
+合成消息可用文件做确定性判定，真实邮件只通过内存管道输入；输出只有脱敏判定与验证码长度：
 
 ```bash
 python3 scripts/check_message.py --profile codex --message-json message.json --after 2026-01-01T00:00:00Z --before 2026-01-01T00:05:00Z --service baidu --route SIM2_1234 --purpose login
@@ -84,3 +105,11 @@ python3 scripts/check_message.py --profile codex --message-json message.json --a
 ## 交给其他 Agent 的提示词
 
 > 从 Songhonglei/better-office-work 的 skills/sms-agent-mail 下载完整 Skill，读取 README 和 SKILL.md，使用内置安装器安装到你实际使用的技能目录。先告知我配置与凭据实际存在哪里，按 onboarding 引导确认邮箱、SIM/尾号和转发发件人；已有正确授权就复用，没有则给我官方授权链接。运行离线检查，再按 references/end-to-end.md 做真实新短信验收。不要显示验证码、不要复制旧设备凭据、不要改 MCP 配置。分别报告安装、身份、读信、可信时间、浏览器登录和升级保留结果。
+
+浏览器验收单独执行（Python Playwright 1.56.0 + Chromium）：
+
+```bash
+python3 tests/browser_smoke.py
+```
+
+该测试使用真实浏览器、本地页面和合成邮箱 CLI，不能替代真实手机/邮箱/网站验收；依赖准备见 [自动化说明](references/automation.md)。

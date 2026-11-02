@@ -17,6 +17,7 @@ CODE_PATTERNS = (re.compile(r'验证码[：:\s]*([0-9]{4,8})(?!\d)'),
 BODY_TIME = re.compile(r'(?<!\d)(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})(?!\d)')
 ROUTE_TOKEN = re.compile(r'SIM[1-9]_[0-9]{4}(?!\d)')
 TRUNCATION_MARKERS = ('…', '...', '［截断］', '[truncated]', '<truncated>')
+EXPIRY_BEFORE = re.compile(r'([0-9]+)\s*(秒|分钟|分鐘|分)(?:内|內)?有效')
 MAX_BODY = 2_000_000
 LOGIN = re.compile(r'登录|登錄|\blog\s*in\b|\bsign\s*in\b', re.I)
 OTHER_PURPOSE = re.compile(r'重置|找回|修改密码|支付|转账|注册|註冊|\breset\b|\bpayment\b|\bregister\b', re.I)
@@ -65,7 +66,7 @@ def verify_message(settings: dict, message: dict, *, after: str | None = None,
                    before: str | None = None, expected_service: str | None = None,
                    expected_route: str | None = None, purpose: str | None = None,
                    now: datetime | None = None, body_offset_hours: float = 8.0,
-                   max_skew: int = 120, max_age: int = 300) -> dict:
+                   max_skew: int = 300, max_age: int = 300) -> dict:
     """Fail closed without a timezone-aware window and a registered target.
 
     now is an injectable UTC clock for offline replay; CLI always uses real time.
@@ -92,7 +93,7 @@ def verify_message(settings: dict, message: dict, *, after: str | None = None,
         blockers.append('profile_rules_invalid')
         return result()
     if (not isinstance(max_age, int) or not 1 <= max_age <= 300
-            or not isinstance(max_skew, int) or not 0 <= max_skew <= 120
+            or not isinstance(max_skew, int) or not 0 <= max_skew <= 300
             or not isinstance(body_offset_hours, (float, int)) or not -23 < body_offset_hours < 23):
         blockers.append('invalid_time_policy')
         return result()
@@ -150,13 +151,14 @@ def verify_message(settings: dict, message: dict, *, after: str | None = None,
     record('route_subject', route_ok, reason,
            route=expected_route if expected_route in routes else None)
     complete = (len(text) >= 20 and not text.endswith(TRUNCATION_MARKERS)
+                and not body.rstrip().endswith(TRUNCATION_MARKERS)
                 and not message.get('truncated') and message.get('body_complete') is not False)
     record('body_complete', complete, 'body_incomplete_or_truncated', characters=len(text))
     created = _instant(message.get('created_at'))
     stamps = BODY_TIME.findall(text)
     stated = _instant(stamps[0], body_offset_hours) if len(stamps) == 1 else None
     ttl = max_age
-    for found in EXPIRY.finditer(text):
+    for found in [*EXPIRY.finditer(text), *EXPIRY_BEFORE.finditer(text)]:
         number, unit = (found.group(1), found.group(2)) if found.group(1) else (found.group(3), found.group(4))
         seconds = (int(number) if len(number) <= 6 else 1_000_000) * (60 if unit.startswith(('分', 'min')) else 1)
         ttl = min(ttl, seconds)
@@ -199,7 +201,7 @@ def main() -> int:
     parser.add_argument('--route', required=True, help='Target SIM route from profile')
     parser.add_argument('--purpose', required=True, choices=('login',))
     parser.add_argument('--body-offset-hours', type=float, default=8.0)
-    parser.add_argument('--max-skew', type=int, default=120)
+    parser.add_argument('--max-skew', type=int, default=300)
     parser.add_argument('--max-age', type=int, default=300)
     args = parser.parse_args()
     try:

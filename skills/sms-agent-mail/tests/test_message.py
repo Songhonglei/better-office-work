@@ -1,6 +1,6 @@
 """Exercise the deterministic message verifier with synthetic, non-real data."""
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
 import unittest
@@ -207,6 +207,23 @@ class MessageVerdicts(unittest.TestCase):
     def test_multiple_body_timestamps_block(self):
         report = self.check(message(body=BODY + ' 2026-10-24 23:52:33'))
         self.assertIn('body_time_missing_or_invalid', report['blockers'])
+
+    def test_alternate_short_expiry_is_respected(self):
+        report = self.check(message(body=BODY.replace('有效期30分钟', '5秒内有效')))
+        self.assertIn('code_expired_or_future', report['blockers'])
+
+    def test_html_like_truncation_marker_blocks(self):
+        report = self.check(message(body=BODY + '<truncated>'))
+        self.assertIn('body_incomplete_or_truncated', report['blockers'])
+
+    def test_delivery_after_two_minutes_still_checks_total_five_minute_expiry(self):
+        received = '2026-10-24T15:54:32Z'
+        now = datetime(2026, 10, 24, 15, 54, 40, tzinfo=timezone.utc)
+        report = self.check(message(created_at=received), before=received, now=now)
+        self.assertTrue(report['ok'], report)
+        self.assertIn('code_expired_or_future',
+                      self.check(message(created_at=received), before=received,
+                                 now=now + timedelta(minutes=4))['blockers'])
 
     def test_missing_target_and_bad_policy_block(self):
         self.assertIn('target_missing_or_unregistered', self.check(expected_service=None)['blockers'])
