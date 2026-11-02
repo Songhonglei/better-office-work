@@ -3,6 +3,35 @@
 All notable changes to this skill are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+### v1.10.0 (2026-11-02)
+
+**运维性重构：稳定 + 可维护 + 失败可续**。功能与 v1.9.0 一致，不改任何对外参数语义。
+
+- **Refactor**: 脚本拆成两层，`scripts/publish_note.sh`（入口层，参数/校验/编排）+ `scripts/publish_note.mjs`（流程层，浏览器操作）。`.mjs` 可单独 `node --check`，不再需要从 bash heredoc 里改 JS。
+- **Refactor**: `.mjs` 顶部集中两张表——`SEL`（9 个选择器）、`T`（9 个超时），改版维护只需动这两处。
+- **Feature**: 分层退出码。`0` 成功 / `10` 参数 / `11` 依赖 / `20` 登录 / `21` 上传页 / `30` 素材上传 / `40` 填表 / `50` 话题 / `60` 封面 / `70` 提交 / `80` 提交后校验 / `90` 内部异常。agent 可以直接按码判断该重跑还是该找人。
+- **Feature**: 结构化失败输出。每个失败点输出 `step / code / exit / message / detail / what_now / space / takeover / cleanup`，`what_now` 是给人看的可执行下一步，不再只有一行 `ERROR: xxx`。
+- **Feature**: 失败默认保留现场（`KEEP_ON_FAIL=1`）。失败时 task space 不销毁、页面留着、ownership 转 user，可直接接管排查；新增 `KEEP_ON_FAIL=0` 可关闭。
+- **Feature**: 每步耗时打点（`✔ step (1234ms)`），慢在哪一眼可见；每次运行写 `/tmp/xhs-publish-<ts>-<pid>.log`。
+- **Feature**: 提交前回读校验——标题写入后读回比对，正文写入后校验长度，避免"看着填了其实没进去"。
+- **Feature**: 话题逐个失败重试一次（下拉偶尔不出现），仍失败才整体报 `E_TOPIC_NOT_ATTACHED`。
+- **Fix (关键)**: 封面成功判定改为**端到端**——比对操作前后封面缩略图的 CDN URL 是否变化。此前只校验"编辑器弹窗已关闭"，图片未渲染完就点完成时弹窗照样关闭，会误报成功（v1.9.0 的隐患）。
+- **Fix**: 不要用 `input.files.length > 0` 判断封面图是否写入——小红书上传组件接收文件后会立刻清空 `input.files`，该检测永远读到 0。改为固定等待渲染 + URL 终检。
+- **Fix**: 图文分支 `js()` 模板字符串漏写 `${}`，导致 `filePaths` 变量被当字面量发到浏览器，报 `ReferenceError: filePaths is not defined`。
+- **Fix**: `node --check` 校验 `.mjs`；`.sh` 去掉 `set -e`（否则失败时跳过汇总输出），退出码显式透传。
+- **Docs**: SKILL.md 新增「脚本架构」「失败处理」两章（含退出码速查、失败块示例、现场接管命令、日志位置）；核心流程改为与 step 名对齐。
+- **Fix (UGLIC 审查发现)**: `KEEP_ON_FAIL` 保留的空间 ownership 会变成 `user`，接管必须用 `claimTaskSpace`，但脚本输出和文档此前写的是 `takeOverTaskSpace`（后者只适用于 agent 自己结束、ownership 仍为 agent 的空间）。agent 照做会走死路。已统一改为 `claimTaskSpace` 并说明两者区别，涉及失败块、stage 成功块、登录提示、注意事项第 14 条。
+- **Refactor (渐进披露)**: SKILL.md 766 → 651 行。新增两个按需加载的 reference：
+  - `references/error-handling.md` — 完整退出码表、全部 code 清单、step 名对照、常见故障判断
+  - `references/photo-background.md` — 照片背景卡片章节整体移出（129 行 → 12 行摘要）
+  - frontmatter `description` 从 1276 字节压到 738 字节（超 1024 会超出 agent 上下文预算）
+- **Chore**: 删除未使用常量 `T.coverApply`；clarify 参数文件路径固定、不可并发跑同一 skill 的两个实例。
+- **验证**:
+  - 视频 + 自定义封面（stage）：`exit 0`，封面缩略图 URL 由 `...ydCmJYiVd5Q...` 变为 `...nnsDi7LwKuW...`，视觉确认为第 2 张卡片
+  - 图文 3 张 + 传入 COVER_IMAGE（stage）：`exit 0`，`cdnImages 6`，启动提示「封面: 忽略（COVER_IMAGE 仅对视频笔记生效）」
+  - 参数分支 6 例全部 `exit 10`：缺参数 / 类型未知 / 文件不存在 / 封面不存在 / MODE 非法 / 标题含单引号
+  - 两个真实 bug 由这套机制暴露并修复：封面 URL 未变仍报成功、图文 `filePaths` 未定义
+
 ### v1.9.0 (2026-11-02)
 
 - **Feature**: 视频笔记支持**自定义封面**。新增 `COVER_IMAGE` 参数（绝对路径），留空则完全保留小红书默认的第一帧。

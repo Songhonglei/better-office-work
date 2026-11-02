@@ -1,22 +1,17 @@
 ---
 name: xhs-image-note-release
 description: >
-  小红书笔记自动发布技能（图文 + 视频，自动判断类型）。通过 ego-browser 自动化完成素材上传、
-  标题填写、正文编辑、话题标签、发布（或存草稿）等全流程。**按素材扩展名自动识别**：mp4/mov/flv
-  等走视频笔记，png/jpg/webp 等走图文笔记，无需手动指定。视频笔记支持用 `COVER_IMAGE` 指定
-  自定义封面（默认取视频第一帧）。
-  支持三种收尾模式：直接发布（_onPublish）、
-  存草稿（_onSave，草稿箱按钮文本为「暂存离开」）、以及 stage 模式（只准备好内容停在页面，不触发
-  任何保存/发布动作，用户自行检查后手动点发布），用户可要求「发小红书」或「推到草稿箱自己点发布」
-  或「准备好页面我自己发布」。
-  附带 28 种多样式风格卡片生成器（含 3 种照片背景氛围主题），
-  卡片主题、布局、背景图、遮罩强度、模糊、颗粒等参数均可自由配置。
-  当用户要求发小红书、发布图文笔记、发布视频笔记、上传到小红书、小红书发帖、存草稿、推到草稿箱
-  或涉及小红书内容发布时触发此技能。
-  前置依赖：ego-browser (ego-lite) 已安装且正在运行，小红书账号已登录。
+  小红书笔记自动发布（图文 + 视频，按扩展名自动判断）。ego-browser 驱动全流程：
+  上传素材（图文逐张 / 视频单文件+转码轮询）、填标题正文、挂话题、设自定义封面
+  （COVER_IMAGE，留空用第一帧）、发布或存草稿。带分层退出码与结构化失败输出，
+  失败默认保留浏览器现场可直接接管。
+  三种收尾：publish 直接发 / draft 存草稿 / stage 只准备页面。
+  附 28 种样式卡片生成器（含照片背景氛围主题），参数自由配置。
+  触发词：发小红书、发布图文笔记、发布视频笔记、小红书发帖、存草稿、推到草稿箱。
+  前置依赖：ego-browser (ego-lite) 运行中，小红书已登录。
 slug: xhs-image-note-release
 displayName: 小红书笔记发布（图文/视频）
-version: 1.9.0
+version: 1.10.0
 bins: [node, python3]
 ---
 
@@ -94,14 +89,19 @@ bins: [node, python3]
 
 > **特别提示（仅 WorkBuddy 环境）**：较新版本的 WorkBuddy 需先关闭沙箱功能（设置 → 关闭沙箱），否则运行 ego-browser 会被中断。这不是本技能的依赖，在终端或其他 Agent 中直接运行无需此操作。
 
-## 核心流程（10 步）
+## 核心流程
 
 ```
-判断媒体类型(按扩展名) → 创建 task space → 打开创作平台 → 等待 SPA 渲染(15s)
-→ 切到对应上传 tab(视频/图文，自动兼容 tab/下拉)
-→ 上传素材(图文=uploadFile 循环；视频=单文件+转码轮询) → 填标题 → 填正文
-→ 逐个话题从下拉列表选择 → 调用 _onPublish() 发布 或 _onSave() 存草稿（由 MODE 决定）
-→ 校验结果 → 清理 task space
+[sh] 判断媒体类型(按扩展名) + 全部参数校验
+→ [mjs] open-publish-page  创建 task space + 打开创作平台 + 等 SPA
+→ auth                     登录态检查
+→ ensure-upload-tab        切到对应上传 tab(自动兼容 tab/下拉)
+→ upload-media             上传素材(图文=uploadFile 循环；视频=单文件+转码轮询)
+→ set-cover                自定义封面(仅视频且传了 COVER_IMAGE，可选)
+→ fill-title / fill-body   填标题、正文(带回读校验)
+→ add-topics               逐个话题从下拉列表选择(失败重试一次)
+→ submit                   调用 _onPublish() / _onSave()（由 MODE 决定）
+→ 校验结果 → 清理 task space(失败时保留现场)
 ```
 
 **收尾模式（MODE）**：
@@ -421,6 +421,52 @@ cliLog('草稿箱 count: ' + draftN)  // 与调用前对比，+1 即成功
 await completeTaskSpace(task.id, { keep: false })
 ```
 
+## 脚本架构（v1.10.0 重构）
+
+```
+scripts/
+├── publish_note.sh    # 入口层：参数解析 / 校验 / 调起浏览器
+└── publish_note.mjs   # 流程层：所有浏览器操作，可单独 node --check
+```
+
+**分工原则**：一切「不需要浏览器就能判断」的事都放在 `.sh`——默认值、必填项、特殊字符拦截、素材类型、文件存在性、数量上限。**所有校验都在启动浏览器之前完成**，判错直接 `exit 10`，不产生任何副作用（不会留废草稿、不会占用 task space）。
+
+`.mjs` 只做浏览器操作，通过 `ego-browser nodejs < publish_note.mjs` 执行。注意 ego-browser 的 nodejs 环境**不继承 shell 环境变量**，所以参数走固定路径 `/tmp/xhs_publish_params.json`。
+
+该路径固定，**不要并发跑同一个 skill 的两个实例**（后者会覆盖前者参数，导致内容串台）。批量发多条必须串行，且间隔 ≥5 分钟（见注意事项 4）。
+
+改版维护时通常只需要动 `.mjs` 顶部两张表：
+
+| 常量 | 内容 | 什么时候改 |
+|---|---|---|
+| `SEL` | 9 个选择器 | 小红书改版导致某元素找不到 |
+| `T` | 9 个超时（毫秒） | 网络慢导致轮询超时 |
+
+写 `js(\`...\`)` 时注意：模板字符串里引用 Node 变量必须写 `${var}`，漏了会变成浏览器端的 `ReferenceError`（本项目踩过：`filePaths.length` 漏插值导致图文分支报未定义）。
+
+## 失败处理
+
+失败时输出结构化块，照着 `what_now` 做即可：
+
+```
+=== FAILED ===
+step     : set-cover
+code     : E_COVER_NOT_APPLIED
+exit     : 60
+what_now :
+  1. 封面缩略图 URL 没变，图片没真正替换
+  2. 重跑一次通常成功；连续失败就改用默认第一帧
+space    : 12（页面已保留）
+takeover : ego-browser nodejs -e "await claimTaskSpace(12)"
+=== END FAILED ===
+```
+
+退出码速查：`0` 成功 · `10` 参数（改完重跑，无副作用） · `20` 登录 · `21` 上传页 · `30` 素材上传 · `40` 填表 · `50` 话题 · `60` 封面 · `70` 提交 · `80` 提交后待确认（**别立即重发**） · `90` 内部异常。
+
+失败默认保留现场（`KEEP_ON_FAIL=1`），空间不销毁、页面留着，可直接接管排查；传 `KEEP_ON_FAIL=0` 关闭。每次运行日志在 `/tmp/xhs-publish-<ts>-<pid>.log`。
+
+> **完整退出码表、code 清单、step 名对照、常见故障判断见 [references/error-handling.md](references/error-handling.md)** —— 只在脚本返回非零时按需加载，正常流程无需读。
+
 ## 快速复用
 
 ### 发布已有素材（图文 or 视频）
@@ -540,132 +586,14 @@ python3 ~/.workbuddy/skills/xhs-image-note-release/references/card-generator/car
 
 ## 照片背景卡片（v1.5.0 新增）
 
-> **适用场景**：用户要求「书籍实拍氛围」「暗色文字底图」「照片背景卡片」等需要满幅照片作为底图、文字压在图片上的效果。
-
-### 工作原理
-
-照片背景功能在现有 HTML 渲染管线（SVG → HTML → Chrome headless → PNG）基础上，新增一层**照片图层栈**：
-
-```
-SVG 底层
-  └─ <rect> 纯色兜底（防止边缘透出）
-  └─ <defs>
-      ├─ #photoFx   — 可选：模糊 + 降饱和滤镜
-      ├─ #scrimGrad — 暗色渐变遮罩（上下两端更重，保护标签/页脚可读）
-      ├─ #txtShadow — 文字投影（保证任意画面上文字清晰）
-      └─ #grainFx   — 可选：胶片颗粒噪点
-  └─ <image>        — 背景照片（base64 内嵌，center-crop 铺满）
-  └─ <rect scrim>   — 暗色遮罩层
-  └─ <rect grain>   — 颗粒层（可选）
-  └─ <g filter="url(#txtShadow)">
-      └─ 标签 / 文案 / 页脚（全部带投影）
-```
-
-关键设计决策：
-- **不内置素材**：背景图由 Agent 通过 ImageGen 生成或用户提供，技能只负责合成
-- **自动亮色反转**：非照片主题传入 `--background` 时，文字/辅助色自动反转为亮色，无需手动切换主题
-- **base64 内嵌**：避免 Chrome headless 的 `file://` CSP 限制（与插画加载逻辑一致）
-
-### 三种照片氛围主题
-
-| 主题 | key | 遮罩强度 | 遮罩色 | 颗粒 | 降饱和 | 适用情绪 |
-|------|-----|---------|--------|------|--------|---------|
-| 暗色电影感 | `cinematic` | 0.55 | `#000000` | 无 | 原色 | 深沉、哲思、连接 |
-| 胶片颗粒 | `film` | 0.50 | `#100B06` | 9% | 72% | 怀旧、记忆、追寻 |
-| 书页氛围 | `journal` | 0.52 | `#1A120B` | 4% | 90% | 阅读、顿悟、内省 |
-
-### CLI 用法
-
-> ⚠️ 以下命令统一使用生成器的完整路径。若已 `cd` 到 `references/card-generator/`，可直接用相对路径调用该脚本。
-> **不要在续行符 `\` 后面加行内注释**——`\` 会转义空格而非换行，`#` 之后整条命令被截断，下一行参数会被当作命令执行。
+满幅照片作底图 + 暗色遮罩 + 文字投影。3 种氛围主题：`cinematic`（暗色电影感）/ `film`（胶片颗粒）/ `journal`（书页氛围）；核心参数 `--background` `--scrim` `--blur` `--desaturate` `--grain`。
 
 ```bash
 CG=~/.workbuddy/skills/xhs-image-note-release/references/card-generator/card_generator.py
-
-# 基础用法：指定背景图 + 照片主题
-python3 "$CG" \
-  --theme cinematic \
-  --background ./bg_photo.png \
-  --lines "说得着，一句顶一万句；\n说不着，万句皆是多余。" \
-  --account "@雨夜心灯" \
-  -o card_photo.png
-
-# 高级用法：自定义遮罩、模糊、降饱和
-# --scrim 0.6    更重的暗色遮罩（默认取主题预设）
-# --blur 3       背景高斯模糊半径（默认 0 = 不模糊）
-# --desaturate   降饱和到 70%（不带值时取 0.65）
-# --grain 0.08   手动覆盖颗粒强度
-python3 "$CG" \
-  --theme cinematic \
-  --background ./bg_photo.png \
-  --scrim 0.6 \
-  --blur 3 \
-  --desaturate 0.7 \
-  --grain 0.08 \
-  --lines "文案内容" \
-  --account "@雨夜心灯" \
-  -o card_custom.png
-
-# 自动反转：用非照片主题（如浅色的 warm）+ --background，文字自动变亮色
-python3 "$CG" \
-  --theme warm \
-  --background ./bg.png \
-  --lines "文案" \
-  -o card_auto.png
-
-# 图文布局 + 照片背景：插画浮于照片之上，仅文字带投影
-python3 "$CG" \
-  --layout image-text \
-  --illustration ./door.svg \
-  --theme warm_illust \
-  --background ./bg_photo.png \
-  --lines "文案" \
-  --account "@雨夜心灯" \
-  -o card_illust_photo.png
+python3 "$CG" --theme cinematic --background ./bg.png --lines "文案" --account "@雨夜心灯" -o card.png
 ```
 
-### 新增参数一览
-
-| 参数 | 类型 | 说明 | 默认值 |
-|------|------|------|--------|
-| `--background` | 路径 | 满幅背景照片（`.png`/`.jpg`/`.webp`），自动 center-crop | 无 |
-| `--scrim` | float | 暗色遮罩强度 `0–0.92` | 取主题预设（通常 0.50–0.55） |
-| `--blur` | float | 背景高斯模糊半径 | `0`（建议 2–6） |
-| `--desaturate` | float | 背景降饱和 `0–1`，`1`=原色；不带值时取 `0.65` | 取主题预设（通常 0.72–1.0） |
-| `--grain` | float | 胶片颗粒强度 `0–0.4` | 取主题预设（通常 0–0.09） |
-
-### Agent 工作流（完整示例）
-
-当用户要求「书籍实拍氛围金句卡片」时，Agent 执行以下步骤：
-
-```bash
-CG=~/.workbuddy/skills/xhs-image-note-release/references/card-generator/card_generator.py
-
-# Step 1: ImageGen 生成背景图（5 张，每张对应一条文案的情绪）
-# ImageGen 是 agent 侧工具，不在本脚本内调用；产物存为 ./bg_1.png … ./bg_5.png
-
-# Step 2: 用 card_generator 合成文字 + 背景
-QUOTES=(
-  "说得着，一句顶一万句；\n说不着，万句皆是多余。"
-  "我常感到内心深处\n难以名状的孤独。"
-  "此刻才读懂，\n《一句顶一万句》\n到底有多动人。"
-  "世上人潮汹涌，\n说得着的人千里难寻。"
-  "我们所有的奔赴与寻找，\n本质都是对抗\n无法言说的孤独。"
-)
-
-for i in 1 2 3 4 5; do
-  python3 "$CG" \
-    --theme cinematic \
-    --background "./bg_${i}.png" \
-    --lines "${QUOTES[$((i-1))]}" \
-    --hide-tag --hide-subtitle \
-    --account "@雨夜心灯" \
-    --page-number "$i" --total-pages 5 \
-    -o "card_${i}.png"
-done
-
-# Step 3: 用 ego-browser 发布（见上文「核心流程」章节）
-```
+> **完整说明见 [references/photo-background.md](references/photo-background.md)** —— 含图层栈原理、三种主题参数表、CLI 全示例、批量工作流。只在需要做照片背景卡片时加载。
 
 ## 注意事项
 
@@ -697,7 +625,7 @@ done
     ```
     双重判据（URL + 侧栏「笔记管理/草稿箱」入口）比单看文字稳。**发布前先在 ego-lite 手动登录**，别指望脚本能自动过登录墙。
 
-14. **用户手动登录会触发「用户接管 task space」硬停止**：登录是用户在 ego-lite 窗口手动完成的，这会把 task space 的控制权切给用户，之后所有 agent 浏览器命令直接报 `The user has taken control of this task space, so browser commands are paused`。这是**硬停止，不可自行绕过**：不要重试、不要自行 `takeOverTaskSpace`，必须让用户回复「继续」，再用 `takeOverTaskSpace(spaceId)` 接管。完整流程：脚本因 401 退出 → 提示用户去 ego-lite 登录 → 用户登录并回复 continue → `takeOverTaskSpace(原 spaceId)` → 重跑发布脚本。
+14. **用户手动登录会触发「用户接管 task space」硬停止**：登录是用户在 ego-lite 窗口手动完成的，这会把 task space 的控制权切给用户（ownership 变为 `user`），之后所有 agent 浏览器命令直接报 `The user has taken control of this task space, so browser commands are paused`。这是**硬停止，不可自行绕过**：不要重试、不要自行夺回，必须让用户回复「继续」，再用 `claimTaskSpace(spaceId)` 认领（控制权已在用户手里，`claimTaskSpace` 才生效；`takeOverTaskSpace` 只适用于 agent 自己结束、ownership 仍为 agent 的空间）。完整流程：脚本因 401 退出 → 提示用户去 ego-lite 登录 → 用户登录并回复 continue → `claimTaskSpace(原 spaceId)` → 重跑发布脚本。
 
 15. **⚠️ 铁律：内容里严禁出现任何引流信息（2026-10-27 实战教训）**：卡片文案、标题、正文、话题、图片中**都不得**直接出现「微信搜索」「微信公众号」「加我微信」「扫码关注」等引流文案，也**不得**放置二维码图片——小红书对站外引流判定极严，直接引流极易**封号**。需要沉淀私域时，只允许用**账号署名**（如右下角 `@账号名`）这类软性露出，靠内容质量和评论区互动自然导流；发布前自查一遍所有图片和文字。
 
@@ -714,7 +642,10 @@ done
 ## Resources
 
 ### scripts/
-- `scripts/publish_note.sh` — 一键发布脚本，图文/视频自动判断，改参数后直接跑（见「快速复用」）
+- `scripts/publish_note.sh` — 入口层，图文/视频自动判断，改参数后直接跑（见「快速复用」）
+- `scripts/publish_note.mjs` — 流程层，所有浏览器操作，可用 `node --check` 单独校验
 
 ### references/
+- `references/error-handling.md` — 完整退出码表、全部错误码清单、step 名对照、常见故障判断（登录失效 / 上传超时 / 封面未生效 / 提交未确认）。**按需加载**：只在脚本返回非零退出码、或排查历史运行时读；正常运行无需加载
+- `references/photo-background.md` — 照片背景卡片的图层栈原理、3 种氛围主题参数、CLI 全示例、批量工作流。**按需加载**：只在要做「照片压字」氛围卡片时读
 - `references/publish-method.md` — 完整方法文档，含 `_onPublish`/`_onSave` 两种收尾方案的失败方案对比表、技术原理与「暂存离开」坑点详解。**按需加载**：当需要了解发布/存草稿按钮各失败方案的完整对比、或需要排查发布/存草稿相关问题时阅读此文件；正常流程无需提前加载
