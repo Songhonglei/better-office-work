@@ -239,7 +239,7 @@ echo "=========================================="
 if [ "$EXIT_CODE" -eq 0 ]; then
   echo "结果: 成功（exit 0）"
 else
-  echo "结果: 失败（exit $EXIT_CODE），按上面 what_now 处理"
+  echo "结果: 失败（exit ${EXIT_CODE}），按上面 what_now 处理"
 fi
 echo "日志: $LOG_FILE"
 echo "=========================================="

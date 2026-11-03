@@ -63,7 +63,7 @@ if [ ! -s "$ENV_FILE" ]; then
   echo "错误: 写入失败"
   exit 11
 fi
-echo "✅ 已写入 $ENV_FILE（权限 600）"
+echo "✅ 已写入 ${ENV_FILE}（权限 600）"
 
 # .gitignore 兜底：确保这个文件不会被同步出去
 GI="$SKILL_ROOT/.gitignore"
