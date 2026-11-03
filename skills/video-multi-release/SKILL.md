@@ -232,6 +232,20 @@ SPACE_ID=66 PLATFORMS=channels MODE=stage ... bash release.sh
 
 ## 必须知道的坑
 
+**gsap 外链脚本必须内联（2026-11-03 实测）。** index.html 模板里
+`<script src="assets/vendor/gsap.min.js"></script>` 在 hyperframes 渲染时必挂：
+报 `SUB_TIMELINE_SCRIPT_FAILURE`，`runtime-error: TypeError: Cannot read properties
+of null (reading 'timeline')`——sub-timeline 脚本先于外链库执行，`gsap` 还是 null。
+把 gsap.min.js 内容直接内联进 index.html 即可。`rebuild.sh` 第 2 步已自动处理，
+手动渲染前记得先内联。
+
+**hyperframes 的 Chrome 要手动指路（2026-11-03 实测）。** hyperframes 默认用
+chrome-headless-shell，首次会尝试自动下载，但经常 `All providers failed` 直接渲染失败。
+设 `HYPERFRAMES_BROWSER_PATH` 指向本机 Chrome 即可，任何版本的 Chrome 都能走通
+screenshot capture 路径：
+`export HYPERFRAMES_BROWSER_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`。
+`rebuild.sh` 已内置自动回退。
+
 **视频号是 wujie 微前端。** 内容全在 `wujie-app` 的 shadowRoot 里，
 `document.querySelector` 一律失效，要 `document.querySelector('wujie-app').shadowRoot.querySelector(...)`。
 上传文件用 CDP `DOM.getDocument({pierce:true})` 拿 nodeId 再 `DOM.setFileInputFiles`。
