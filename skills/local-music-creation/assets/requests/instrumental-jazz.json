@@ -1,0 +1,18 @@
+{
+  "id": "eval-instrumental-jazz",
+  "style": "Instrumental, acoustic jazz piano trio, lyrical piano lead, upright bass, soft brushed drums, calm evening atmosphere, no vocals, no singing, no humming",
+  "lyrics": "[Verse]\n\n[Chorus]\n\n[Outro]",
+  "cot": "full",
+  "seed": 831001,
+  "abc": "X:1\nT:\nM:4/4\nL:1/16\nQ:1/4=88\nV: Vocal clef=treble name=\"Vocal Melody\" snm=\"Vocal\"\nV: Ins clef=treble name=\"Ins Melody\" snm=\"Inst.\"\nK:C\n% verse\nV: Vocal\n\"C\"z16|\"G\"z16|\"Am\"z16|\"F\"z16|\nV: Ins\nE2G2A2G2E2D2C4|D2E2G2E2D2C2D4|E2G2A2c2B2A2G4|F2E2D2E2G2E2C4|\n% chorus\nV: Vocal\n\"C\"z16|\"F\"z16|\"G\"z16|\"C\"z16|\nV: Ins\nG2A2c2B2A2G2E4|F2A2G2E2D2E2G4|A2c2B2A2G2E2D4|E2G2A2G2E2D2C4|\n",
+  "generation_config": {
+    "ode_steps": 32,
+    "abc": {
+      "max_tokens": 4096
+    },
+    "semantic": {
+      "max_tokens": 9000
+    }
+  },
+  "instrumental": true
+}

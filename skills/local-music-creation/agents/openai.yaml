@@ -1,0 +1,4 @@
+interface:
+  display_name: "Local Music Creation"
+  short_description: "在 Apple Silicon Mac 上使用独立 MLX 环境创作、复现和评估音乐"
+  default_prompt: "使用 $local-music-creation 检查本地配置，生成音乐并保存可复现的音频、乐谱和评估结果。"

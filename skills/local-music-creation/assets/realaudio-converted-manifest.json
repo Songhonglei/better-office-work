@@ -1,0 +1,29 @@
+{
+  "files": [
+    {
+      "file": "tokenizer_head.safetensors",
+      "bytes": 171277435,
+      "sha256": "e38ab890a464fa96c33a5d2f406f9731d952b5ee78131cc906ab6edd47552eb4"
+    },
+    {
+      "file": "tokenizer_config.json",
+      "bytes": 423,
+      "sha256": "d182e6718e47e58401b60ba3ee0be746e095bbebca0f3b9073ae938fae931610"
+    },
+    {
+      "file": "nar_lora_config.json",
+      "bytes": 530,
+      "sha256": "7818a8ec340d2ead153bec9ed6d0220b029097e9bbdbce8b91ff6f4aa345b939"
+    },
+    {
+      "file": "nar_lora.safetensors",
+      "bytes": 70301428,
+      "sha256": "54d9c5fa6e742b2039d7596b79ad8c16fcdea866d9669aafcc4d2962eb99e867"
+    },
+    {
+      "file": "manifest.json",
+      "bytes": 754,
+      "sha256": "d8cea2c317ce90c5917199040abe81c8aaec21b5f36c4f8c4721bec3fe6683fd"
+    }
+  ]
+}

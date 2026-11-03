@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+TASK_SKILL_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+exec python3 "$TASK_SKILL_DIR/scripts/music.py" "$@"

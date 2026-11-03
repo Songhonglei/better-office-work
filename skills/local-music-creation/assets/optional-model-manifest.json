@@ -1,0 +1,80 @@
+[
+  {
+    "repo": "m-a-p/SheetSage2",
+    "revision": "eab522a8168e8b8b8c4856bf8609cd86198f01fe",
+    "gated": false,
+    "license": "cc-by-nc-4.0",
+    "files": [
+      {
+        "bytes": 2060,
+        "sha256": "a986e63f5d831ecb823c11d19cfb371d763f25ae2e614ec9acd714c0b8bb87fd",
+        "verified": true,
+        "file": "config.json"
+      },
+      {
+        "bytes": 228738564,
+        "sha256": "b235f68091a5f5b644000f2b5acb57d1e70432aca2b34ab1b9cf27236e1f4274",
+        "verified": true,
+        "file": "model.safetensors"
+      },
+      {
+        "bytes": 10929,
+        "sha256": "30c377847af4131b84c9725ab0c6f39538709b974c9fa9001d38092c8962803d",
+        "verified": true,
+        "file": "README.md"
+      }
+    ]
+  },
+  {
+    "repo": "m-a-p/MERT-v2-FullSong",
+    "revision": "d8ba1c745e733b3908ce6ad16ebeb17ac7600a42",
+    "gated": false,
+    "license": "cc-by-nc-4.0",
+    "files": [
+      {
+        "bytes": 882,
+        "sha256": "f2e194895f58be3ddba327255db129ff0e3bee550cc0ecf08e4d22d79ce3bca3",
+        "verified": true,
+        "file": "config.json"
+      },
+      {
+        "bytes": 2529812848,
+        "sha256": "e6dd2ab187d6dd62b6521cd7d8f932e237acf0c5757745a7232082e28391350d",
+        "verified": true,
+        "file": "model.safetensors"
+      },
+      {
+        "bytes": 10419,
+        "sha256": "2b025166f640a0416b5544f4c3775aced46bf0c467af4ef7b302d52496335da6",
+        "verified": true,
+        "file": "README.md"
+      }
+    ]
+  },
+  {
+    "repo": "Mothersuperior/yue2-mothersuperior-realaudio-tokenizer-v4",
+    "revision": "f2278a2e005dc4ecc421c53a0929f62b3aeb2280",
+    "gated": false,
+    "license": "cc-by-nc-4.0",
+    "files": [
+      {
+        "bytes": 171305291,
+        "sha256": "d23c4f757a05f031134b8471ec84245ec2338966516e1a9e26a17ff300a5f87e",
+        "verified": true,
+        "file": "tokenizer_head_joint_v4.pt"
+      },
+      {
+        "bytes": 140626123,
+        "sha256": "df175dbf9405a8e15b2c3f8dbdcc97303575f763787f227b03029020e28102fe",
+        "verified": true,
+        "file": "nar_lora_joint_v4.pt"
+      },
+      {
+        "bytes": 5486,
+        "sha256": "65b469d79d4235fd7d7740c5651b0fbe11ae711f54cbd52a7fd923624a3062d0",
+        "verified": true,
+        "file": "README.md"
+      }
+    ]
+  }
+]

@@ -1,0 +1,16 @@
+{
+  "style": "Mandarin Chinese rhythmic rap with a melodic hook, confident male voice, old-school hip hop, dry breakbeat drums, warm sampled piano, deep bass",
+  "lyrics": "[Verse]\n清晨六点城市还在转\n把昨天的疲倦都放在一边\n手里的节拍像新的航线\n每一步都算数每一天\n\n[Chorus]\n向前走别回头\n风再大也有朋友\n把节奏握在手\n让今天有新的理由\n\n[Outro]\n向前走",
+  "cot": "off",
+  "seed": 20261024,
+  "generation_config": {
+    "ode_steps": 32,
+    "abc": {
+      "max_tokens": 4096
+    },
+    "semantic": {
+      "max_tokens": 9000
+    }
+  },
+  "id": "eval-chinese-rap-off"
+}

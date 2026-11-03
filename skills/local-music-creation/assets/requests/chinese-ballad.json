@@ -1,0 +1,16 @@
+{
+  "style": "Mandarin Chinese, intimate acoustic ballad, warm male voice, fingerpicked acoustic guitar, soft piano, restrained drums, emotional natural phrasing",
+  "lyrics": "[Verse]\n窗边的雨慢慢停了\n旧街的灯一盏亮着\n你把明天写在纸上\n我把心事轻轻唱着\n\n[Chorus]\n让晚风带我们回家\n穿过那开满花的夏\n每一次平凡的回答\n都是我想留下的话\n\n[Outro]\n把这一刻轻轻放下",
+  "cot": "full",
+  "seed": 20261021,
+  "generation_config": {
+    "ode_steps": 32,
+    "abc": {
+      "max_tokens": 4096
+    },
+    "semantic": {
+      "max_tokens": 9000
+    }
+  },
+  "id": "eval-chinese-ballad"
+}

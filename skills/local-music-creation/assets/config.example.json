@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "root": "~/AI-Lab/YuE2-MLX",
+  "paths": {
+    "source": "{root}/src",
+    "python": "{root}/src/.venv/bin/python",
+    "model": "{root}/models/converted",
+    "vae": "{root}/models/vae",
+    "snapshot": "{root}/models/mlx-Yue2-3B",
+    "output": "{root}/outputs/local-music-creation",
+    "cache": "{root}/cache",
+    "extras_python": "{root}/extras/.venv/bin/python",
+    "sheetsage": "{root}/models/evaluation-extras/SheetSage2",
+    "mert": "{root}/models/evaluation-extras/MERT-v2-FullSong",
+    "realaudio": "{root}/models/evaluation-extras/realaudio-converted",
+    "hf_cache": "{root}/models/hf-cache",
+    "ffmpeg_bin": "{root}/extras/bin"
+  },
+  "runtime": {
+    "precision": "8bit",
+    "memory_budget_gib": 16,
+    "vae_core_frames": 256,
+    "require_ac": true,
+    "min_free_disk_gib": 10,
+    "timeout_seconds": 7200
+  },
+  "expected_commit": "c5b5a8190f78c74aa671a4caa19dae8b8e04b3d8"
+}

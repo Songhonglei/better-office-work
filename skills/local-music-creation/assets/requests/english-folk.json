@@ -1,0 +1,16 @@
+{
+  "style": "English, gentle folk song, natural male vocal, fingerpicked acoustic guitar, upright bass, brushed drums, intimate live-room sound",
+  "lyrics": "[Verse]\nPaper boats along the stream\nCarry pieces of a dream\nPast the stones and through the shade\nFollow every turn we made\n\n[Chorus]\nTake the long way home with me\nWhere the branches meet the sea\nWhen the road is washed in gold\nThere is still a hand to hold\n\n[Outro]\nTake the long way home",
+  "cot": "melody",
+  "seed": 20261022,
+  "generation_config": {
+    "ode_steps": 32,
+    "abc": {
+      "max_tokens": 4096
+    },
+    "semantic": {
+      "max_tokens": 9000
+    }
+  },
+  "id": "eval-english-folk"
+}

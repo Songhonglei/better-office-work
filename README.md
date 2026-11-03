@@ -20,6 +20,7 @@
 
 | Skill | Description |
 |---|---|
+| [local-music-creation](./skills/local-music-creation/) | Apple Silicon 本地音乐创作：YuE2 MLX 歌词生成、ABC 制谱/渲染、8bit/BF16 对照、转写与 cover；配置驱动迁移、冻结依赖与结果校验；仅通过 GitHub 提供 |
 | [sms-agent-mail](./skills/sms-agent-mail/) | 手机短信邮件读取：原生邮箱工具或 Agently CLI，支持一键读信与同进程浏览器登录；核对服务、SIM/尾号和有效期，保留外置配置与授权（v1.4.0） |
 | [qq-mail-manage](./skills/qq-mail-manage/) | QQ 邮箱管理：Python HTTP 直连无需 Codex，兼容 Codex OAuth；支持现代无初始化 MCP、账号与权限隔离、附件 CLI、发送及确认后移至垃圾箱；可审计核验兼容及中断恢复（v1.5.1） |
 | [macos-power-control](./skills/macos-power-control/) | macOS 合盖与电源设置：一句话需求解析，设置前确认，区分电池/接电、临时防休眠与持久策略，附验证和恢复流程 |
@@ -66,6 +67,8 @@ Tools 无需安装，直接使用：
 - **Pomodoro Timer**：浏览器打开 [在线版](https://songhonglei.github.io/better-office-work/)，或把 `tools/Pomodoro Timer/dist/番茄钟.app` 拷贝到「应用程序」；也可在仓库内 `./tools/Pomodoro\ Timer/build.sh` 重新构建。
 
 ## Install via Agent Platforms
+
+`local-music-creation` 仅同步到本 GitHub 仓库，未发布到 skillhub.cn 或 clawhub.ai；请按其 [README](./skills/local-music-creation/README.md) 手动安装。
 
 | Platform | Install |
 |---|---|

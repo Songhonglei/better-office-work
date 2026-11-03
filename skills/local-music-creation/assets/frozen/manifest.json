@@ -1,0 +1,16 @@
+{
+  "source_repository": "https://github.com/vanch007/mlx-Yue",
+  "source_commit": "c5b5a8190f78c74aa671a4caa19dae8b8e04b3d8",
+  "python": "3.12.13",
+  "uv": "0.12.3",
+  "tested_macos": "26.5.1",
+  "tested_architecture": "arm64",
+  "files": {
+    "pyproject.toml": "6536280a5378aebed451473a156a8d2bdd461d1dcc977ee9ccbec1a5c82ed16d",
+    "uv.lock": "73b3cf5274d31d4a163aec91dfd3fd72a1d7e289959c6f279a9c6a7e3ec73d78"
+  },
+  "local_dependency_change": {
+    "urllib3": "2.8.0"
+  },
+  "license": "Apache-2.0; upstream LICENSE included for redistributed lock/project metadata"
+}

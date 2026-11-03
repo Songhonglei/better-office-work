@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — local-music-creation（2026-11-03）
+
+- 同步已验证的 Apple Silicon YuE2 MLX 本地音乐 Skill，支持歌词生成、ABC plan/render、精度切换、回放、批量、转写、cover 和 RealAudio 对照。
+- 提供可迁移 JSON 配置、冻结核心依赖、固定模型版本及哈希清单；模型、虚拟环境和本机设置不入库。
+- 保留历史验收范围及未验证项，区分技术校验与主观音质；现有部署更新仍需用户明确确认。
+- 本次仅同步 GitHub，不发布到 skillhub.cn 或 clawhub.ai，不新增跨平台发布流程。
+
 ### Fixed — sms-agent-mail v1.5.3（2026-11-02，webmail 接入完整校验门）
 
 - webmail 源此前只能做「行作用域部分校验」，发件人与收件人取不到，回执标注 `sender_unverified` / `recipient_unverified`。复查发现详情头 `.botmail-mail-reader-body-basic` 的 `basic-item` 里同时有发件人、收件人与时间，于是改为归一化成完整消息并交给 `check_message.py`。

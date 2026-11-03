@@ -1,0 +1,16 @@
+{
+  "style": "Japanese, uplifting J-pop, clear expressive female singing, electric piano, clean electric guitars, melodic bass, steady pop drums, hopeful",
+  "lyrics": "[Verse]\n雨上がりの道を歩く\n小さな光を探して\n昨日の涙は空に溶け\n新しい風が頬をなでる\n\n[Chorus]\n君と見上げた青い空\n遠い明日へ続いてゆく\n忘れかけてた夢のかけら\nもう一度ここで歌おう\n\n[Outro]\n風の中で歌おう",
+  "cot": "full",
+  "seed": 20261023,
+  "generation_config": {
+    "ode_steps": 32,
+    "abc": {
+      "max_tokens": 4096
+    },
+    "semantic": {
+      "max_tokens": 9000
+    }
+  },
+  "id": "eval-japanese-plan"
+}
