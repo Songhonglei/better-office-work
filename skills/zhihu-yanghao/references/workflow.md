@@ -193,6 +193,7 @@ echo '{"aid":"<上一步输出的aid>","type":"answer"}' > /tmp/zhihu_verify_par
 ego-browser nodejs < scripts/verify_via_cli.js
 ```
    看到 `VERIFY_RESULT: OK_NOT_COLLAPSED` 即成功。
+5. **回报链接（v1.4.0 起必做）**：把 `https://www.zhihu.com/question/<qid>/answer/<aid>` 和 `aid` 写进给用户的最终回复；文章用 `https://zhuanlan.zhihu.com/p/<id>`，想法用 `https://www.zhihu.com/pin/<id>`。链接只能取自发布后真实跳转的 URL 或 CLI 返回 id，**不要用 qid 拼猜 aid**；未拿到 `OK_NOT_COLLAPSED` 时照给但标注「发布未确认」。本次无新增内容要明说，不能略过。
 
 ## 模式 B：纯互动（只点赞）
 ```

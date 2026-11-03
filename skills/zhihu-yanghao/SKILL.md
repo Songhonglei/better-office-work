@@ -1,10 +1,23 @@
 ---
 name: zhihu-yanghao
-description: This skill provides the full Zhihu account-nurturing (养号) workflow for a Zhihu account via ego-browser — user-configurable topic pool with vertical focus (创作垂直度), three-shift (morning/noon/evening) schedule where each shift writes+publishes+verifies one answer and runs like engagement, weekly deep-dive answers (深度版, user-invited or random), moments/想法 posting for follower intimacy, content-influence requirements (hook + actionable + CTA + comment reply), plus optional collect/follow/comment interactions driven by config. Use it when the user asks to 知乎养号 / 养知乎号 / 发知乎回答 / 知乎点赞互动 / 知乎浏览 / 三班养号 / 写深度版 / 发想法 / 提升创作分, or wants a portable, risk-controlled, topic-configurable Zhihu growth routine on any machine where ego-browser is installed.
+description: This skill provides the full Zhihu account-nurturing (养号) workflow for a Zhihu account via ego-browser — user-configurable topic pool with vertical focus (创作垂直度), three-shift (morning/noon/evening) schedule where each shift writes+publishes+verifies one answer and runs like engagement, weekly deep-dive answers (深度版, user-invited or random), moments/想法 posting for follower intimacy, content-influence requirements (hook + actionable + CTA + comment reply), plus optional collect/follow/comment interactions driven by config. Every run must end by reporting the clickable link(s) and raw id(s) of the content it just published. Use it when the user asks to 知乎养号 / 养知乎号 / 发知乎回答 / 知乎点赞互动 / 知乎浏览 / 三班养号 / 写深度版 / 发想法 / 提升创作分, or wants a portable, risk-controlled, topic-configurable Zhihu growth routine on any machine where ego-browser is installed.
 agent_created: true
 ---
 
-# 知乎养号（zhihu-yanghao）v1.3.9
+# 知乎养号（zhihu-yanghao）v1.4.0
+
+> ## 📮 每次执行完必须交付链接（v1.4.0，用户明确要求）
+> 收尾回复里**必须逐条列出本次新增内容的可点击链接**，不是「已发布」三个字带过：
+> - 回答：`https://www.zhihu.com/question/{qid}/answer/{aid}`
+> - 文章：`https://zhuanlan.zhihu.com/p/{article_id}`
+> - 想法：`https://www.zhihu.com/pin/{pin_id}`
+> - 同时给 `aid`/`pin_id` 明文，便于用户自己复查。
+> 硬约束：
+> 1. **链接必须来自发布后真实跳转的 URL 或 CLI 返回的 id**，禁止用 qid 拼猜 aid。
+> 2. **先在 `verify_via_cli.js` 拿到 `OK_NOT_COLLAPSED` 再给链接**；未通过就明确说「发布未确认，链接待复核」，不要给一个可能 404 的地址。
+> 3. 一次执行发布多条（如回答 + 想法）就**列多条**，不能只给最后一条。
+> 4. 本次只互动/只浏览、没有新增内容时，**明确写「本次无新增内容」**，不能沉默不交代。
+> 5. 有折叠、审核未过、发布卡「发布中…」等情况，链接照给但**必须标注当前状态**。
 
 > ## ⛔ 跑之前先确认账号状态
 > 若账号处于限流 / 禁言（`config.account_status.silenced=true`），**只做只读浏览**：
@@ -194,6 +207,7 @@ DOM 选择器、按钮点击要点见 references/selectors.md。
 ## 验证发布成功
 1. 发布后 URL 跳转 `/question/{qid}/answer/{aid}`。
 2. **权威校验**：`echo '{"aid":"<aid>","type":"answer"}' > /tmp/zhihu_verify_params.json && ego-browser nodejs < scripts/verify_via_cli.js` —— 输出 `VERIFY_RESULT: OK_NOT_COLLAPSED` 即成功（折叠则 `COLLAPSED`；`NOT_FOUND_YET` 是索引滞后，等 1–2 分钟重跑）。等价手工命令：`zhihu-cli me contents --type answer --limit 3` 看最新一条摘要是否完整。
+3. **回报链接**（v1.4.0 起为强制收尾动作）：把 `https://www.zhihu.com/question/{qid}/answer/{aid}` 写进给用户的最终回复，同时给出 `aid`。见顶部「每次执行完必须交付链接」。
 
 ## 部署注意（本机 macOS 实测）
 - ego-browser 可能不在 shell PATH：用绝对路径 `~/.local/bin/ego-browser`。
@@ -201,6 +215,7 @@ DOM 选择器、按钮点击要点见 references/selectors.md。
 
 ## 文件产出建议
 - 日报：`output/zhihu/YYYY-MM-DD-{shift}.md`（shift: morning / noon / evening）。
+- 日报里固定记一行 `URL: https://www.zhihu.com/question/{qid}/answer/{aid}`（文章 `/p/{id}`、想法 `/pin/{id}`），便于日后回查。
 - 任务空间用完 `completeTaskSpace(name, { keep: false })` 关闭。
 
 ## 参考资料
@@ -210,6 +225,7 @@ DOM 选择器、按钮点击要点见 references/selectors.md。
 - references/workflow.md — config.json 配置、脚本调用方式、env 变量、示例命令
 
 ## 版本变更
+- **v1.4.0（2026-11-03）**：新增「交付链接」硬规则（用户明确要求）——每次执行完的收尾回复必须逐条列出本次新增内容的可点击链接（回答 `/question/{qid}/answer/{aid}`、文章 `/p/{id}`、想法 `/pin/{id}`）+ 明文 id；链接只能来自真实跳转 URL 或 CLI 返回 id，禁止用 qid 拼猜；须先 `OK_NOT_COLLAPSED` 再给链接，未确认要标注状态；无新增内容须显式说明。同步写入「验证发布成功」第 3 步与 references/workflow.md。
 - **v1.3.9（2026-10-19）**：`write_answer.js` 发布按钮零宽字符修复（同步 run_shift.js v1.3.7 已验证逻辑）：
   1. 旧 `innerText.trim() === "发布回答"` 不去 `\u200b`——按钮带零宽字符时静默 `publish-clicked: false`（正文已填、URL 不跳转、不报错）。2026-10-19 实测复现该坑后修复。
   2. 改为 `[\u200b\s]+` 清洗 + 主候选 `["发布回答","提交回答"]` + 回退「发布」（仅编辑器存在时）+ 跳过 `disabled`，失败时输出 `WRITE_ANSWER_PARTIAL_FAIL: publish`（同页禁止重试）。
