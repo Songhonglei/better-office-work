@@ -2,3 +2,6 @@
 __pycache__/
 *.pyc
 .DS_Store
+
+# BGM 曲库体积大（~87MB），不入 git，见 assets/music/README.md 的恢复脚本
+assets/music/*.mp3
