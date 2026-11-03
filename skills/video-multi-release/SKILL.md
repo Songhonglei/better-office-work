@@ -6,8 +6,8 @@ description: >
   然后发布到小红书、视频号、抖音三个渠道。支持 stage（只准备不提交）、draft（存草稿）、
   publish（直接发）三种模式。当用户要做口播视频、给卡片视频配音、把视频发到小红书/视频号/抖音时使用。
   前置依赖：ego-browser 已安装且目标平台已登录；ffmpeg；ffprobe。
-version: 1.0.1
-bins: [ffmpeg, ffprobe, python3, node]
+version: 1.1.0
+bins: [ffmpeg, ffprobe, python3, node, npm, npx]
 metadata:
   openclaw:
     requires:
@@ -73,6 +73,14 @@ Key 在阿里云百炼控制台 → API-KEY 管理创建。读取优先级：
 ```bash
 SKILL=~/.workbuddy/skills/video-multi-release
 
+# 0) 批量生成卡片（引用 xhs-image-note-release 的生成器渲染）
+#    背景/金句对齐方式三选一：segments[].image 字段 > --mapping JSON > --images 目录按 mtime 排序
+python3 $SKILL/scripts/gen_cards.py \
+  --script voice_script.json \
+  --images images/ \
+  --theme journal --tag "古人情话" --account "@雨夜心灯" \
+  --out-dir assets
+
 # 1) 生成配音（分段，按卡片对齐）
 python3 $SKILL/scripts/tts.py \
   --script voice_script.json \
@@ -85,10 +93,15 @@ python3 $SKILL/scripts/build_composition.py \
   --voice-dir audio/female \
   --pre 0.5 --gap 0.4 --tail 1.2
 
-# 3) 渲染无声画面（HyperFrames 项目里）
+# 2) 一键重建：时间轴 + 内联 gsap + 渲染 + 混 BGM → out/final.mp4
+#    （等于下面 3)(4) 两步；改了卡片或配音后重跑它即可，时间轴自动重算）
+bash $SKILL/scripts/rebuild.sh /path/to/project
+#    可选：BGM=/path/to.mp3 PRE=0.6 GAP=0.45 TAIL=1.5 bash rebuild.sh ...
+
+# 3)（rebuild.sh 的分解视图）无声画面（HyperFrames 项目里）
 npx hyperframes@0.9.1 render --output /tmp/silent.mp4
 
-# 4) 混音成片
+# 4)（rebuild.sh 的分解视图）混音成片
 python3 $SKILL/scripts/mix_audio.py \
   --silent /tmp/silent.mp4 \
   --bgm assets/music/bgm.mp3 \
@@ -268,6 +281,8 @@ channels.mjs 现在的顺序是：打开 → 等 → **先判 `login` 重定向 
 
 ```
 scripts/
+├── gen_cards.py           批量生成卡片（薄封装，引用 xhs-image-note-release 的生成器；段数校验）
+├── rebuild.sh             一键重建：时间轴 + 内联 gsap + 渲染 + 混音（改素材后重跑即可）
 ├── tts.py                 分段配音（Qwen TTS + 音色预设）
 ├── build_composition.py   音频驱动时间轴 → 产出 index.html 与时间轴数据
 ├── mix_audio.py           人声铺设 + BGM 垫底 + limiter
@@ -285,3 +300,11 @@ references/
 - `ffmpeg` / `ffprobe`（混音、探时长）
 - `hyperframes`（渲染卡片视频，仅做视频时需要）
 - Python 3（标准库即可，无第三方依赖）
+- 卡片生成（gen_cards.py）：依赖 `xhs-image-note-release` skill 的 `references/card-generator/card_generator.py` 与 Google Chrome headless；缺失时启动即报错，可用 `--generator` 指定其他路径
+
+## 卡片生成约定
+
+- 输出 `card_01.png ~ card_NN.png`，按 segments 数组顺序编号，与 `build_composition.py` 的读取约定严格对齐。
+- **段数与背景图数必须一致**，不一致直接报错退出（防止视频卡片静默错位）。
+- 金句分行：优先用 segments 里的 `"lines": ["上句", "下句"]`；没写就按第一个逗号自动拆两行；整句无逗号则单行。
+- 卡片规格默认 1080x1440（3:4），与 `--card-h 1440` 默认值匹配，一般不用动。
