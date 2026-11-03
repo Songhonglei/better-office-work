@@ -44,13 +44,8 @@ python3 scripts/mix_audio.py --silent /tmp/silent.mp4 \
 
 ## 换机恢复
 
-mp3 不入 git（体积 ~87MB），新机器一键重下：
+mp3 不入 git（体积 ~87MB），下载 URL 已固化在同目录 `download.sh`，一条命令重建（可续传，已存在的自动跳过）：
 
 ```bash
-cd "$(dirname "$0")"
-for t in "Sovereign" "Crossing the Divide" "Impact Lento" "Frost Waltz" \
-         "Ossuary 1 - A Beginning" "Floating Cities" "Heartbreaking" \
-         "Meditation Impromptu 02" "Reawakening" "Long Note Two"; do
-  curl -s -o "$t.mp3" "https://incompetech.com/music/royalty-free/mp3-royaltyfree/$(echo "$t" | sed 's/ /%20/g').mp3"
-done
+bash assets/music/download.sh
 ```
