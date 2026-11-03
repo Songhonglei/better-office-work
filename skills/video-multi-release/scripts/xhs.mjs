@@ -13,7 +13,7 @@ if (!CFG) {
 }
 
 const EXIT = {
-  OK: 0, PARAM: 10, DEP: 11, AUTH: 20, TAB: 21, UPLOAD: 30,
+  OK: 0, PARAM: 10, DEP: 11, SPACE: 12, AUTH: 20, TAB: 21, UPLOAD: 30,
   FORM: 40, TOPIC: 50, COVER: 60, SUBMIT: 70, VERIFY: 80, INTERNAL: 90,
 }
 
@@ -200,14 +200,53 @@ async function setVideoCover(coverPath) {
   return { ok: true }
 }
 
+// 复用/新建任务空间。上次失败保留的现场归属会回到 user，
+// useOrCreateTaskSpace 按设计不会擅自接管，这里给明确出路而不是落到 E_UNEXPECTED。
+async function acquireSpace(name) {
+  if (CFG.spaceId) {
+    const id = Number(CFG.spaceId)
+    if (!id) {
+      await fail('task-space', 'E_SPACE_ID_INVALID', EXIT.PARAM,
+        'SPACE_ID 不是数字: ' + CFG.spaceId, {}, ['传数字，例如 SPACE_ID=65'])
+    }
+    try {
+      TASK = await claimTaskSpace(id)
+      log('接管空间 ' + id + '  ' + elapsed())
+      return TASK
+    } catch (e) {
+      await fail('task-space', 'E_SPACE_CLAIM_FAILED', EXIT.SPACE,
+        'SPACE_ID=' + id + ' 接管失败：' + e.message, {},
+        ['确认这个 id 是否正确、空间是否已被关闭',
+         '不确定就不传 SPACE_ID，让脚本新建一个（旧空间需先关掉）'])
+    }
+  }
+
+  try {
+    TASK = await useOrCreateTaskSpace(name)
+    log('空间 ' + TASK.id + '  ' + elapsed())
+    return TASK
+  } catch (e) {
+    const m = /id (\d+)/.exec(e.message || '')
+    const oldId = m ? m[1] : '<id>'
+    await fail('task-space', 'E_SPACE_OWNED', EXIT.SPACE,
+      '同名任务空间已存在且归属用户，未擅自接管（通常是上次失败保留的现场）',
+      { message: e.message, existingSpace: oldId },
+      ['复用那个现场（页面还在、内容也在）：命令前加 SPACE_ID=' + oldId + ' 重跑',
+       '丢弃旧现场：ego-browser nodejs -e "await completeTaskSpace(' + oldId + ', { keep: false })"',
+       '两个都不做会一直卡在这一步'])
+  }
+}
+
 async function main() {
   log('开始，模式=' + CFG.mode)
 
-  TASK = await useOrCreateTaskSpace('publish xhs video')
-  log('空间 ' + TASK.id + '  ' + elapsed())
+  TASK = await acquireSpace('publish xhs video')
 
   await openOrReuseTab('https://creator.xiaohongshu.com/publish/publish', { wait: true, timeout: 30 })
-  await wait(15)
+  // 复用同名任务空间时会命中上次的 tab，编辑器里还留着上次的正文和封面，
+  // 再填一遍正文会翻倍、封面入口变隐藏。无条件重载，换干净页面。
+  await cdp('Page.reload', { ignoreCache: false })
+  await wait(16)
 
   const info = await pageInfo()
   if (/login/i.test(info.url)) {

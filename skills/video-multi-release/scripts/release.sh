@@ -25,6 +25,9 @@ TOPICS="${TOPICS:-}"
 COVER="${COVER:-}"
 MODE="${MODE:-stage}"
 KEEP_ON_FAIL="${KEEP_ON_FAIL:-1}"
+# 复用上次失败留下的现场（页面已填好）：SPACE_ID=65 这样传。
+# 不传就按名字新建；若同名空间还在且归属用户，脚本会报 E_SPACE_OWNED 并给出两条出路。
+SPACE_ID="${SPACE_ID:-}"
 
 LOG="/tmp/video-release-$(date +%Y%m%d-%H%M%S)-$$.log"
 exec > >(tee -a "$LOG") 2>&1
@@ -101,6 +104,7 @@ echo "  标题: ${TITLE}（${TITLE_LEN} 字）"
 echo "  描述: ${DESC_LEN} 字"
 echo "  话题: ${TOPICS:-（无）}"
 echo "  模式: ${MODE}"
+if [ -n "$SPACE_ID" ]; then echo "  空间: ${SPACE_ID}（复用现场）"; fi
 echo "  日志: ${LOG}"
 echo "=========================================="
 
@@ -121,6 +125,7 @@ EXIT_CODE=0
 SUMMARY=""
 
 for platform in "${PLATFORM_ARRAY[@]}"; do
+  EXIT_CODE=0
   echo ""
   echo "────────────  ${platform}  ────────────"
 
@@ -135,17 +140,37 @@ print(json.dumps({
     'mode': sys.argv[6],
     'keepOnFail': sys.argv[7] == '1',
     'coverVertical': sys.argv[8],
+    'spaceId': sys.argv[9] or None,
 }, ensure_ascii=False))
-" "$platform" "$VIDEO" "$TITLE" "$DESC" "$TOPICS_JSON" "$MODE" "$KEEP_ON_FAIL" "$COVER")
+" "$platform" "$VIDEO" "$TITLE" "$DESC" "$TOPICS_JSON" "$MODE" "$KEEP_ON_FAIL" "$COVER" "$SPACE_ID")
 
   MJS="$SCRIPTS_DIR/${platform}.mjs"
   [ -f "$MJS" ] || { echo "缺少脚本: $MJS"; EXIT_CODE=11; SUMMARY="$SUMMARY\n  $platform  失败(11) 缺脚本"; continue; }
 
   # 把参数作为常量前置拼进去：ego-browser nodejs 不继承 shell 环境变量
+  EGO_OUT="$(mktemp)"
+  set +e
   {
     printf 'const PARAMS = %s;\n' "$PARAMS_JSON"
     cat "$MJS"
-  } | ego-browser nodejs || EXIT_CODE=$?
+  } | ego-browser nodejs 2>&1 | tee "$EGO_OUT"
+  RC_PIPE=("${PIPESTATUS[@]}")
+  set -e
+
+  # ego-browser 会把 node 的退出码统一改写成自己进程的 1，真实码只打了行日志：
+  #   ego's nodejs process exited with code 11.
+  # 所以 $? 不可信。优先取 FAILED 块里脚本自己声明的 exit，其次取那行日志，最后才退回管道码。
+  RC_BLOCK=$(grep -oE '^exit     : [0-9]+' "$EGO_OUT" | tail -1 | grep -oE '[0-9]+$' || true)
+  RC_MSG=$(grep -oE 'exited with code [0-9]+' "$EGO_OUT" | tail -1 | grep -oE '[0-9]+$' || true)
+  rm -f "$EGO_OUT"
+
+  if [ -n "$RC_BLOCK" ]; then
+    EXIT_CODE=$RC_BLOCK
+  elif [ -n "$RC_MSG" ]; then
+    EXIT_CODE=$RC_MSG
+  else
+    EXIT_CODE=${RC_PIPE[1]:-0}
+  fi
 
   if [ "$EXIT_CODE" -eq 0 ]; then
     SUMMARY="$SUMMARY\n  $platform  ✅ 成功"

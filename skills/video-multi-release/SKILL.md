@@ -6,7 +6,7 @@ description: >
   然后发布到小红书、视频号、抖音三个渠道。支持 stage（只准备不提交）、draft（存草稿）、
   publish（直接发）三种模式。当用户要做口播视频、给卡片视频配音、把视频发到小红书/视频号/抖音时使用。
   前置依赖：ego-browser 已安装且目标平台已登录；ffmpeg；ffprobe。
-version: 1.0.0
+version: 1.0.1
 bins: [ffmpeg, ffprobe, python3, node]
 metadata:
   openclaw:
@@ -179,7 +179,8 @@ cleanup  : ego-browser nodejs -e "await completeTaskSpace(12, { keep: false })"
 | 0 | 成功 | — |
 | 10 | 参数/文件校验 | 改参数重跑，无副作用 |
 | 11 | 依赖缺失（缺 mjs、缺 ffmpeg） | 补依赖 |
-| 20 | 未登录 | 让用户扫码，回复 continue 后 `claimTaskSpace` 接管 |
+| 12 | 任务空间被占用 / SPACE_ID 无效 | 见下方「失败之后怎么重跑」 |
+| 20 | 未登录 | 让用户扫码，回复 continue 后重跑 |
 | 21 | 找不到「上传视频」入口（小红书） | 接管手动点一下 tab，或页面改版需更新选择器 |
 | 30 | 上传失败/超时 | 重跑；卡 0% 就刷新 |
 | 40 | 填表失败 | 接管看页面，可能改版 |
@@ -194,6 +195,28 @@ cleanup  : ego-browser nodejs -e "await completeTaskSpace(12, { keep: false })"
 多平台一起发时，**默认第一个失败就停**，避免带着问题继续发下一个（否则可能三个平台状态各不相同，
 排查成本翻倍）。想「能发的先发、失败的稍后补」，设 `CONTINUE_ON_FAIL=1`，脚本会依次尝试并在末尾汇总结果。
 
+### 失败之后怎么重跑
+
+失败保留的现场会一直占着同名任务空间，直接重跑可能撞 `E_SPACE_OWNED`（exit 12）。两条路：
+
+```bash
+# A. 丢弃旧现场，新建空间重跑（最常用）
+ego-browser nodejs -e "await completeTaskSpace(66, { keep: false })"
+# 然后照原命令重跑
+
+# B. 复用那个空间（省一次弹窗，适用于「空间里还停在登录页」这种空白现场）
+SPACE_ID=66 PLATFORMS=channels MODE=stage ... bash release.sh
+```
+
+⚠ `SPACE_ID` 是**在旧空间里重跑全流程**，不是「接着填」。如果旧页面里已经上传过视频/填过内容，
+再投递文件会撞 `E_UPLOAD_TIMEOUT`（exit 30）——这种情况必须用 A，别用 B。
+
+**退出码不可信 `$?`。** `ego-browser nodejs` 会把子进程退出码统一改写成自己进程的 `1`，
+真实码只打在 stdout 的一行 `ego's nodejs process exited with code NN.` 里。
+`release.sh` 已经改成从 FAILED 块的 `exit : NN` 解析真实码（兜底解析那行日志，再兜底用管道码），
+所以**看汇总表的退出码，不要直接看 shell 的 `$?`**。手工调 `ego-browser nodejs` 时同理。
+
+
 ## 必须知道的坑
 
 **视频号是 wujie 微前端。** 内容全在 `wujie-app` 的 shadowRoot 里，
@@ -201,6 +224,16 @@ cleanup  : ego-browser nodejs -e "await completeTaskSpace(12, { keep: false })"
 上传文件用 CDP `DOM.getDocument({pierce:true})` 拿 nodeId 再 `DOM.setFileInputFiles`。
 
 **视频号 JS click 不触发事件。** 沙箱里 `el.click()` 无效，必须 `Input.dispatchMouseEvent`。
+
+**登录页的二维码在 iframe 里，而且要等 9 秒。** 扫码登录失败时最容易被误导的地方：
+登录页 DOM 里只有 logo，查不到任何 img/canvas——二维码在 `open.weixin.qq.com/connect/qrconnect`
+的 iframe（208×208）。`Page.reload {ignoreCache: true}` 之后 **6 秒截图拿到的是中间带循环箭头的模糊占位**，
+看着像「二维码已失效」，其实只是没渲染完；等满 **9 秒**才是可扫的码。点 iframe 中心不会触发刷新，只能整页重载。
+取码方法：读 iframe 的 `getBoundingClientRect()` → 整页截图 → 按 rect 裁剪放大 3 倍。
+
+**「未登录」必须早于「wujie 缺失」判断。** 登录页本身没有 `wujie-app`，先查 wujie 会把未登录
+误报成 `E_WUJIE_MISSING`（exit 11，依赖缺失），`what_now` 跟着指向查网络而不是扫码。
+channels.mjs 现在的顺序是：打开 → 等 → **先判 `login` 重定向 → 再查 wujie**。
 
 **视频号删除视频后重传会卡在上传 0%。** 删 → 确认 → 重传，进度永久停 0%，只能刷新（内容会清空）。
 所以必须一次传对文件，没有「传错再换」这条路。

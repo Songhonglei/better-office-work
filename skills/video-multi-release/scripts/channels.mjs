@@ -16,7 +16,7 @@ if (!CFG) {
 }
 
 const EXIT = {
-  OK: 0, PARAM: 10, DEP: 11, AUTH: 20, TAB: 21, UPLOAD: 30,
+  OK: 0, PARAM: 10, DEP: 11, SPACE: 12, AUTH: 20, TAB: 21, UPLOAD: 30,
   FORM: 40, TOPIC: 50, COVER: 60, SUBMIT: 70, VERIFY: 80, INTERNAL: 90,
 }
 
@@ -55,6 +55,45 @@ async function fail(step, code, exitCode, message, detail, whatNow) {
     try { await completeTaskSpace(TASK.id, { keep: false }) } catch (e) { /* ignore */ }
   }
   process.exit(exitCode)
+}
+
+// 复用/新建任务空间。
+// 上次 KEEP_ON_FAIL 留下的现场归属会回到 user，此时 useOrCreateTaskSpace 按设计
+// 拒绝擅自接管，直接抛异常。不捕获就会落到 E_UNEXPECTED，用户看不到出路。
+async function acquireSpace(name) {
+  if (CFG.spaceId) {
+    const id = Number(CFG.spaceId)
+    if (!id) {
+      await fail('task-space', 'E_SPACE_ID_INVALID', EXIT.PARAM,
+        'SPACE_ID 不是数字: ' + CFG.spaceId, {},
+        ['传数字，例如 SPACE_ID=65'])
+    }
+    try {
+      TASK = await claimTaskSpace(id)
+      log('接管空间 ' + id + '  ' + elapsed())
+      return TASK
+    } catch (e) {
+      await fail('task-space', 'E_SPACE_CLAIM_FAILED', EXIT.SPACE,
+        'SPACE_ID=' + id + ' 接管失败：' + e.message, {},
+        ['确认这个 id 是否正确、空间是否已被关闭',
+         '不确定就不传 SPACE_ID，让脚本新建一个（旧空间需先关掉）'])
+    }
+  }
+
+  try {
+    TASK = await useOrCreateTaskSpace(name)
+    log('空间 ' + TASK.id + '  ' + elapsed())
+    return TASK
+  } catch (e) {
+    const m = /id (\d+)/.exec(e.message || '')
+    const oldId = m ? m[1] : '<id>'
+    await fail('task-space', 'E_SPACE_OWNED', EXIT.SPACE,
+      '同名任务空间已存在且归属用户，未擅自接管（通常是上次失败保留的现场）',
+      { message: e.message, existingSpace: oldId },
+      ['复用那个现场（页面还在、内容也在）：命令前加 SPACE_ID=' + oldId + ' 重跑',
+       '丢弃旧现场：ego-browser nodejs -e "await completeTaskSpace(' + oldId + ', { keep: false })"',
+       '两个都不做会一直卡在这一步'])
+  }
 }
 
 // ---------- shadow 辅助 ----------
@@ -125,32 +164,36 @@ async function clickByText(text) {
 async function main() {
   log('开始，模式=' + CFG.mode)
 
-  TASK = await useOrCreateTaskSpace('publish channels video')
-  log('空间 ' + TASK.id + '  ' + elapsed())
+  TASK = await acquireSpace('publish channels video')
 
   await openOrReuseTab('https://channels.weixin.qq.com/platform/post/create', { wait: true, timeout: 30 })
-  await wait(12)
+  // 复用同名任务空间时，openOrReuseTab 会命中上一次留下的 tab 而不再加载，
+  // 页面里还留着上次的视频和文案 —— 再投一次文件会卡在 0%（E_UPLOAD_TIMEOUT）。
+  // 无条件重载一次，用几秒换一个干净页面。
+  await cdp('Page.reload', { ignoreCache: false })
+  await wait(14)
+
+  // 先判登录态再查 wujie。登录页本身没有 wujie-app，顺序反了会把「未登录」
+  // 误报成「依赖缺失」（E_WUJIE_MISSING / exit 11），what_now 也会指向查网络而非扫码。
+  const info = await pageInfo()
+  if (/login/i.test(info.url)) {
+    await fail('auth', 'E_AUTH_EXPIRED', EXIT.AUTH,
+      '视频号未登录（页面被重定向到登录页）', { url: info.url },
+      ['让用户在 ego 窗口里用微信扫码登录（二维码在右侧 iframe 里，强刷后约需 9 秒才生成，别急着判定失效）',
+       '登录是用户手动操作，会触发 task space 接管，属正常',
+       '用户回复 continue 后重跑；若旧空间仍占着，用 SPACE_ID=' + (TASK ? TASK.id : '<id>') + ' 复用'])
+  }
 
   const ready = await shadow(`
     return { url: location.href, hasWujie: true }
   `)
   if (!ready || ready.__err) {
     await fail('open-page', 'E_WUJIE_MISSING', EXIT.DEP,
-      '页面没有加载出 wujie-app，可能是网络或登录态问题',
-      { url: (await pageInfo()).url },
-      ['先确认 channels.weixin.qq.com 能正常打开',
+      '已不在登录页，但仍没有加载出 wujie-app（页面未渲染完或被拦截）',
+      { url: info.url },
+      ['再等一会儿重跑（Vue 微前端首屏有时较慢）',
        '让用户手动在窗口里确认页面渲染完成',
-       '再回复 continue 重跑'])
-  }
-
-  // 登录态
-  const info = await pageInfo()
-  if (/login/i.test(info.url)) {
-    await fail('auth', 'E_AUTH_EXPIRED', EXIT.AUTH,
-      '视频号未登录', { url: info.url },
-      ['让用户在 ego-lite 窗口里用微信扫码登录',
-       '登录是用户手动操作，会触发 task space 接管，属正常',
-       '用户回复 continue 后用 claimTaskSpace(' + TASK.id + ') 接管再重跑'])
+       '确认本机能正常打开 channels.weixin.qq.com'])
   }
 
   // 上传视频
