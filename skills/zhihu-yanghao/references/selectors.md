@@ -53,6 +53,20 @@
 | `completeTaskSpace(name, { keep })` | 关闭任务空间（`keep:false` 清理） |
 | `listTabs()` / `closeTab(id)` | 标签页管理 |
 | `cliLog(str)` | 向 ego-browser 日志输出（脚本内用） |
+| `taskSpace(name)` → `{ spaceId, page('p1'), finish() }` | **新版 API**（v1.5.0 插图必需）：`const t = await taskSpace('xxx'); const p = t.page('p1')`。旧版 `useOrCreateTaskSpace` 没有 `setInputFiles`，插图必须走新版 |
+| `p.setInputFiles(selector, localPath)` | 上传本地文件到隐藏 input；知乎编辑器用 `input[accept*="image"]`（2026-11-06 实测，工具栏图片按钮不用点） |
+| `p.evaluate(fn)` / `p.waitForSelector(sel,{state,timeout})` / `p.waitForTimeout(ms)` / `p.goto(url)` / `p.waitForFunction(fn)` / `p.screenshot({path})` / `p.title()` / `p.url()` | 新版 page API，等价于旧版 `js()` / `wait()` / `openOrReuseTab()` 等，支持上传与截图 |
+| `t.finish({ keep: [] })` | 新版关闭任务空间（11/06 实测：`keep:false` 参数报错，`keep: []` 通过；旧版 `completeTaskSpace(name,{keep:false})` 仍可用于旧 API 会话） |
+
+### 配图 / 插图（2026-11-06 实测，详见 references/illustrations.md）
+| 目标 | 选择器 / 判定 | 说明 |
+|---|---|---|
+| 图片上传控件 | `input[accept*="image"]` | 编辑器打开后即存在的隐藏 input，**不必点工具栏图片按钮**；用 `p.setInputFiles()` 塞本地绝对路径 |
+| 上传完成判定 | `img.complete && img.naturalWidth > 0` 且 `src` 落在 `pic-private.zhihu.com` / `pic*.zhimg.com` | 只看 `imgs.length` 会拿到白图；每次上传后等 8–10 秒 |
+| 正文分段 | `raw.trim().split(/\n\s*\n/)` → 逐段 `ClipboardEvent` 粘贴 | 顺序「段1 → 上传图1 → 段2 → 上传图2 → 剩余段落（含文末署名）」，不要先粘全文再批量传图 |
+| 发布前 dry run | `p.screenshot({ path: '/tmp/zhihu_editor_preview.png' })` + `ViewImage` 验段落/图片顺序 | 图片全 OK + 顺序对 + 用户确认后才点发布 |
+| 配图发布成功的辅助信号 | CLI `me contents --type answer --limit 3` 最新一条 Summary 含 `[图片]` | 仍是辅助；折叠权威信号看 `fold_audit.js` |
+| 发布按钮（手工路径） | `[\u200b\s]+` 清洗后 ∈ `["发布回答","提交回答"]`，回退「发布」仅在编辑器存在时 | 一次点击，`waitForFunction(() => /\/answer\/[0-9]+/.test(location.href))` 等真实跳转，卡住即停不重试 |
 
 ## js 代码字符串写法建议
 - 脚本文件（scripts/）内用**字符串拼接**组装 js 代码（避免 `${}` 被外壳展开）：

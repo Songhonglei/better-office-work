@@ -6,7 +6,9 @@
 //   SHIFT=morning QID=xxx CONTENT_FILE=xxx ego-browser nodejs < scripts/run_shift.js
 //
 // 行为：读配置 → 按 班次+日序号 轮转话题池取关键词 → 选未答过问题(QID 可覆盖)
-//        → 前10候选随机选3-5点赞(自然化) → 若 answer=true 写/发布/验证1回答 → 按 interactions 做可选收藏/关注/评论
+//        → 前10候选随机选3-5点赞(自然化) → 若 answer=true 校验去AI味门禁(v1.5.0) → 写/发布/验证1回答
+//        → 按 interactions 做可选收藏/关注/评论
+// v1.5.0: 发布前必须已跑 scripts/humanize_gate.py，凭证与正文 sha256 绑定；不过则跳过发布。
 //
 // 参数优先级：env（SHIFT/CONFIG/QID/CONTENT/CONTENT_FILE/KW/LIMIT/COMMENT_TEXT）> /tmp/zhihu_shift_params.json
 // 注：部分 ego-browser 构建不向 nodejs 运行时透传 shell env，故参数文件为可靠路径。
@@ -244,6 +246,35 @@
     cliLog('like disabled for this shift (interactions.like = 0/null)')
   }
 
+  // ---------- 6.0 去 AI 味硬门禁（v1.5.0，默认强制） ----------
+  // 与 scripts/humanize_gate.py 配套：凭证绑定正文 sha256，正文改一个字即失效。
+  // 不通过 → ANSWER_SKIPPED: HUMANIZE_GATE_FAIL，点赞/互动照常收尾但绝不打开编辑器。
+  function checkHumanizeGate(txt) {
+    const hg = (cfg.data.publish_gates || {}).humanize || {}
+    if (hg.enabled === false) {
+      cliLog('WARN: HUMANIZE_GATE_DISABLED — config.publish_gates.humanize.enabled=false（仅限未安装 text-humanize 的机器）')
+      return { pass: true, skipped: true }
+    }
+    const gateFile = hg.gate_file || '/tmp/zhihu_humanize_pass.json'
+    const maxHours = Number(hg.max_age_hours || 6)
+    let g
+    try { g = JSON.parse(fs.readFileSync(gateFile, 'utf8')) }
+    catch (e) { return { pass: false, reason: '凭证缺失或损坏 (' + gateFile + '): ' + e.message } }
+    let sha
+    try { sha = require('crypto').createHash('sha256').update(txt, 'utf8').digest('hex') }
+    catch (e) { return { pass: false, reason: 'sha256 计算失败: ' + e.message } }
+    if (g.ok !== true) return { pass: false, reason: '凭证 ok != true' }
+    if (g.sha256 !== sha) return { pass: false, reason: '正文 sha256 不匹配（正文改过，需重跑 humanize_gate.py）' }
+    if (g.contentFile && P.contentFile && path.resolve(g.contentFile) !== path.resolve(P.contentFile)) {
+      return { pass: false, reason: 'contentFile 不匹配（检查的是另一份稿）' }
+    }
+    if (Number(g.fail) !== 0) return { pass: false, reason: 'preflight fail=' + g.fail }
+    if (!g.checkedAt || (Date.now() - Number(g.checkedAt) * 1000) > maxHours * 3600 * 1000) {
+      return { pass: false, reason: '凭证超过 ' + maxHours + ' 小时有效期，需重跑 humanize_gate.py' }
+    }
+    return { pass: true, sha: sha, warn: Number(g.warn || 0), tier: g.tier || '?' }
+  }
+
   // ---------- 6. 写回答（answer=true 时） ----------
   let aid = null
   let publishFailed = false
@@ -259,10 +290,15 @@
       const minW = style.min_words || (isDeep ? 800 : 250)
       const maxW = style.max_words || (isDeep ? 1200 : 800)
       const charCount = content.length
-      if (charCount < minW || charCount > maxW) {
+      const gate = checkHumanizeGate(content)
+      if (!gate.pass) {
+        cliLog('ANSWER_SKIPPED: HUMANIZE_GATE_FAIL — ' + gate.reason)
+        cliLog('HUMANIZE_GATE_HINT: python3 scripts/humanize_gate.py <正文文件> 跑通后再重跑本班（点赞/互动照常收尾；同页禁止重试发布）')
+      } else if (charCount < minW || charCount > maxW) {
         cliLog('ANSWER_SKIPPED: WORD_COUNT_EXCEEDED ' + charCount + ' chars, allowed ' + minW + '-' + maxW + (isDeep ? ' (deep)' : ' (standard)') + ' — compress/expand content then rerun')
       } else {
       cliLog('WORD_COUNT_OK: ' + charCount + ' chars (' + minW + '-' + maxW + (isDeep ? ' deep' : ' standard') + ')')
+      if (!gate.skipped) cliLog('HUMANIZE_GATE_OK: tier=' + gate.tier + ' fail=0 warn=' + gate.warn + ' sha256=' + gate.sha.slice(0, 12))
       const opened = await js('(() => {'
         + ' const btns = Array.from(document.querySelectorAll("button"));'
         + ' const b = btns.find(function (x) { return x.innerText.indexOf("写回答") >= 0; });'

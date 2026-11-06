@@ -62,6 +62,13 @@
 
 **评论回复**：发布后 24h 内回复全部评论（`config.influence.comment_reply`）。互动率是算法判断内容生命周期的关键信号，也直接影响影响力分。
 
+## 发布前两道门禁（v1.5.0，写作规范之外的硬约束）
+选题与正文再好，不过门禁也不许发布：
+1. **去 AI 味**：加载 `text-humanize`（中文模式）改写 → `python3 scripts/humanize_gate.py <正文文件>` 拿 `HUMANIZE_GATE_OK` 凭证（FAIL 归零、正文 sha256 绑定）。自检清单不算通过；`run_shift.js` 会程序化拦截。
+2. **配图问用户**：`AskUserQuestion` 三选一「网络图 / 用 batch-image-gen 生成 / 不配图」，不得替用户决定。配图会改变正文字数（文末署名/标注行），**署名行写完后要重跑门禁**。
+
+详见 SKILL.md「发布前强制流程」与 references/illustrations.md + workflow.md「发布前两道硬门禁」。
+
 ## 深度版规范（每周 1 篇，`config.deep_answer`）
 内容优质分是**周更**维度，标准回答拉不动，必须靠深度版。除满足上述影响力三件套外，硬性三项：
 1. **1 处可核查的硬料**：史料原文 / 具体数据 / 真实案例。宁缺毋滥，**绝不编造**。

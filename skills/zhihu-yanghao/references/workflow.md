@@ -1,4 +1,4 @@
-# 工作流与脚本调用（zhihu-yanghao v1.3.5）
+# 工作流与脚本调用（zhihu-yanghao v1.5.0）
 
 ## 运行环境要求
 - 命令前缀：`ego-browser nodejs`（Bash 工具必须加 `dangerouslyDisableSandbox: true`，且 WorkBuddy 安全中心「沙箱安全」开关临时关闭）。否则 ego-browser 连不上（报 `Failed to connect to ego_cli bootstrap`）。
@@ -13,7 +13,8 @@
    - `topic_pool`：全局话题池（数组）。三班按「日序号 + 班次偏移」轮转取关键词。历史类与人文类**交替排列**，保证每班取到的 3 个词横跨两个垂直领域。
    - `answer_style`：标准回答字数区间与视角提示（LLM 写回答时参考）。
    - **`deep_answer`**（v1.3.0）：深度版配置。`frequency: "weekly"`；`mode` = `auto`（用户邀请优先 + 每周随机兜底）/ `invite`（仅用户邀请）/ `random`（仅自动随机）；`min_words`/`max_words` = 800–1200；`requirements` = 硬料 + 对比结构 + 可操作结论三项。
-   - **`influence`**（v1.3.0）：创作影响力规范。`hook`（反直觉观点拉评论）、`actionable`（清单/框架拉收藏）、`cta`（结尾禁止机械问号收尾，用观点/留白收束；2026-09-09 修订）、`comment_reply`（发布后 24h 内回评论）。**发布前正文过 text-humanize（中文模式）去 AI 味自检**。
+   - **`influence`**（v1.3.0）：创作影响力规范。`hook`（反直觉观点拉评论）、`actionable`（清单/框架拉收藏）、`cta`（结尾禁止机械问号收尾，用观点/留白收束；2026-09-09 修订）、`comment_reply`（发布后 24h 内回评论）。**v1.5.0 起去 AI 味是硬门禁，不是自检**——见下方「发布前两道硬门禁」。
+   - **`publish_gates`**（v1.5.0）：发布门禁。`humanize.enabled`（默认 true）/ `tier` / `gate_file` / `max_age_hours` / `require_no_fail`；`illustration.ask_user`（默认 true）/ `options`（网络图 / batch-image-gen 生成 / 不配图）/ `max_images`（默认 2）/ `require_user_confirm_before_publish`。**改 `enabled=false` 会跳过门禁并输出 WARN，仅限未安装 text-humanize 的机器。**
    - **`moments`**（v1.3.0）：想法/动态配置。`per_week` = 每周条数（默认 4）；`min_words`/`max_words` = 50–150；`topics` = 内容方向。
    - `shifts`：三个班次，每班含：
      - `enabled`：是否启用该班。
@@ -21,6 +22,42 @@
      - `answer`：该班是否写 1 回答。
      - `interactions`：`{ like, collect, follow, comment }`——`like` 为点赞配置：**整数 `5`（固定 5 个）或对象 `{"pool":10,"min":3,"max":5}`（前 10 个候选随机选 3–5，推荐自然化）**；`collect`/`follow`/`comment` 为开关（comment 默认 false，实验性）。
 3. 改完保存即可，run_shift.js 下次运行自动读最新配置。
+
+## 发布前两道硬门禁（v1.5.0，任何发布路径都适用）
+
+### ① 去 AI 味（text-humanize，程序化拦截）
+
+```bash
+# 1) 先加载 text-humanize skill（中文模式）改写正文，FAIL 归零后把定稿写入文件
+#    知乎回答默认 --tier long（长文档不注入错别字）；文末配图署名行也要一起写进定稿
+# 2) 跑门禁（自动定位 ~/.workbuddy/skills/text-humanize/scripts/preflight-check.py）
+python3 scripts/humanize_gate.py /abs/answer.txt
+#    HUMANIZE_GATE_OK  → 写 /tmp/zhihu_humanize_pass.json
+#    HUMANIZE_GATE_FAIL → 删除旧凭证、退出码 1，改稿重跑，禁止绕过
+```
+
+可选参数：`--tier short|long|literary`、`--strict`（WARN 也拦）、`--preflight <path>` / 环境变量 `TEXT_HUMANIZE_PREFLIGHT`、`--gate-file <path>`、`--max-age-hours 6`。
+
+凭证 schema（与正文绑定，改一个字即失效）：
+```json
+{ "ok": true, "contentFile": "/abs/answer.txt", "sha256": "...", "length": 762,
+  "tier": "long", "fail": 0, "warn": 1, "strict": false,
+  "maxAgeHours": 6.0, "checkedAt": 1793962106, "preflight": "/abs/preflight-check.py" }
+```
+
+- `run_shift.js`：字数护栏之后校验 `ok` / sha256 / contentFile / `fail=0` / 6h 时效 → 通过输出 `HUMANIZE_GATE_OK`，不通过输出 `ANSWER_SKIPPED: HUMANIZE_GATE_FAIL`（不打开编辑器，点赞/互动照常收尾）。
+- 手工 heredoc（含插图）没有内建校验：agent 必须自己先跑门禁，在日报记一行 `HUMANIZE_GATE_OK`。即使用 `CONTENT` 字符串直接传正文，也要先把定稿落盘成文件跑一遍门禁（凭证需要 `contentFile` + sha256）。
+- 旧配置没有 `publish_gates` 块时门禁**默认强制开启**（fail-safe）；只有显式 `enabled=false` 才放行并输出 WARN。
+- `config.publish_gates.humanize.enabled=false` 会输出 `WARN: HUMANIZE_GATE_DISABLED` 并放行（仅限无 text-humanize 的机器），本机保持 true。
+
+### ② 配图方式问用户
+
+正文定稿 + 门禁通过后、填编辑器之前，用 `AskUserQuestion` 三选一：**网络图 / 用 batch-image-gen 生成 / 不配图**。不得替用户决定或沿用上次。选配图的完整执行路径（Commons 授权查证、`imagegen-batch` 要点、新版 `taskSpace()/page()/setInputFiles` 分段插图、dry run 校验、发布前最终确认）见 `references/illustrations.md`。
+
+要点：
+- `run_shift.js` / `write_answer.js` **不支持插图**；配图必须走手工 heredoc 的新版 API 路径。
+- 填完编辑器先 dry run（图片 `complete && naturalWidth>0` + src 落知乎图床 + 截图验顺序），把截图/原图/定稿给用户，拿到明确同意才点发布。
+- 日报记两行：`HUMANIZE_GATE_OK: ...` 与 `ILLUSTRATION: 网络图(2, 已署名) / batch-image-gen(2, 已标注) / 不配图`。
 
 ## 深度版怎么触发（v1.3.0）
 深度版**不需要额外脚本**，走的是同一套 `run_shift.js` 流程，区别只在正文生成规范：
@@ -156,7 +193,8 @@ env 写法（其他机器若透传 env 可用）：`SHIFT=morning CONFIG=/abs/co
 
 > ⚠️ **本机实测（macOS / ego-browser nodejs）不向运行时透传 shell 环境变量**——`process.env.*` 全为 `UNDEF`，故 heredoc/env 内联写法在本环境会失败。统一用「参数文件 `/tmp/zhihu_shift_params.json` + 不带 env 的 `ego-browser nodejs < scripts/run_shift.js`」最稳。脚本已同时兼容 env（其他机器若透传仍可用）。
 
-脚本流程：读配置 → 轮转取关键词 → 选未答过问题（或 QID 覆盖）→ 前10随机选3-5点赞（自然化）→ 字数护栏校验 → 写/发布1回答 → 按 interactions 做可选收藏/关注/评论。已内置「已答过跳过 + 已赞跳过 + 随机选赞 + 发布卡死即停 + 字数护栏」。折叠验证见上方 verify_via_cli.js。
+脚本流程：读配置 → 轮转取关键词 → 选未答过问题（或 QID 覆盖）→ 前10随机选3-5点赞（自然化）→ 字数护栏校验 → **去 AI 味门禁校验（v1.5.0，不过即跳过发布）** → 写/发布1回答 → 按 interactions 做可选收藏/关注/评论。已内置「已答过跳过 + 已赞跳过 + 随机选赞 + 发布卡死即停 + 字数护栏 + humanize 凭证校验」。折叠验证见上方 verify_via_cli.js。
+> ⚠️ **配图询问是 agent 侧动作，不在脚本里**：agent 在跑本脚本前必须先问用户配图方式；选了配图时不要用 `run_shift.js` 发布（它不支持插图），改走 `references/illustrations.md` 的手工路径。
 
 > **v1.3.7 起：班次前置步骤 = 折叠巡检**（`scripts/fold_audit.js`）——每班开跑先与基线比对，抓 `NEW_FOLDED`（新被折叠）/`RECOVERED`；发现新增折叠要在日报记录并在写作时收紧去指纹化规范。**折叠权威信号 = 创作者中心「被折叠」标签**，CLI Summary 在新「隐藏机制」下失明（详见 selectors.md 折叠验证行）。
 >
@@ -182,7 +220,7 @@ KW='历史,神话,唐僧,西游记' ego-browser nodejs < scripts/pick_question.j
 ```
 QID=<qid> ego-browser nodejs < scripts/like_top5.js
 ```
-3. 写回答（正文写到文件，再用 CONTENT_FILE 传入；或短回答用 CONTENT 环境变量）：
+3. 写回答（**发布前两步不可省**：① `python3 scripts/humanize_gate.py /tmp/zhihu-answer.txt` 拿 `HUMANIZE_GATE_OK`；② `AskUserQuestion` 问配图方式「网络图 / batch-image-gen 生成 / 不配图」。详见上方「发布前两道硬门禁」）：
 ```
 QID=<qid> CONTENT_FILE=/tmp/zhihu-answer.txt ego-browser nodejs < scripts/write_answer.js
 ```

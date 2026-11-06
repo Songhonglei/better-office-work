@@ -2,7 +2,10 @@
 
 一套依赖 ego-browser 的知乎养号（account-nurturing）全流程 skill：**垂直领域收敛 + 三班节奏（早/午/晚）+ 深度版回答 + 想法发布 + 创作影响力规范**，内嵌 7/27 风控事故后总结的红线与陷阱。可在任意装了 ego-browser 的机器上独立运行，不依赖任何工作区记忆。
 
-## 功能总览（v1.4.0）
+## 功能总览（v1.5.0）
+
+- **发布前去 AI 味硬门禁**（v1.5.0，用户明确要求）：正文先过 `text-humanize`（中文模式）改写，再跑 `scripts/humanize_gate.py` 写入与正文 sha256 绑定的凭证；`run_shift.js` 不验凭证就跳过发布（`ANSWER_SKIPPED: HUMANIZE_GATE_FAIL`）。自检清单不算通过，**必须有凭证**。
+- **配图方式每次问用户**（v1.5.0）：`AskUserQuestion` 三选一「网络图 / 用 batch-image-gen 生成 / 不配图」，不得替用户决定；配图执行（Commons 授权查证、批量生图要点、新版 `setInputFiles` 插图、dry run 校验、发布前最终确认）见 `references/illustrations.md`。
 
 - **交付链接必达**（v1.4.0）：每次执行完的收尾回复必须逐条给出本次新增内容的可点击链接（回答 `/question/{qid}/answer/{aid}`、文章 `/p/{id}`、想法 `/pin/{id}`）与明文 id；链接只能取自真实跳转 URL 或 CLI 返回 id（禁止 qid 拼猜），且须先通过 `OK_NOT_COLLAPSED` 折叠校验；无新增内容须显式说明。
 
@@ -24,6 +27,7 @@
 - 已安装 ego-browser（ego lite 浏览器 + CLI），知乎账号已登录（ego-browser 继承系统登录态）。
 - ⚠️ 运行 `ego-browser nodejs` 需关闭 WorkBuddy 沙箱（详见 SKILL.md「前置依赖」）。
 - （可选）zhihu-cli + 知乎开放平台 Access Secret，用于热榜扫描与发布结果权威校验。
+- **（v1.5.0 发布必需）`text-humanize` skill**：`~/.workbuddy/skills/text-humanize/scripts/preflight-check.py`；缺失时门禁会拦下发布（fail-safe）。选「batch-image-gen 生成」配图时还需 `imagegen-batch` skill + ImageGen。
 
 ## 安装
 
@@ -58,13 +62,14 @@ ego-browser nodejs < scripts/post_moment.js
 
 ## 目录结构
 
-- `SKILL.md` — 主流程、触发条件、创作分提升套件（含去指纹化写作规范）
-- `config.json` / `config.example.json` — 账号、垂直领域、话题池、班次、深度版/想法/影响力配置
+- `SKILL.md` — 主流程、触发条件、创作分提升套件（含去指纹化写作规范）、发布前两道硬门禁
+- `config.json` / `config.example.json` — 账号、垂直领域、话题池、班次、深度版/想法/影响力配置、`publish_gates`
 - `references/risk-control.md` — 风控红线（必读）
-- `references/selectors.md` — DOM 选择器 + ego-browser API 速查
+- `references/selectors.md` — DOM 选择器 + ego-browser API 速查（含插图）
 - `references/topic-strategy.md` — 垂直收敛、话题池轮转、深度版与影响力写作规范
-- `references/workflow.md` — 配置说明、脚本调用、参数文件 schema
-- `scripts/` — run_shift.js（三班编排）/ fold_audit.js（折叠巡检，本机基线 `references/fold-baseline.json` 不分发）/ browse_only.js（禁言期只读浏览）/ post_moment.js（发想法）/ like_top5.js / write_answer.js / verify_via_cli.js（辅助验证）/ pick_question.js / edit_answer.js
+- `references/workflow.md` — 配置说明、脚本调用、参数文件 schema、门禁用法
+- `references/illustrations.md` — 配图决策与插图执行（v1.5.0）
+- `scripts/` — run_shift.js（三班编排 + 去 AI 味门禁）/ humanize_gate.py（发布前门禁凭证）/ fold_audit.js（折叠巡检，本机基线 `references/fold-baseline.json` 不分发）/ browse_only.js（禁言期只读浏览）/ post_moment.js（发想法）/ like_top5.js / write_answer.js / verify_via_cli.js（辅助验证）/ pick_question.js / edit_answer.js
 
 ## License
 

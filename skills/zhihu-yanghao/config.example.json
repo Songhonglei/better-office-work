@@ -85,6 +85,23 @@
       "_note": "发布后 24h 内回复全部评论，互动率直接影响影响力分"
     }
   },
+  "publish_gates": {
+    "humanize": {
+      "enabled": true,
+      "_note": "发布前硬门禁：先加载 text-humanize skill（中文模式）改写，再跑 python3 scripts/humanize_gate.py <正文文件> 写凭证；凭证与正文 sha256 绑定，run_shift.js 校验不过即跳过发布。enabled=false 仅限未安装 text-humanize 的机器。",
+      "tier": "long",
+      "gate_file": "/tmp/zhihu_humanize_pass.json",
+      "max_age_hours": 6,
+      "require_no_fail": true
+    },
+    "illustration": {
+      "ask_user": true,
+      "_note": "每次发布回答前必须用 AskUserQuestion 问用户配图方式，不得替用户决定或沿用上次选择；发布前还要把编辑器截图给用户做最终确认。",
+      "options": ["网络图", "batch-image-gen 生成", "不配图"],
+      "max_images": 2,
+      "require_user_confirm_before_publish": true
+    }
+  },
   "moments": {
     "enabled": true,
     "per_week": 4,
