@@ -59,17 +59,26 @@ PRESETS = {
 
 
 def find_key():
-    """按优先级取 API Key：环境变量 > skill 根目录 .env。
+    """按优先级取 API Key：环境变量 > 数据目录 .env（兼容旧位置 skill 根目录）。
 
-    不内置任何密钥，也不引用个人机器上的私密路径。
-    首次使用请跑 onboard.sh 写入 .env（该文件默认被 .gitignore 忽略）。
+    不内置任何密钥。密钥属运行时数据，放 skill 目录之外：
+    $WB_SKILLS_DATA/video-multi-release/.env（默认 ~/space/skills-data），
+    这样 skill 升级/镜像全量覆盖不会清掉密钥，多个 agent 也共用一份。
+    首次使用请跑 onboard.sh 写入。
     """
     env = os.environ.get('DASHSCOPE_API_KEY', '').strip()
     if env:
         return env
 
-    skill_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    env_file = os.path.join(skill_root, '.env')
+    data_root = os.environ.get('WB_SKILLS_DATA') or os.path.join(
+        os.path.expanduser('~'), 'space', 'skills-data')
+    env_file = os.path.join(data_root, 'video-multi-release', '.env')
+    if not os.path.exists(env_file):
+        # 兼容旧位置（数据外置之前密钥写在 skill 根目录）
+        legacy = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+        if os.path.exists(legacy):
+            env_file = legacy
     if os.path.exists(env_file):
         try:
             with open(env_file, encoding='utf-8', errors='ignore') as f:
@@ -87,8 +96,8 @@ def find_key():
         '缺少 DASHSCOPE_API_KEY。\n'
         '  方式一（推荐）: bash scripts/onboard.sh\n'
         '  方式二: export DASHSCOPE_API_KEY=sk-xxxx\n'
-        '  方式三: 在 skill 根目录建 .env，内容为 DASHSCOPE_API_KEY=sk-xxxx\n'
-        '  Key 在阿里云百炼控制台 → API-KEY 管理创建。'
+        '  方式三: 在 %s 建 .env，内容为 DASHSCOPE_API_KEY=sk-xxxx\n'
+        '  Key 在阿里云百炼控制台 → API-KEY 管理创建。' % env_file
     )
 
 

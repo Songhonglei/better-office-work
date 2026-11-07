@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
-# 首次配置 —— 写入 API Key 到 skill 根目录的 .env
+# 首次配置 —— 写入 API Key 到数据目录的 .env（默认 ~/space/skills-data/video-multi-release/）
 #
-# 密钥不写进任何脚本或文档正文，只落在 .env 里（默认被 .gitignore 忽略）。
+# 密钥属运行时数据，故意放在 skill 目录之外：skill 升级 / 镜像全量覆盖都不会清掉它，
+# 多个 agent 也共用同一份。密钥不写进任何脚本或文档正文。
 # 重跑可覆盖。加 --verify 会调一次 TTS 接口验证 key 是否可用。
 
 set -euo pipefail
 
 SKILL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENV_FILE="$SKILL_ROOT/.env"
+DATA_DIR="${WB_SKILLS_DATA:-$HOME/space/skills-data}/video-multi-release"
+ENV_FILE="$DATA_DIR/.env"
 TTS="$SKILL_ROOT/scripts/tts.py"
+mkdir -p "$DATA_DIR"
 
 VERIFY=0
 KEY=""
@@ -65,12 +68,7 @@ if [ ! -s "$ENV_FILE" ]; then
 fi
 echo "✅ 已写入 ${ENV_FILE}（权限 600）"
 
-# .gitignore 兜底：确保这个文件不会被同步出去
-GI="$SKILL_ROOT/.gitignore"
-if [ ! -f "$GI" ] || ! grep -qxF '.env' "$GI" 2>/dev/null; then
-  printf '.env\n__pycache__/\n*.pyc\n' >> "$GI"
-  echo "✅ 已把 .env 加入 .gitignore"
-fi
+# 注：.env 现在落在 skill 目录之外的数据目录，不再需要写 .gitignore 兜底。
 
 if [ "$VERIFY" -eq 1 ]; then
   echo ""

@@ -55,16 +55,18 @@ metadata:
 
 ## 首次配置（onboard）
 
-本 skill 不含任何密钥。API Key 只落在 skill 根目录的 `.env`（已被 `.gitignore` 忽略，不会同步出去）：
+本 skill 不含任何密钥。API Key 只落在**数据目录**的 `.env`（skill 目录之外，升级/镜像覆盖不会清掉，多个 agent 共用）：
 
 ```bash
 bash ~/.workbuddy/skills/video-multi-release/scripts/onboard.sh --verify
+# 写入位置：~/space/skills-data/video-multi-release/.env（权限 600）
 ```
 
 不带 `--key` 会交互输入（不回显）；`--verify` 会真调一次 TTS 验证 key 可用。
 
 Key 在阿里云百炼控制台 → API-KEY 管理创建。读取优先级：
-`环境变量 DASHSCOPE_API_KEY` > `skill根目录/.env`。两者都没有就报错并提示跑 onboard。
+`环境变量 DASHSCOPE_API_KEY` > `~/space/skills-data/video-multi-release/.env` > 旧位置 skill 根目录 `.env`（兼容）。
+根目录可用 `WB_SKILLS_DATA` 覆盖。
 
 模型走 MaaS Token Plan 端点，`token-plan` 就是 `{WorkspaceId}`，不需要单独开通百炼账号。
 
@@ -104,7 +106,7 @@ npx hyperframes@0.9.1 render --output /tmp/silent.mp4
 # 4)（rebuild.sh 的分解视图）混音成片
 python3 $SKILL/scripts/mix_audio.py \
   --silent /tmp/silent.mp4 \
-  --bgm assets/music/bgm.mp3 \
+  --bgm ~/space/skills-data/video-multi-release/music/bgm.mp3 \
   --out out/final.mp4
 
 # 5) 发布

@@ -11,7 +11,7 @@
 #   out/                成片输出目录（自动创建）
 #
 # 可用环境变量:
-#   BGM=/path/to.mp3      背景音乐（默认 skill 内 Frost Waltz.mp3，找不到则报错列出可用曲目）
+#   BGM=/path/to.mp3      背景音乐（默认数据目录的 Frost Waltz.mp3，找不到则报错提示先下载）
 #   PRE / GAP / TAIL      时间轴留白，默认 0.6 / 0.45 / 1.5
 #   RATE                  已在 tts 阶段生效，此处不涉及
 #
@@ -74,12 +74,14 @@ npx -y hyperframes@0.9.1 render --output out/silent.mp4 2>&1 | tail -4
 # ── 4) 混音（人声 + BGM） ────────────────────────────────
 echo "── 4/4 混音 ──"
 if [ -z "$BGM" ]; then
-  DEFAULT_BGM="$SKILL_DIR/assets/music/Frost Waltz.mp3"
+  # 曲库属运行时素材，放在 skill 目录之外（~/space/skills-data/video-multi-release/music）
+  MUSIC_DIR="${WB_SKILLS_DATA:-$HOME/space/skills-data}/video-multi-release/music"
+  DEFAULT_BGM="$MUSIC_DIR/Frost Waltz.mp3"
   if [ -f "$DEFAULT_BGM" ]; then
     BGM="$DEFAULT_BGM"
   else
     echo "✗ 未指定 BGM 且默认曲目不存在（$DEFAULT_BGM）。"
-    echo "  先跑 assets/music/download.sh 下载曲目，或用 BGM=/path/to.mp3 指定。"
+    echo "  先跑 assets/music/download.sh 下载曲库到 $MUSIC_DIR，或用 BGM=/path/to.mp3 指定。"
     exit 11
   fi
 fi

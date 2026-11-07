@@ -58,7 +58,7 @@ agent_created: true
 2. ⚠️ **沙箱必须关闭**：ego-browser 的 Mach port IPC 会被 WorkBuddy 沙箱拦截。运行所有 `ego-browser nodejs` 命令时：
    - Bash 工具加 `dangerouslyDisableSandbox: true`；
    - 并在 WorkBuddy 安全中心临时关闭「沙箱安全」顶部开关（用完开回），否则报 `Failed to connect to ego_cli bootstrap`。
-3. **配置话题与班次**（用户自定义）：复制 `config.example.json` 为 `config.json`，按你的账号/话题/互动修改（详见 references/workflow.md 的「配置 config.json」）。
+3. **配置话题与班次**（用户自定义）：`mkdir -p ~/space/skills-data/zhihu-yanghao && cp config.example.json ~/space/skills-data/zhihu-yanghao/config.json`，按你的账号/话题/互动修改。**配置放数据目录（skill 目录外）**，升级或整目录镜像覆盖都不会丢，多个 agent 共用同一份（详见 references/workflow.md 的「配置 config.json」）。
 4. **`text-humanize` skill（v1.5.0 起发布必需）**：`~/.workbuddy/skills/text-humanize/scripts/preflight-check.py`。`humanize_gate.py` 会自动定位它；装在别处用 `--preflight` 或环境变量 `TEXT_HUMANIZE_PREFLIGHT` 指定。缺了它，门禁会拦下发布（fail-safe）。
 5. **配图按需依赖**：选「网络图」→ 能访问 Wikimedia Commons 并下载图片；选「用 batch-image-gen 生成」→ 批量生图 skill（本机名为 `imagegen-batch`）+ ImageGen 能力；选「不配图」→ 无额外依赖。
 
@@ -239,7 +239,7 @@ EOF
 - `scripts/pick_question.js`：扫热榜按关键词过滤输出候选 qid（env: `KW`、`LIMIT`）。⚠️ 本机 env 不透传，需把 `kwRaw` 改成硬编码或复制到 /tmp 修改后运行。
 - `scripts/post_moment.js`：发想法 / 动态（参数文件 `/tmp/zhihu_moment_params.json`，支持 `dryRun`）。
 - `scripts/edit_answer.js`：修改已发布回答（参数文件 `/tmp/zhihu_edit_params.json`：`aid`/`qid`/`contentFile`/`stripMarkdown`/`dryRun`）。⚠️ 已知限制：内容替换可行，但「提交修改」点击可能不生效（脚本会安全停止并提示人工确认）。
-- `scripts/fold_audit.js`：折叠巡检（2026-09-14 新增）。滚动抓取创作者中心全部内容的「被折叠」标签，与基线 `references/fold-baseline.json` 比对输出 `NEW_FOLDED` / `RECOVERED`。可选参数文件 `/tmp/zhihu_fold_params.json`（`{"update": true}` 写回基线，带防残缺护栏）。**每班开跑先跑一次**；换机器需改脚本头部 `BASELINE` 常量路径。
+- `scripts/fold_audit.js`：折叠巡检（2026-09-14 新增）。滚动抓取创作者中心全部内容的「被折叠」标签，与基线 `~/space/skills-data/zhihu-yanghao/fold-baseline.json` 比对输出 `NEW_FOLDED` / `RECOVERED`。可选参数文件 `/tmp/zhihu_fold_params.json`（`{"update": true}` 写回基线，带防残缺护栏）。**每班开跑先跑一次**；基线在数据目录，换机器不用改代码（`ZHIHU_FOLD_BASELINE` 可覆盖）。
   ⚠️ 基线文件是**本机状态**（记录你账号的历史折叠快照），不随开源包分发；新机器首次跑会输出 `NO_BASELINE` 并只列全量状态，之后带 `{"update": true}` 跑一次即建立基线。
 - `scripts/browse_only.js`：禁言期只读浏览（2026-09-15 新增）。热榜 → 按垂直领域词挑问题 → 逐页滚动停留 → 首页信息流，**零点击互动**（输出 `BROWSE_DONE ... interactions=0` 可验证）。可选参数文件 `/tmp/zhihu_browse_params.json`（`{"minutes": 6, "pages": 4, "keywords": [...]}`）。
 

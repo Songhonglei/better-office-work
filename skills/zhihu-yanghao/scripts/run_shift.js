@@ -45,15 +45,24 @@
   const P = loadParams()
 
   // ---------- 1. 加载配置 ----------
+  // 配置属运行时数据，放在 skill 目录之外：$WB_SKILLS_DATA/<skill>/（默认 ~/space/skills-data）。
+  // 这样 skill 目录被升级/镜像全量覆盖也不会动到配置，且多个 agent 共用同一份。
+  const SKILLS_DATA = process.env.WB_SKILLS_DATA ||
+    path.join(process.env.HOME || '', 'space', 'skills-data')
+  const DATA_DIR = path.join(SKILLS_DATA, 'zhihu-yanghao')
+  // 旧位置（数据外置之前配置放在 skill 目录内），仅作一次性兼容回退
+  const LEGACY_CONFIG = path.join(process.env.HOME || '', '.workbuddy', 'skills', 'zhihu-yanghao')
+
   function loadConfig() {
     const candidates = []
     if (P.configPath) candidates.push(P.configPath)
     if (process.env.CONFIG) candidates.push(process.env.CONFIG)
+    candidates.push(path.join(DATA_DIR, 'config.json'))
     candidates.push('/tmp/zhihu_config.json')
     candidates.push(path.join(process.cwd(), 'config.json'))
     candidates.push(path.join(process.cwd(), 'config.example.json'))
-    candidates.push('/Users/songhonglei/.workbuddy/skills/zhihu-yanghao/config.json')
-    candidates.push('/Users/songhonglei/.workbuddy/skills/zhihu-yanghao/config.example.json')
+    candidates.push(path.join(LEGACY_CONFIG, 'config.json'))
+    candidates.push(path.join(LEGACY_CONFIG, 'config.example.json'))
     for (const c of candidates) {
       if (!c) continue
       try { return { path: c, data: JSON.parse(fs.readFileSync(c, 'utf8')) } } catch (e) {}

@@ -42,6 +42,8 @@ async function fail(step, code, exitCode, message, detail, whatNow) {
   }
   lines.push('=== END FAILED ===')
   lines.push('')
+  // console.error 走 stderr 且进程被杀时缓冲会丢，加 stdout 直写兜底
+  try { process.stdout.write(lines.join('\n') + '\n') } catch (e) { /* ignore */ }
   console.error(lines.join('\n'))
   if (TASK && !CFG.keepOnFail) {
     try { await completeTaskSpace(TASK.id, { keep: false }) } catch (e) { /* ignore */ }
@@ -279,10 +281,15 @@ async function main() {
      '接管截图看是否有其他校验提示（封面检测、必填项）'])
 }
 
-try {
-  await main()
-} catch (e) {
-  await fail('internal', 'E_UNEXPECTED', EXIT.INTERNAL, String((e && e.message) || e),
-    { stack: String((e && e.stack) || '').split('\n').slice(0, 3).join(' | ').slice(0, 300) },
-    ['未预期异常，通常是页面改版或连接中断', '接管截图确认'])
-}
+// ego-browser 的 stdin 走 node:internal/vm，不支持顶层 await（会报 SyntaxError
+// 且被包装成 exit 90、一行输出都没有）。必须用 IIFE 包装，正常完成路径显式退出。
+;(async () => {
+  try {
+    await main()
+  } catch (e) {
+    await fail('internal', 'E_UNEXPECTED', EXIT.INTERNAL, String((e && e.message) || e),
+      { stack: String((e && e.stack) || '').split('\n').slice(0, 3).join(' | ').slice(0, 300) },
+      ['未预期异常，通常是页面改版或连接中断', '接管截图确认'])
+  }
+  process.exit(0)
+})()

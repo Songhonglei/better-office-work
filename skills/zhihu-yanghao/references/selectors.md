@@ -17,7 +17,7 @@
 | 按时间排序菜单 | 找 `b.innerText.trim() === '默认排序'` 按钮，再点「按时间排序」 | 新回答默认排序靠后，验证可见性需切此 |
 | 历史类话题 ID | `19551077`（机器学习是 `19559450`，别搞混） | 话题页入口 |
 | 精华区 URL | `/topic/19551077/top-answers` | 带连字符；`/top_answers` 是 404 |
-| 折叠验证 | **权威（v1.3.7 修正）：创作者中心列表的「被折叠」标签**——用 `scripts/fold_audit.js` 巡检（滚动抓全量 + 与 `references/fold-baseline.json` 比对）；CLI `scripts/verify_via_cli.js`（输出 `VERIFY_RESULT: OK_NOT_COLLAPSED`）**仅作辅助** | ⚠️ **2026-09 新「隐藏机制」下 CLI Summary 失明**：被折叠回答的 Summary 仍非空，CLI 会把已折叠判成未折叠。`serverFetch('/api/v4/answers/{aid}')` 自 8/26 起恒 403（verify_fold.js 已删）。fold_audit 为唯一可靠信号 |
+| 折叠验证 | **权威（v1.3.7 修正）：创作者中心列表的「被折叠」标签**——用 `scripts/fold_audit.js` 巡检（滚动抓全量 + 与 `~/space/skills-data/zhihu-yanghao/fold-baseline.json` 比对）；CLI `scripts/verify_via_cli.js`（输出 `VERIFY_RESULT: OK_NOT_COLLAPSED`）**仅作辅助** | ⚠️ **2026-09 新「隐藏机制」下 CLI Summary 失明**：被折叠回答的 Summary 仍非空，CLI 会把已折叠判成未折叠。`serverFetch('/api/v4/answers/{aid}')` 自 8/26 起恒 403（verify_fold.js 已删）。fold_audit 为唯一可靠信号 |
 
 ### 想法 / 动态（2026-08-31 实测）
 | 目标 | 选择器 / 判定 | 说明 |

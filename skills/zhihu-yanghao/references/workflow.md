@@ -6,7 +6,13 @@
 - 所有脚本在 `scripts/` 下，参数通过环境变量或参数文件传入。脚本内部用字符串拼接组装 js 代码，避免 `${}` 被外壳展开。
 
 ## 配置 config.json（用户自定义话题与班次）
-1. 复制模板：`cp config.example.json config.json`（config.json 不纳入版本库，按你账号改）。
+1. 复制模板到**数据目录**（不在 skill 目录内 —— skill 升级或整目录镜像覆盖都不会动它，多个 agent 共用同一份）：
+   ```bash
+   mkdir -p ~/space/skills-data/zhihu-yanghao
+   cp config.example.json ~/space/skills-data/zhihu-yanghao/config.json
+   ```
+   换根目录用 `WB_SKILLS_DATA=<root>`。脚本查找顺序：参数文件 `configPath` → `$WB_SKILLS_DATA/zhihu-yanghao/config.json`
+   → `/tmp/zhihu_config.json` → 工作目录 `config.json` → 旧 skill 目录（数据外置前的兼容回退）。
 2. 关键字段：
    - `account`：知乎账号 ID（如 `your-account-id`），用于日报/主页验证。
    - **`vertical_focus`**（v1.3.0）：垂直度收敛配置。`primary` = 只养的 2 个领域（当前「趣味历史」+「人文心理」）；`keyword_hints` = 各领域关键词，写作时自然融入 2–3 个帮算法打标签。**🚫 不在 `primary` 之外的话题下写回答**，否则垂直度永远点不亮。
@@ -155,11 +161,11 @@ EOF
 ## 推荐：三班编排（run_shift.js）
 一个命令跑完一个班的全部动作，配置全在 config.json。本环境用**参数文件**方式（ego-browser 不透传 env）：
 ```
-# 1) 写参数文件（shift/qid/contentFile/configPath 等），见下方 schema
+# 1) 写参数文件（shift/qid/contentFile 等），见下方 schema
+#    configPath 可省 —— 缺省读 ~/space/skills-data/zhihu-yanghao/config.json
 cat > /tmp/zhihu_shift_params.json <<'EOF'
 { "shift": "morning", "qid": "2070982459156424668",
-  "contentFile": "/abs/answer.txt",
-  "configPath": "/abs/config.json" }
+  "contentFile": "/abs/answer.txt" }
 EOF
 
 # 2) 跑（不带 env，脚本自动读参数文件）
@@ -181,7 +187,8 @@ env 写法（其他机器若透传 env 可用）：`SHIFT=morning CONFIG=/abs/co
     "commentText": "评论内容"
   }
   ```
-
+  `configPath` 可省：缺省读 `$WB_SKILLS_DATA/zhihu-yanghao/config.json`（默认 `~/space/skills-data`），
+  其次 `/tmp/zhihu_config.json` → 工作目录 `config.json` → 旧 skill 目录（兼容）。
 > ⚠️ **字数护栏（v1.3.3）**：`run_shift.js` 发布前按 config 校验 contentFile 字符数——`"deep"` 缺省/false 用 `answer_style`（250–800），`"deep": true` 用 `deep_answer`（800–1200）。超区间输出 `ANSWER_SKIPPED: WORD_COUNT_EXCEEDED` 并跳过发布（点赞/互动照常收尾），改正文后重跑（已赞自动跳过）。
 
 > ⚠️ **折叠验证（v1.3.3）**：`run_shift.js` 发布后**不再做** API 验证（serverFetch 8/26 起恒 403，旧版 retry 纯属白耗），只输出 `VERIFY_VIA_CLI` 提示——随后跑：

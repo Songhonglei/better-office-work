@@ -38,12 +38,14 @@
 ## 快速使用（推荐：三班编排）
 
 ```bash
-# 1) 配置：复制模板并按你的账号/话题/班次修改（config.json 不入库）
-cp config.example.json config.json
+# 1) 配置：复制模板到数据目录（skill 目录之外，升级/镜像覆盖都不会丢）
+mkdir -p ~/space/skills-data/zhihu-yanghao
+cp config.example.json ~/space/skills-data/zhihu-yanghao/config.json
+#    按你的账号/话题/班次改这份；不传 configPath 时脚本自动读它
 
-# 2) 写参数文件（ego-browser 不透传 shell env，参数文件是可靠路径）
+# 2) 写参数文件（ego-browser 不透传 shell env，参数文件是可靠路径；configPath 可省）
 cat > /tmp/zhihu_shift_params.json <<'EOF'
-{ "shift": "morning", "configPath": "/abs/path/config.json" }
+{ "shift": "morning" }
 EOF
 
 # 3) 跑一个班（自动轮转选题 + 点赞 + 写/发布/验证 1 回答）
@@ -69,7 +71,7 @@ ego-browser nodejs < scripts/post_moment.js
 - `references/topic-strategy.md` — 垂直收敛、话题池轮转、深度版与影响力写作规范
 - `references/workflow.md` — 配置说明、脚本调用、参数文件 schema、门禁用法
 - `references/illustrations.md` — 配图决策与插图执行（v1.5.0）
-- `scripts/` — run_shift.js（三班编排 + 去 AI 味门禁）/ humanize_gate.py（发布前门禁凭证）/ fold_audit.js（折叠巡检，本机基线 `references/fold-baseline.json` 不分发）/ browse_only.js（禁言期只读浏览）/ post_moment.js（发想法）/ like_top5.js / write_answer.js / verify_via_cli.js（辅助验证）/ pick_question.js / edit_answer.js
+- `scripts/` — run_shift.js（三班编排 + 去 AI 味门禁）/ humanize_gate.py（发布前门禁凭证）/ fold_audit.js（折叠巡检，基线 `~/space/skills-data/zhihu-yanghao/fold-baseline.json` 不分发）/ browse_only.js（禁言期只读浏览）/ post_moment.js（发想法）/ like_top5.js / write_answer.js / verify_via_cli.js（辅助验证）/ pick_question.js / edit_answer.js
 
 ## License
 

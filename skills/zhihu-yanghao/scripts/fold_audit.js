@@ -8,10 +8,17 @@
 //   FOLD_STAT <FOLD|OK  > <date> <title>        全量状态
 //   NEW_FOLDED <title>   相对基线新被折叠的（重点！）
 //   RECOVERED <title>    基线被折叠但现已恢复的（申诉成功 / 解除）
-// 注意：只读操作（滚动自己的创作者中心），限速内置；换机器需改下方 BASELINE 常量。
+// 注意：只读操作（滚动自己的创作者中心），限速内置；基线默认读
+//       $WB_SKILLS_DATA/zhihu-yanghao/fold-baseline.json（默认 ~/space/skills-data），
+//       换机器不用改代码，参数 baseline / 环境变量 ZHIHU_FOLD_BASELINE 可覆盖。
 (async () => {
   const fs = require('fs')
-  const BASELINE = '/Users/songhonglei/.workbuddy/skills/zhihu-yanghao/references/fold-baseline.json'
+  const path = require('path')
+  // 基线是累积的运行时数据，放 skill 目录之外，skill 升级/镜像覆盖都不会丢
+  const SKILLS_DATA = process.env.WB_SKILLS_DATA ||
+    path.join(process.env.HOME || '', 'space', 'skills-data')
+  const BASELINE = process.env.ZHIHU_FOLD_BASELINE ||
+    path.join(SKILLS_DATA, 'zhihu-yanghao', 'fold-baseline.json')
   let params = {}
   try { params = JSON.parse(fs.readFileSync('/tmp/zhihu_fold_params.json', 'utf8')) } catch (e) {}
   const baselinePath = params.baseline || BASELINE

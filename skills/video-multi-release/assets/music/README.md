@@ -35,16 +35,19 @@ https://creativecommons.org/licenses/by/4.0/
 
 ## 使用
 
+曲库落在**数据目录**（skill 目录之外，升级/镜像覆盖不会清掉）：
+`~/space/skills-data/video-multi-release/music/`，可用 `WB_SKILLS_DATA` 换根。
+
 ```bash
 python3 scripts/mix_audio.py --silent /tmp/silent.mp4 \
-  --bgm "assets/music/Floating Cities.mp3" --out out/final.mp4
+  --bgm ~/space/skills-data/video-multi-release/music/"Floating Cities.mp3" --out out/final.mp4
 ```
 
 混音逻辑（mix_audio.py 内置）：BGM 压低 -14dB 铺在人声下，开头 2s 淡入、结尾 2.5s 淡出。
 
 ## 换机恢复
 
-mp3 不入 git（体积 ~87MB），下载 URL 已固化在同目录 `download.sh`，一条命令重建（可续传，已存在的自动跳过）：
+mp3 不入 git（体积 ~87MB），下载 URL 已固化在同目录 `download.sh`，一条命令重建到数据目录（可续传，已存在的自动跳过）：
 
 ```bash
 bash assets/music/download.sh

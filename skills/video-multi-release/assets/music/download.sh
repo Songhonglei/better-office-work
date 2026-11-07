@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
 # 一键重建 BGM 曲库（~87MB，10 首 mp3 不入 git，由本脚本负责下载）
-# 来源: incompetech (Kevin MacLeod)，CC-BY 4.0，署名模板见同目录 README.md
+# 来源: incompetech (Kevin MacLeod)，CC-BY 4.0，署名模板见本目录 README.md
 # 用法: bash assets/music/download.sh   （在 skill 根目录或任意位置执行均可）
+#
+# 曲库属运行时素材，下载到 skill 目录之外的数据目录（默认
+# ~/space/skills-data/video-multi-release/music），skill 升级 / 镜像全量覆盖都不会清掉；
+# 换根目录用 WB_SKILLS_DATA=<root> 覆盖。
 
 set -euo pipefail
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DIR="${WB_SKILLS_DATA:-$HOME/space/skills-data}/video-multi-release/music"
+mkdir -p "$DIR"
 BASE="https://incompetech.com/music/royalty-free/mp3-royaltyfree"
 
 TRACKS=(

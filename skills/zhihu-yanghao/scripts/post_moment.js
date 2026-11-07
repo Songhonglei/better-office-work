@@ -38,11 +38,18 @@
   const P = loadParams()
 
   // ---------- 1. 加载配置（取 moments 字数区间做提示） ----------
+  // 同 run_shift.js：配置放 skill 目录外，skill 升级不覆盖
+  const SKILLS_DATA = process.env.WB_SKILLS_DATA ||
+    path.join(process.env.HOME || '', 'space', 'skills-data')
+  const DATA_DIR = path.join(SKILLS_DATA, 'zhihu-yanghao')
+  const LEGACY_CONFIG = path.join(process.env.HOME || '', '.workbuddy', 'skills', 'zhihu-yanghao')
+
   function loadConfig() {
     const candidates = []
     if (P.configPath) candidates.push(P.configPath)
+    candidates.push(path.join(DATA_DIR, 'config.json'))
     candidates.push(path.join(process.cwd(), 'config.json'))
-    candidates.push('/Users/songhonglei/.workbuddy/skills/zhihu-yanghao/config.json')
+    candidates.push(path.join(LEGACY_CONFIG, 'config.json'))
     for (const c of candidates) {
       if (!c) continue
       try { return { path: c, data: JSON.parse(fs.readFileSync(c, 'utf8')) } } catch (e) {}
