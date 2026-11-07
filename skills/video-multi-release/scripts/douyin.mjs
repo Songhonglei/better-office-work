@@ -54,6 +54,64 @@ async function fail(step, code, exitCode, message, detail, whatNow) {
 const TITLE_SEL = 'input[placeholder="填写作品标题，为作品获得更多流量"]'
 const EDITOR_SEL = '.zone-container.editor-kit-container'
 
+// ── 封面（尽力而为）：找 image 文件输入 → 投递 → 点完成；任一步失败返回原因不抛错 ──
+async function findImageInputNodeId() {
+  const { root } = await cdp('DOM.getDocument', { depth: -1, pierce: true })
+  const hits = []
+  ;(function walk(n) {
+    if (!n) return
+    if (n.nodeName === 'INPUT' && n.attributes) {
+      const a = {}
+      for (let i = 0; i < n.attributes.length; i += 2) a[n.attributes[i]] = n.attributes[i + 1]
+      if ((a.type || '').toLowerCase() === 'file') hits.push({ nodeId: n.nodeId, accept: a.accept || '' })
+    }
+    if (n.shadowRoots) n.shadowRoots.forEach(walk)
+    if (n.children) n.children.forEach(walk)
+  })(root)
+  return hits.find(function (x) { return /image/i.test(x.accept) }) || null
+}
+
+async function clickTextAny(texts) {
+  const box = await js(`(() => {
+    const want = ${JSON.stringify(texts)}
+    const cands = [...document.querySelectorAll('button, div, span, a')].filter(function (e) {
+      const t = (e.innerText || '').trim()
+      return want.indexOf(t) >= 0 && e.getBoundingClientRect().width > 0
+    })
+    if (!cands.length) return { __err: 'not_found' }
+    const el = cands[cands.length - 1]
+    el.scrollIntoView({ block: 'center' })
+    const r = el.getBoundingClientRect()
+    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }
+  })()`)
+  if (!box || box.__err) return false
+  await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y, button: 'none' })
+  await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: box.x, y: box.y, button: 'left', clickCount: 1 })
+  await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: box.x, y: box.y, button: 'left', clickCount: 1 })
+  return true
+}
+
+async function setDouyinCover(filePath) {
+  let imgInput = await findImageInputNodeId()
+  if (!imgInput) {
+    if (!await clickTextAny(['设置封面', '编辑封面', '更换封面'])) return 'no_cover_entry'
+    await wait(2.5)
+    if (!await clickTextAny(['上传封面', '上传图片', '本地上传'])) return 'no_upload_entry'
+    await wait(2)
+    imgInput = await findImageInputNodeId()
+  }
+  if (!imgInput) return 'no_image_input'
+  try {
+    await cdp('DOM.setFileInputFiles', { files: [filePath], nodeId: imgInput.nodeId })
+  } catch (e) {
+    return 'upload_error:' + (e && e.message || '')
+  }
+  await wait(4)
+  if (!await clickTextAny(['完成', '确定', '确认'])) return 'no_confirm_btn'
+  await wait(2)
+  return 'ok'
+}
+
 async function caretToEnd() {
   return js(`(() => {
     const z = document.querySelector('${EDITOR_SEL}')
@@ -214,9 +272,13 @@ async function main() {
       ['接管手动补', '确认话题在抖音真实存在'])
   }
 
-  // 封面：抖音的封面编辑器是图层式编辑器，自动化极不可靠
+  // 封面：抖音封面编辑器是图层式，这里做「尽力而为」的上传尝试，
+  // 任一步失败只告警不阻断（人工可补），成功与否都会打印结果。
   if (CFG.coverVertical) {
-    log('⚠ 已忽略 coverVertical：抖音封面编辑器为图层式，脚本不处理，需人工设置')
+    const r = await setDouyinCover(CFG.coverVertical)
+    log('封面: ' + r + (r === 'ok' ? '' : '（未生效，发布前可人工设置）'))
+  } else if (CFG.coverHorizontal) {
+    log('⚠ 抖音只用竖版封面（3:4），已忽略 coverHorizontal')
   }
 
   if (CFG.mode === 'stage') {

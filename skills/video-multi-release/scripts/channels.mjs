@@ -117,12 +117,98 @@ async function findFileInputNodeId() {
     if (n.nodeName === 'INPUT' && n.attributes) {
       const a = {}
       for (let i = 0; i < n.attributes.length; i += 2) a[n.attributes[i]] = n.attributes[i + 1]
-      if ((a.type || '').toLowerCase() === 'file') hits.push(n.nodeId)
+      if ((a.type || '').toLowerCase() === 'file') hits.push({ nodeId: n.nodeId, accept: a.accept || '' })
     }
     if (n.shadowRoots) n.shadowRoots.forEach(walk)
     if (n.children) n.children.forEach(walk)
   })(root)
-  return hits[0] || null
+  return hits
+}
+
+// ── 封面上传（2026-11-07 实测流程），失败只告警不阻断发布 ──
+// 视频号只有一个 3:4 封面（个人主页 + 分享卡片共用），实测顺序：
+//   点「编辑」开面板 → 点「上传封面」(DIV) → 投递 image 文件 → 点「确认」(BUTTON)
+// 注意：确认按钮文字是「确认」不是「确定」；上传封面是 DIV 不是 button；
+//      未点「编辑」前「上传封面」不可见。
+async function clickBox(box) {
+  await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y, button: 'none' })
+  await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: box.x, y: box.y, button: 'left', clickCount: 1 })
+  await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: box.x, y: box.y, button: 'left', clickCount: 1 })
+}
+
+async function findTextBox(texts, within) {
+  const scope = within || 'sr'
+  return shadow(`
+    const scope = ${scope}
+    const want = ${JSON.stringify(texts)}
+    const els = [...scope.querySelectorAll('*')].filter(function (e) {
+      const t = (e.innerText || '').trim()
+      return want.indexOf(t) >= 0 && e.children.length === 0 && e.getBoundingClientRect().width > 0
+    })
+    if (!els.length) return { __err: 'not_found' }
+    const el = els[els.length - 1]
+    el.scrollIntoView({ block: 'center' })
+    const r = el.getBoundingClientRect()
+    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }
+  `)
+}
+
+async function setCover(filePath) {
+  if (!filePath) return 'skip'
+
+  // 1) 点「编辑」打开封面面板
+  const editBox = await findTextBox(['编辑'])
+  if (!editBox || editBox.__err) { log('⚠ 找不到封面「编辑」按钮，保留自动封面'); return 'no_edit_btn' }
+  await clickBox(editBox)
+  await wait(2)
+
+  // 2) 点「上传封面」（DIV）
+  const upBox = await shadow(`
+    const wrap = sr.querySelector('.cover-set-wrap')
+    const scope = wrap || sr
+    const els = [...scope.querySelectorAll('*')].filter(function (e) {
+      return (e.innerText || '').trim() === '上传封面' && e.children.length === 0 && e.getBoundingClientRect().width > 0
+    })
+    if (!els.length) return { __err: 'no_upload_btn' }
+    const el = els[els.length - 1]
+    el.scrollIntoView({ block: 'center' })
+    const r = el.getBoundingClientRect()
+    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }
+  `)
+  if (!upBox || upBox.__err) { log('⚠ 封面面板里没有「上传封面」'); return 'no_upload_btn' }
+  await clickBox(upBox)
+  await wait(2)
+
+  // 3) 投递到 accept 含 image 的 file input（视频的 input 是 video/*，别投错）
+  const inputs = await findFileInputNodeId()
+  const imgInput = inputs.find(function (x) { return /image/i.test(x.accept) })
+  if (!imgInput) { log('⚠ 找不到封面的图片输入框，保留自动封面'); return 'no_image_input' }
+  try {
+    await cdp('DOM.setFileInputFiles', { files: [filePath], nodeId: imgInput.nodeId })
+  } catch (e) {
+    log('⚠ 封面投递失败: ' + (e && e.message))
+    return 'upload_error'
+  }
+  log('封面已投递: ' + filePath.split('/').pop())
+  await wait(4)
+
+  // 4) 点「确认」
+  const okBox = await shadow(`
+    const btns = [...sr.querySelectorAll('button')].filter(function (b) {
+      const t = (b.innerText || '').trim()
+      return (t === '确认' || t === '确定') && b.getBoundingClientRect().width > 0
+    })
+    if (!btns.length) return { __err: 'no_confirm' }
+    const b = btns[0]
+    b.scrollIntoView({ block: 'center' })
+    const r = b.getBoundingClientRect()
+    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }
+  `)
+  if (!okBox || okBox.__err) { log('⚠ 封面面板没有「确认」按钮'); return 'no_confirm' }
+  await clickBox(okBox)
+  await wait(3)
+  log('封面设置完成')
+  return 'ok'
 }
 
 async function caretToEnd() {
@@ -199,14 +285,15 @@ async function main() {
   }
 
   // 上传视频
-  const nodeId = await findFileInputNodeId()
-  if (!nodeId) {
+  const fileInputs = await findFileInputNodeId()
+  const videoInput = fileInputs.find(function (x) { return !/image/i.test(x.accept) }) || fileInputs[0]
+  if (!videoInput) {
     await fail('upload', 'E_NO_FILE_INPUT', EXIT.DEP,
       '找不到文件输入节点', {},
       ['页面结构可能变了，接管截图确认上传区是否正常',
        '若页面还停在登录页，先处理登录'])
   }
-  await cdp('DOM.setFileInputFiles', { files: [CFG.video], nodeId: nodeId })
+  await cdp('DOM.setFileInputFiles', { files: [CFG.video], nodeId: videoInput.nodeId })
   log('已投递文件 ' + elapsed())
 
   // 等上传完成：video 有 duration + 封面预览出现 + 没有"文件上传中"
@@ -232,6 +319,15 @@ async function main() {
        '注意：删除已上传视频再重传可能卡在 0%，此时只能刷新重来'])
   }
   log('上传完成 ' + elapsed())
+
+  // 封面（可选）：视频号只有一个 3:4 封面（个人主页+分享卡片共用）。
+  // 传了 coverVertical 就换成自定义图；只有 coverHorizontal 时提示不支持。
+  if (CFG.coverVertical) {
+    const cv = await setCover(CFG.coverVertical)
+    log('封面结果: ' + cv)
+  } else if (CFG.coverHorizontal) {
+    log('⚠ 视频号只支持 3:4 单封面（个人主页+分享卡片共用），已忽略 coverHorizontal')
+  }
 
   // 描述
   const desc = CFG.desc || ''

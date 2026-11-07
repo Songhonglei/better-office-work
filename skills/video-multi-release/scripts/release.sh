@@ -23,6 +23,15 @@ TITLE="${TITLE:-}"
 DESC="${DESC:-}"
 TOPICS="${TOPICS:-}"
 COVER="${COVER:-}"
+COVER_HORIZONTAL="${COVER_HORIZONTAL:-}"
+# 封面增强（可选）：
+#   COVER_VERTICAL / COVER_HORIZONTAL —— 竖屏(3:4)与横屏(16:9)封面图路径；
+#     留空时若 VIDEO 同目录存在 card_01_h.png（gen_cards.py --ratio horizontal 产物）则自动用作横屏封面
+# 热点话题（可选）：
+#   HOT_TOPICS=auto —— 拉抖音热榜按 DESC 相关度自动挑（最多 HOT_TOPICS_MAX 个，默认 2）
+#   HOT_TOPICS="词1,词2" —— 手动指定热点话题；留空则不关联热点
+HOT_TOPICS="${HOT_TOPICS:-}"
+HOT_TOPICS_MAX="${HOT_TOPICS_MAX:-2}"
 MODE="${MODE:-stage}"
 KEEP_ON_FAIL="${KEEP_ON_FAIL:-1}"
 # 复用上次失败留下的现场（页面已填好）：SPACE_ID=65 这样传。
@@ -122,6 +131,29 @@ print(json.dumps(items, ensure_ascii=False))
 " "$TOPICS")
 
 EXIT_CODE=0
+# ── 热点话题解析（在循环外做一次，结果全平台共用）──
+HOT_JSON="[]"
+if [ -n "$HOT_TOPICS" ] && [ -n "$DESC" ]; then
+  if [ "$HOT_TOPICS" = "auto" ]; then
+    HOT_PICKED=$(python3 "$SCRIPTS_DIR/hot_topics.py" --desc "$DESC" --pick "$HOT_TOPICS_MAX" --json 2>/dev/null || echo "[]")
+  else
+    HOT_PICKED=$(python3 -c "
+import json, sys
+print(json.dumps([{'word': w.strip(), 'hot': 0, 'score': 0} for w in sys.argv[1].split(',') if w.strip()], ensure_ascii=False))
+" "$HOT_TOPICS")
+  fi
+  HOT_JSON="$HOT_PICKED"
+  HOT_COUNT=$(python3 -c "import json,sys; print(len(json.loads(sys.argv[1])))" "$HOT_JSON")
+  echo "  热点话题: $HOT_JSON"
+fi
+
+# ── 横屏封面自动探测：video 同目录的 card_01_h.png（gen_cards.py --ratio horizontal 产物）──
+COVER_H="$COVER_HORIZONTAL"
+if [ -z "$COVER_H" ] && [ -n "$VIDEO" ]; then
+  CAND="$(dirname "$VIDEO")/../assets/card_01_h.png"
+  [ -f "$CAND" ] && COVER_H="$CAND"
+fi
+
 SUMMARY=""
 
 for platform in "${PLATFORM_ARRAY[@]}"; do
@@ -131,18 +163,29 @@ for platform in "${PLATFORM_ARRAY[@]}"; do
 
   PARAMS_JSON=$(python3 -c "
 import json, sys
+# 话题合并：用户话题在前，热点话题在后，去重
+topics = json.loads(sys.argv[5])
+hot = json.loads(sys.argv[10])
+have = set(topics)
+for h in hot:
+    w = h['word'].strip().lstrip('#')
+    if w and w not in have:
+        topics.append(w)
+        have.add(w)
 print(json.dumps({
     'platform': sys.argv[1],
     'video': sys.argv[2],
     'title': sys.argv[3],
     'desc': sys.argv[4],
-    'topics': json.loads(sys.argv[5]),
+    'topics': topics,
+    'hotTopics': [h['word'] for h in hot],
     'mode': sys.argv[6],
     'keepOnFail': sys.argv[7] == '1',
     'coverVertical': sys.argv[8],
-    'spaceId': sys.argv[9] or None,
+    'coverHorizontal': sys.argv[9] or None,
+    'spaceId': sys.argv[11] or None,
 }, ensure_ascii=False))
-" "$platform" "$VIDEO" "$TITLE" "$DESC" "$TOPICS_JSON" "$MODE" "$KEEP_ON_FAIL" "$COVER" "$SPACE_ID")
+" "$platform" "$VIDEO" "$TITLE" "$DESC" "$TOPICS_JSON" "$MODE" "$KEEP_ON_FAIL" "$COVER" "$COVER_H" "$HOT_JSON" "$SPACE_ID")
 
   MJS="$SCRIPTS_DIR/${platform}.mjs"
   [ -f "$MJS" ] || { echo "缺少脚本: $MJS"; EXIT_CODE=11; SUMMARY="$SUMMARY\n  $platform  失败(11) 缺脚本"; continue; }

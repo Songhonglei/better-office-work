@@ -108,6 +108,11 @@ def main():
                     help='card_generator.py 路径（默认引用 xhs-image-note-release）')
     ap.add_argument('--scrim', type=float, default=None, help='背景遮罩强度 0-0.92')
     ap.add_argument('--blur', type=int, default=None, help='背景高斯模糊半径')
+    ap.add_argument('--cover-h', action='store_true',
+                    help='只生成横屏封面 card_01_h.png（1920x1080，用第一段金句），'
+                         '供视频号/抖音横屏封面使用；不与竖版卡片一起跑')
+    ap.add_argument('--cover-h-size', default='1920x1080',
+                    help='横屏封面尺寸，默认 1920x1080')
     ap.add_argument('--dry-run', action='store_true', help='只打印将执行的命令，不实际生成')
     a = ap.parse_args()
 
@@ -128,6 +133,44 @@ def main():
     n = len(segs)
 
     os.makedirs(a.out_dir, exist_ok=True)
+
+    # ── 横屏封面模式：只用首段金句，出一张 16:9 ──
+    if a.cover_h:
+        try:
+            cw, chh = [int(x) for x in a.cover_h_size.lower().split('x')]
+        except ValueError:
+            sys.exit('--cover-h-size 格式应为 宽x高，例如 1920x1080')
+        seg0 = segs[0]
+        lines0 = seg0.get('lines') or split_quote(seg0.get('quote') or seg0['text'])
+        out = os.path.join(a.out_dir, 'card_01_h.png')
+        cmd = ['python3', a.generator,
+               '--theme', a.theme,
+               '--background', paths[0],
+               '--lines', '\\n'.join(lines0),
+               '--width', str(cw),
+               '--height', str(chh),
+               '--hide-page-number',
+               '--output', out]
+        if a.tag:
+            cmd += ['--tag', a.tag]
+        if a.account:
+            cmd += ['--account', a.account]
+        if a.scrim is not None:
+            cmd += ['--scrim', str(a.scrim)]
+        print('横屏封面 %dx%d <- %s | %s'
+              % (cw, chh, os.path.basename(paths[0]), ' / '.join(lines0)))
+        if a.dry_run:
+            print('    (dry-run) %s' % ' '.join(cmd))
+            return
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            sys.exit('横屏封面生成异常: %s' % e)
+        if r.returncode != 0 or not os.path.exists(out):
+            sys.exit('横屏封面生成失败:\n%s\n%s' % (r.stdout[-400:], r.stderr[-400:]))
+        print('已生成 %s。发布时 COVER_HORIZONTAL 留空即会自动探测该文件。' % out)
+        return
+
     print('段落 %d 个，背景图 %d 张，主题 %s，输出 %s/'
           % (n, len(paths), a.theme, a.out_dir))
 

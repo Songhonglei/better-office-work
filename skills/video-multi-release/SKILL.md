@@ -6,7 +6,7 @@ description: >
   然后发布到小红书、视频号、抖音三个渠道。支持 stage（只准备不提交）、draft（存草稿）、
   publish（直接发）三种模式。当用户要做口播视频、给卡片视频配音、把视频发到小红书/视频号/抖音时使用。
   前置依赖：ego-browser 已安装且目标平台已登录；ffmpeg；ffprobe。
-version: 1.1.0
+version: 1.2.0
 bins: [ffmpeg, ffprobe, python3, node, npm, npx]
 metadata:
   openclaw:
@@ -115,11 +115,58 @@ VIDEO=$PWD/out/final.mp4 \
 TITLE="四十岁以后，我不再跑那么快了" \
 DESC="$(cat desc.txt)" \
 TOPICS="人生感悟,人到中年,独处,读书" \
+COVER=$PWD/assets/card_01.png \
+HOT_TOPICS=auto \
 MODE=stage \
   bash $SKILL/scripts/release.sh
 ```
 
 先跑 `MODE=stage` 确认内容无误，再跑 `MODE=publish`。
+
+## 封面：自定义封面 + 竖横双版
+
+三个参数，都可选：
+
+| 参数 | 说明 | 谁在用 |
+|---|---|---|
+| `COVER` | 竖版 3:4 封面图路径 | 视频号（唯一封面位）、抖音（3:4 作品封面） |
+| `COVER_HORIZONTAL` | 横版 16:9 封面图路径 | 留空时自动探测 `VIDEO` 同目录的 `../assets/card_01_h.png` |
+| — | 不传则用平台自动截帧封面 | 全部 |
+
+**生成横版封面**（同款古风样式，用第一段金句）：
+
+```bash
+python3 $SKILL/scripts/gen_cards.py --script voice_script.json --images images/ \
+  --tag 古人情话 --account @雨夜心灯 --cover-h        # → assets/card_01_h.png (1920x1080)
+```
+
+**平台实情（2026-11-07 实测）**：
+- **视频号只有一个 3:4 封面**，个人主页和分享卡片共用，没有独立的横版位。
+  脚本会自动走完「编辑 → 上传封面 → 确认」；`COVER_HORIZONTAL` 对视频号会被忽略并打提示。
+- **抖音封面编辑器是图层式**，脚本做尽力而为的上传尝试（设置封面 → 上传封面 → 完成），
+  失败只告警不阻断，发布前人工可补。
+- 封面设置失败**不会**中断发布（自动降级为平台自动封面）。
+
+## 热点话题：自动关联
+
+`HOT_TOPICS=auto` 会拉抖音热榜（iesdouyin 公开接口，无需鉴权），按 `DESC` 与
+`TOPICS` 关键词的相关度挑最多 `HOT_TOPICS_MAX`（默认 2）个热榜词，追加为附加话题。
+
+```bash
+HOT_TOPICS=auto bash release.sh              # 自动挑
+HOT_TOPICS="立冬吃什么,初雪" bash release.sh   # 手动指定
+HOT_TOPICS_MAX=3 bash release.sh             # 自动挑 3 个
+```
+
+匹配用字符 bigram 重合度，且**至少命中 2 个描述片段或 1 个关键词**才算相关——
+这是为了防止「热点」「话题」这类泛词把所有热榜词都拉进来（实测踩过：历史内容
+被挂上「S16 淘汰赛」）。无相关热点时静默跳过，不会硬凑。
+
+单独调试匹配效果：
+
+```bash
+python3 $SKILL/scripts/hot_topics.py --desc "今天立冬，聊聊立冬吃什么" --keywords "节气" --pick 3
+```
 
 ## 配音：音色预设
 
@@ -335,7 +382,8 @@ channels.mjs 现在的顺序是：打开 → 等 → **先判 `login` 重定向 
 
 ```
 scripts/
-├── gen_cards.py           批量生成卡片（薄封装，引用 xhs-image-note-release 的生成器；段数校验）
+├── gen_cards.py           批量生成卡片（含 --cover-h 横版封面；薄封装引用外部生成器）
+├── hot_topics.py          抖音热榜拉取 + 描述相关度筛选（HOT_TOPICS=auto）
 ├── rebuild.sh             一键重建：时间轴 + 内联 gsap + 渲染 + 混音（改素材后重跑即可）
 ├── tts.py                 分段配音（Qwen TTS + 音色预设）
 ├── build_composition.py   音频驱动时间轴 → 产出 index.html 与时间轴数据
