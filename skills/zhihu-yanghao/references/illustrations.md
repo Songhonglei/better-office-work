@@ -92,6 +92,7 @@ await p.waitForTimeout(9000);   // 等上传完成，短了会拿到未完成的
 ```
 
 - **顺序**：`段1 → 上传图1 → 段2 → 上传图2 → 剩余段落（含文末署名）`。每段粘贴后 `waitForTimeout(1200~1500)`，每次上传后等 8–10 秒。
+- **🚫 禁止空行前缀粘贴（11/7 事故）**：图后/署名前粘贴下一块时**直接 `pasteText(paras[i])`，不带 `'\n\n' +` 前缀**。图片是独立 block，光标已在新段落位置；补 `'\n\n'` 会在 Draft.js 里多敲一个回车生成**空段落**，知乎渲染成超大段间距（当天正文末段与署名间出现 `\n\n\n`，用户手工删空行后重发才满意）。跨文本段之间的 `\n\n` 分隔只发生在**同一粘贴块内部**（`paras.join('\n\n')`），块与块之间一律裸贴。
 - **隐藏 input**：`input[accept*="image"]`，即使工具栏的图片按钮没点过也存在（2026-11-06 探针确认）。
 - **旧版 API**（`useOrCreateTaskSpace` + `js()`）能开编辑器，但**没有 `setInputFiles`**，插图必须走新版 `taskSpace()/page()`。
 - **正文禁止 Markdown**（`**` / `- ` 会字面残留）；段落用 `\n\n` 切分后逐段粘贴。
@@ -112,7 +113,16 @@ await p.screenshot({ path: '/tmp/zhihu_editor_preview.png' });
 1. `imgs.length === 张数` 且**每张 `ok === true`**；
 2. `src` 已落到知乎图床（`pic-private.zhihu.com` / `pic*.zhimg.com`），不是 blob / 外站直链；
 3. 截图里**段落与图片顺序正确**、无上传失败弹窗；用 `ViewImage` 看过截图再给用户确认；
-4. 编辑器字数与定稿文件字数对得上（含文末署名）。
+4. 编辑器字数与定稿文件字数对得上（含文末署名）；
+5. **排版紧凑校验（11/7 新增）**：`ed.innerText` 中**不得出现 `\n\n\n`（连续空行）**——出现即说明有空段落，用户会在知乎看到超大段间距。检查方式：
+
+```js
+const s = await p.evaluate(() => {
+  const ed = document.querySelector('.public-DraftEditor-content');
+  return { extraBlank: /\n\n\n/.test(ed.innerText), tail: ed.innerText.slice(-90) };
+});
+// extraBlank === true 时：粘贴块还差空行处理，禁止进入发布确认
+```
 
 ### 发布（一次性，不重试）
 
