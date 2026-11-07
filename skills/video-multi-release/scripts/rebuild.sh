@@ -28,7 +28,7 @@ cd "$PROJECT_DIR"
 # ── 前置检查 ─────────────────────────────────────────────
 for f in voice_script.json index.html; do
   [ "$f" = "index.html" ] && continue
-  [ -f "$f" ] || { echo "✗ 缺少 $f（在 ${PROJECT_DIR}）"; exit 10; }
+  [ -f "$f" ] || { echo "✗ 缺少 ${f}（在 ${PROJECT_DIR}）"; exit 10; }
 done
 [ -d voice ] || { echo "✗ 缺少 voice/ 目录，请先跑 tts.py 生成配音"; exit 10; }
 ls assets/card_*.png >/dev/null 2>&1 || { echo "✗ 缺少 assets/card_*.png，请先跑 gen_cards.py 生成卡片"; exit 10; }
