@@ -261,7 +261,9 @@ async function main() {
 
   // 短标题（16 字上限）
   if (CFG.title) {
-    const title = CFG.title.slice(0, 16)
+    // 短标题字符白名单：符号仅支持书名号/引号/冒号/加号/问号/百分号/摄氏度，
+    // 逗号非法（会导致发表/保存草稿/手机预览整行按钮静默禁用），统一换空格
+    const title = CFG.title.replace(/[，,]/g, ' ').slice(0, 16)
     if (title.length < CFG.title.length) {
       log('⚠ 短标题超 16 字，已截断为: ' + title)
     }
