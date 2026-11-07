@@ -278,6 +278,16 @@ channels.mjs 现在的顺序是：打开 → 等 → **先判 `login` 重定向 
 **抖音封面编辑器是图层式。** 上传的图会进时间轴但画布不切换，`完成` 按钮要等有效封面才可点。
 脚本不处理，让人手动设。
 
+**抖音登录态撑不过 reload，用连续会话现场驱动（2026-11-07 实测）。** ego 任务空间
+存储隔离，抖音 passport 登录后页面一刷新就掉回登录页——所以 release.sh 开头的
+`Page.reload` 每次都会杀掉刚扫的码。解法：用户扫码后**不要重跑 release.sh**，
+在同空间开连续会话现场驱动全程零刷新：
+`taskSpace('publish douyin video')` 挂载 → `uploadFile('input[type=file]')` →
+`fillInput(TITLE_SEL)` → 编辑器 `Input.insertText` 描述 → `caretToEnd` + `#话题` +
+`pressKey('Enter')` 逐个挂话题。注意 `caretToEnd` 是 douyin.mjs 内部函数需内联，
+`fillInput/uploadFile/pressKey` 是 ego 全局可直接用。
+实测发布不再触发短信验证（2026-11-07，此前 stage 模式 assumed 必有）。
+
 **小红书发布按钮在 closed Shadow DOM 里。** `<xhs-publish-btn>` 内部拿不到，
 常规 `click()` 全部失效，只能 `host._onPublish()` / `host._onSave()`，
 调用前先查 `submit-disabled` / `save-disabled` 属性判断是否可用。
