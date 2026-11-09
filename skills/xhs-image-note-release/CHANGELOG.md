@@ -3,6 +3,16 @@
 All notable changes to this skill are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+### v2.0.1 (2026-11-09)
+
+**修一个会让整条发布流程白跑的上传判定缺陷**：图文上传连续三次误报 `E_IMAGE_UPLOAD_TIMEOUT`（`cdnImages:6 / editCount:"" / expected:8`），而页面上 8 张图早已全部上传成功，每次都要人工接管收尾。
+
+- **Fix（根因）**: `editCount` 解析失效。旧实现按行找含「图片编辑」的文本行，再 `split('/')[0]` 取数字；但小红书把标签和数字渲染在**两行**（`图片编辑\n8/18`），取到的是标签本身，滤完是空串，`parseInt("") = NaN`，主判据恒不成立，实际只剩 CDN 计数在兜底。
+- **Fix**: CDN 计数未排除非内容图。旧实现扫全页 `img[src*=xhscdn.com]`，把用户头像（`sns-avatar-qc.xhscdn.com`）、UI 图（`fe-img-qc` / `growth-img`）一起数进去，数字不可信——实测 3 张图时只数到 2，8 张时数到 6。
+- **Feature**: 改为三信号任一命中即通过——① 跨行正则解析「图片编辑 N/18」；② 结构判据，数编辑区里 `textContent === '编辑'` 的叶子节点；③ CDN 计数（已排除 `avatar`）。失败块同时回显 `editCount / editEntries / cdnImages`，便于一眼看出是"真没传上"还是"判定又过时了"。
+- **Docs**: SKILL.md 注意事项新增第 22 条，写清两个硬伤的成因、现行判定口径，以及"`editCount` 已达标就不必重跑、直接接管收尾"的排查原则。
+- **Validation（stage 模式，3 张图，不发布）**: `images ready: {"done":true,"editCount":"3/18","editEntries":3,"cdnImages":2,"expected":3}`，`✔ upload-media (22044ms)`，全流程 `exit 0`，整轮 43s（修复前在同一步骤 2m41s 后失败）。
+
 ### v2.0.0 (2026-11-02)
 
 **主版本号变更原因**：脚本从单文件拆成 `.sh` + `.mjs` 两个文件，只拷贝 `publish_note.sh` 会直接 `E_DEP_MJS` 退出；退出码从「0 / 非 0」细分为 12 档。对外参数（`MEDIA_DIR` / `TITLE` / `BODY` / `TOPICS` / `MODE` / `COVER_IMAGE` / `MEDIA_TYPE`）语义不变，`IMAGE_DIR`/`IMAGES` 别名仍可用。

@@ -320,25 +320,41 @@ await step('upload-media', async () => {
     }
     await wait(4)
 
+    // 三个独立信号，任一命中即认为上传完成（v2.0.1 修正）：
+    //   ① 「图片编辑 N/18」——小红书把标签和数字渲染在**两行**里，旧实现按行取
+    //      再 split('/')[0]，拿到的永远是标签本身，editCount 恒为空串、主判据失效。
+    //   ② 编辑区每张图各有一个「编辑」入口，数量应与张数一致（结构判据）。
+    //   ③ 图床缩略图数量——必须排除 avatar，旧实现把用户头像也算进了 cdnImages，
+    //      导致数字既可能虚高也可能永远凑不满。
     const r = await waitFor('images', async () => {
       const v = await js(`(() => {
         const expect = ${filePaths.length}
-        const imgs = [...document.querySelectorAll('img')]
-        const cdn = imgs.filter((i) => {
-          const s = i.src || ''
-          return s.includes('xhscdn.com') || s.includes('spectrum/')
-        }).length
-        let editCount = 'n/a'
-        for (const l of document.body.innerText.split('\\n')) {
-          if (l.includes('图片编辑')) {
-            editCount = l.split('/')[0].split('').filter((c) => c >= '0' && c <= '9').join('')
-            break
-          }
+        const text = document.body.innerText || ''
+
+        let editCount = -1
+        let slotTotal = -1
+        const m = text.match(/图片编辑[\\s:：]{0,6}(\\d{1,2})\\s*\\/\\s*(\\d{1,2})/)
+        if (m) {
+          editCount = parseInt(m[1], 10)
+          slotTotal = parseInt(m[2], 10)
         }
+
+        let editEntries = 0
+        for (const el of document.querySelectorAll('div, span, a, button')) {
+          if (el.children.length === 0 && (el.textContent || '').trim() === '编辑') editEntries++
+        }
+
+        const cdn = [...document.querySelectorAll('img')].filter((i) => {
+          const s = i.src || ''
+          if (s.indexOf('avatar') >= 0) return false
+          return s.indexOf('xhscdn.com') >= 0 || s.indexOf('spectrum/') >= 0
+        }).length
+
         return {
-          done: cdn >= expect || parseInt(editCount || 0) >= expect,
+          done: editCount >= expect || editEntries >= expect || cdn >= expect,
+          editCount: editCount >= 0 ? editCount + '/' + slotTotal : 'n/a',
+          editEntries: editEntries,
           cdnImages: cdn,
-          editCount: editCount,
           expected: expect
         }
       })()`)
@@ -347,11 +363,12 @@ await step('upload-media', async () => {
 
     if (!r.ok) {
       await fail('upload-media', 'E_IMAGE_UPLOAD_TIMEOUT', EXIT.UPLOAD,
-        '图片未在预期时间内落到 CDN',
+        '图片未在预期时间内全部进入编辑区（三个信号都不达标）',
         r.state ? r.state : {},
         [
           '确认图片是 png/jpg/webp 且单张 < 32MB',
           '小红书对批量 setFileInputFiles 只留空占位，本脚本已用 uploadFile 逐个上传，若仍失败多半是网络',
+          '若 detail 里 editCount 已 >= expected，说明是判定逻辑又跟不上改版，按上面 space 接管页面手动收尾',
           '直接重跑本脚本',
         ])
     }

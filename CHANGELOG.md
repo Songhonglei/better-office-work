@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — xhs-image-note-release v2.0.1（2026-11-09，图片上传判定误报）
+
+- 图文上传连续三次误报 `E_IMAGE_UPLOAD_TIMEOUT`（明细 `cdnImages:6 / editCount:"" / expected:8`），而页面上 8 张图早已全部上传成功。
+- 根因一：`editCount` 按行解析「图片编辑」再 `split('/')[0]`，但小红书把标签与数字渲染成两行，取值恒为空串，`parseInt("") = NaN`，主判据从 v2.0.0 起即未生效。
+- 根因二：兜底的 CDN 计数扫全页 `img[src*=xhscdn.com]`，把用户头像与 UI 图计入，数字不可信（8 张数到 6，3 张数到 2）。
+- 改为三信号任一命中即通过：跨行正则解析 `N/18`、结构判据数「编辑」入口、CDN 计数排除 `avatar`；失败块回显三个数值，便于区分「真没传上」与「判定过时」。
+- 实测（stage 模式，3 张图，不发布）：`{"done":true,"editCount":"3/18","editEntries":3,"cdnImages":2}`，`exit 0`，整轮 43s（修复前同一步 2m41s 后失败）。
+
 ### Added — local-music-creation（2026-11-03）
 
 - 同步已验证的 Apple Silicon YuE2 MLX 本地音乐 Skill，支持歌词生成、ABC plan/render、精度切换、回放、批量、转写、cover 和 RealAudio 对照。

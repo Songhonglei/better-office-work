@@ -11,7 +11,7 @@ description: >
   前置依赖：ego-browser (ego-lite) 运行中，小红书已登录。
 slug: xhs-image-note-release
 displayName: 小红书笔记发布（图文/视频）
-version: 2.0.0
+version: 2.0.1
 bins: [node, python3]
 ---
 
@@ -642,6 +642,12 @@ python3 "$CG" --theme cinematic --background ./bg.png --lines "文案" --account
 20. **视频自定义封面必须真实 hover 才出按钮（2026-11-02）**：`.cover-edit-entry`（「编辑封面」）平时 `boundingRect` 是 `0×0`，`el.click()`、`scrollIntoView`、`getByText` 全都不触发。唯一可行路径是 `cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none' })` 把鼠标移到 `.cover` 左侧缩略图上（x 约 +65），等 1.5s 后再 `click('.cover-edit-entry')`。「完成」按钮在视口外右侧（`innerWidth: 900` 时 `x≈1128`），必须先 `scrollIntoView` 才能点到。首屏自动弹出的 `.pk-cover-guide-tooltip` 会遮挡该区域，先 `display: none`。
 
 21. **草稿箱入口已从左侧栏挪到右上角（2026-11-02 改版）**：`.header-draft` 现在位于页面右上角 `upload-container` 的 header 里（约 `x=980, y=81`），左侧导航只剩首页/笔记管理/数据看板等，没有「草稿箱(N)」。该入口点击后**不一定会展开面板**（实测真实 click 与 CDP 鼠标事件均无反应），所以不要再走「点面板读列表」这条路核对草稿——改用 IndexedDB 直读（见「快速复用」的 draft 核对说明）。用户要看草稿，让他自己在浏览器右上角点。
+
+22. **图片上传完成判定有三个信号，别再只看 CDN 计数（v2.0.1 修正）**：v2.0.0 及更早版本的判定有两个硬伤，2026-11-08/09 连续三次误报 `E_IMAGE_UPLOAD_TIMEOUT`（明细 `cdnImages:6 / editCount:"" / expected:8`），而页面上 8 张图其实全部上传成功。
+    - **硬伤一（根因）**：`editCount` 的解析写的是「按行找含'图片编辑'的行 → `split('/')[0]` → 滤数字」。但小红书把**标签和数字渲染在两行**（`图片编辑\n8/18`），该行只剩标签本身，滤完是空串，`parseInt("") = NaN`，主判据等于不存在，只能靠 CDN 计数兜底。
+    - **硬伤二**：CDN 计数用 `img[src*=xhscdn.com]` 扫全页，会把**用户头像**（`sns-avatar-qc.xhscdn.com`）、UI 图（`fe-img-qc` / `growth-img`）一起数进去，数字既可能虚高也可能永远凑不满——实测 3 张图时只数到 2。
+    - **现行判定**：①「图片编辑 N/18」用跨行正则 `/图片编辑[\s:：]{0,6}(\d{1,2})\s*\/\s*(\d{1,2})/`；② 结构判据，数编辑区里 `textContent === '编辑'` 的叶子节点；③ CDN 计数但排除 `avatar`。任一 ≥ 张数即通过。
+    - **排查口径**：失败块里 `detail.editCount` 若已是 `N/18` 且 N ≥ expected，说明只是判定逻辑又跟不上改版，**图其实传好了**，直接按 space 接管页面手动填表收尾，不要重跑。
 
 ## Resources
 
