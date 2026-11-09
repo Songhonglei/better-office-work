@@ -365,10 +365,11 @@ async function main() {
     }
   }
   if (failed.length) {
-    await fail('add-topics', 'E_TOPIC_NOT_ATTACHED', EXIT.TOPIC,
-      failed.length + '/' + topics.length + ' 个话题未挂载', { failed: failed },
-      ['话题缺失不影响发布，只是少流量入口',
-       '接管手动补打 #话题 并从下拉选中'])
+    // 话题挂不上只少一个流量入口，不该让整条已填好的内容发不出去。
+    // 与 douyin.mjs 保持一致：输出 topics_missing 给 release.sh 汇总，继续发布。
+    const missing = failed.map(function (f) { return f.topic }).join(' ')
+    log('⚠ 未挂上的话题（降级继续发布）: ' + missing)
+    console.log('topics_missing: ' + missing)
   }
   await pressKey('Escape')
   await wait(0.4)
@@ -377,10 +378,13 @@ async function main() {
   if (CFG.coverVertical) {
     const cv = await setVideoCover(CFG.coverVertical)
     if (!cv.ok) {
-      await fail('set-cover', cv.code, EXIT.COVER, '自定义封面设置失败', cv,
-        ['重跑一次通常就能成功', '连续失败就先不传封面，用默认第一帧'])
+      // 封面是锦上添花，不该拖垮整条发布。实测小红书改版后「编辑封面」入口
+      // 会消失（E_COVER_ENTRY_HIDDEN），一失败就 exit 60 太脆；降级用平台
+      // 自动生成的三张 PK 封面试选候选帧即可，反而更贴视频本身。
+      log('⚠ 自定义封面没设上（' + cv.code + '），保留平台自动封面，继续发布')
+    } else {
+      log('自定义封面已应用')
     }
-    log('自定义封面已应用')
   }
 
   if (CFG.mode === 'stage') {

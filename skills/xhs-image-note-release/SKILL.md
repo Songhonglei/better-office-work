@@ -6,12 +6,12 @@ description: >
   （COVER_IMAGE，留空用第一帧）、发布或存草稿。带分层退出码与结构化失败输出，
   失败默认保留浏览器现场可直接接管。
   三种收尾：publish 直接发 / draft 存草稿 / stage 只准备页面。
-  附 28 种样式卡片生成器（含照片背景氛围主题），参数自由配置。
+  附 29 种样式卡片生成器（含照片背景氛围与历史古风主题），参数自由配置。
   触发词：发小红书、发布图文笔记、发布视频笔记、小红书发帖、存草稿、推到草稿箱。
   前置依赖：ego-browser (ego-lite) 运行中，小红书已登录。
 slug: xhs-image-note-release
 displayName: 小红书笔记发布（图文/视频）
-version: 2.0.1
+version: 2.0.2
 bins: [node, python3]
 ---
 
@@ -21,7 +21,7 @@ bins: [node, python3]
 
 # xhs-image-note-release
 
-通过 ego-browser 自动化发布小红书笔记。覆盖从打开创作平台到发布成功的完整流程，包含素材批量上传、标题/正文填写、话题标签、一键发布等。**图文与视频两条路径自动选择**，详见「媒体类型自动判断」。附带 28 种多样式风格卡片生成器（含 3 种照片背景氛围主题），卡片参数可自由配置。
+通过 ego-browser 自动化发布小红书笔记。覆盖从打开创作平台到发布成功的完整流程，包含素材批量上传、标题/正文填写、话题标签、一键发布等。**图文与视频两条路径自动选择**，详见「媒体类型自动判断」。附带 29 种多样式风格卡片生成器（含 4 种照片背景氛围主题），卡片参数可自由配置。
 
 ## 媒体类型自动判断（v1.8.0 新增）
 
@@ -537,11 +537,17 @@ python3 ~/.workbuddy/skills/xhs-image-note-release/references/card-generator/car
   -o ./illust-card.png
 ```
 
-**28 种内置主题**（纯文字布局全部共用同一套布局；图文布局额外支持 `warm_illust`）：
+**29 种内置主题**（纯文字布局全部共用同一套布局；图文布局额外支持 `warm_illust`）：
 
 | 分组 | 主题 key |
 |------|---------|
-| **照片背景氛围**（需配合 `--background`） | `cinematic` 暗色电影感、`film` 胶片颗粒、`journal` 书页氛围 |
+| **照片背景氛围**（需配合 `--background`） | `cinematic` 暗色电影感、`film` 胶片颗粒、`journal` 书页氛围、`history` 历史古风（暗色 + 报隶书法体，秦汉史/翻案解说用） |
+
+`history` 主题与 `--font-main` / `--text-y-ratio` / `--text-x-ratio` / `--text-anchor`
+是本次新增能力，供 `video-multi-release` 的历史题材链路调用；字体优先用本机
+`Baoli SC`（报隶，横扁厚重），`Xingkai SC`（行楷）笔画偏细、只适合片头感，可用
+`--font-main "'Xingkai SC', serif"` 切换。系统实测**有** `Weibei SC Bold`（魏碑-简）。
+注意：三个文字位置参数只对 `text` 布局生效，`image-text` 布局仍是固定居中排版。
 | 年轻人风格 | `warm` 温暖哲思、`warm_illust` 温暖简笔哲思、`y2k` Y2K 千禧潮酷、`doodle` 手绘涂鸦、`pop` 渐变波普、`minimal` 极简日系 |
 | 科技 / 商务 | `cyberpunk` 赛博科技、`apple` Apple 质感、`cowork` 轻科技、`bloomberg` Bloomberg 终端、`carbon` 暗色极简 |
 | 文艺 / 复古 | `elegant` 极简优雅、`newspaper` 报纸杂志、`ink` 水墨卷轴、`steampunk` 蒸汽朋克、`palace` 故宫金红 |

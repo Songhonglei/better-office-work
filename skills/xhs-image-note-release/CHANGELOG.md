@@ -3,6 +3,18 @@
 All notable changes to this skill are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+### v2.0.2 (2026-11-10)
+
+**为历史题材口播视频补卡片能力**（由 `video-multi-release` 的 A1/A2 需求驱动；本 skill 的生成器被跨 skill 复用，故一并版本化）。
+
+- **Feature**: 新增第 29 个主题 `history` —— 暗色电影感配色 + 本机古风书法字体栈，默认 `Baoli SC`（报隶）优先，回退 `Weibei SC Bold` / `Libian SC` / `Kaiti SC`。此前只有 `cinematic`（宋体印刷感），历史题材气质不对。
+- **Feature**: 新增 `--font-main` 覆盖参数，优先级高于主题自带字体；`resolve_theme()` 里显式指定的字体不会被主题值覆盖。
+- **Feature**: 新增 `--text-y-ratio` / `--text-x-ratio` / `--text-anchor`，文字块会自动 clamp 在顶部标签与底部页码之间的安全区。原来 `start_y` 硬编码垂直居中，与 AI 历史插画的居中主体必然撞车（实测 18 张里 3 张压住人物头部）。
+- **Fix**: `anchor=start/end` 且极端 x_ratio 时把起点收进可行域，避免文字块延伸到 1.25W / -0.25W；安全区上下界交叉时不再整段跳过 clamp（原来会压到页脚）。
+- **Compat**: 三个位置参数都有默认值，不传时 `start_y` 仍等于改造前的居中值；`--font-main` 不传时不改主题字体。默认路径无回归。
+- **Docs**: SKILL.md 主题数 28 → 29、照片背景主题 3 → 4，主题表补 `history`，并写明「位置参数仅 `text` 布局生效」与字体选型实测结论。
+- **Validation**: 18 张历史卡片实生成 + 全检联系表逐张复核；`--list-themes` 输出 29 行；`python3 -m py_compile` 通过。
+
 ### v2.0.1 (2026-11-09)
 
 **修一个会让整条发布流程白跑的上传判定缺陷**：图文上传连续三次误报 `E_IMAGE_UPLOAD_TIMEOUT`（`cdnImages:6 / editCount:"" / expected:8`），而页面上 8 张图早已全部上传成功，每次都要人工接管收尾。

@@ -30,6 +30,17 @@ def run(cmd):
     return p
 
 
+def probe_duration(path):
+    try:
+        out = subprocess.check_output([
+            'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+            '-of', 'csv=p=0', path,
+        ]).decode().strip()
+        return float(out)
+    except (FileNotFoundError, ValueError, subprocess.CalledProcessError):
+        return None
+
+
 def measure_lufs(path):
     try:
         p = subprocess.run([
@@ -85,7 +96,13 @@ def main():
                    % (''.join(voice_labels), len(voice_labels)))
 
     bgm_idx = len(clips) + 1
-    inputs += ['-i', a.bgm]
+    bgm_dur = probe_duration(a.bgm)
+    if bgm_dur is not None and bgm_dur + 0.5 < total:
+        # BGM 比成片短，不循环的话末尾会静音（曲库里 Frost Waltz 只有 135.5s）
+        inputs += ['-stream_loop', '-1', '-i', a.bgm]
+        print('BGM %.1fs 短于成片 %.1fs，已开启循环' % (bgm_dur, total))
+    else:
+        inputs += ['-i', a.bgm]
     filters.append(
         '[%d:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,'
         'atrim=0:%.3f,volume=%.1fdB,'

@@ -12,6 +12,11 @@
 #   TOPICS="人生感悟,人到中年" \
 #   MODE=stage \
 #     bash release.sh
+#
+# 新增可选项:
+#   MAX_VIDEO_MB=40     视频超过该体积自动转码 final_web.mp4 再发（0 = 关闭）
+#   RESUME=1            复用已填好的编辑页现场，跳过 reload 与重复上传
+#   TOPICS / HOT_TOPICS 留空时取数据目录 config.json 的默认值
 
 set -euo pipefail
 
@@ -37,6 +42,15 @@ KEEP_ON_FAIL="${KEEP_ON_FAIL:-1}"
 # 复用上次失败留下的现场（页面已填好）：SPACE_ID=65 这样传。
 # 不传就按名字新建；若同名空间还在且归属用户，脚本会报 E_SPACE_OWNED 并给出两条出路。
 SPACE_ID="${SPACE_ID:-}"
+# RESUME=1：复用已填好的编辑页现场，跳过 Page.reload 与重复上传（抖音登录态撑不过刷新）
+RESUME="${RESUME:-0}"
+
+# publish 模式不允许复用旧任务空间：三个平台脚本发布成功后都不释放空间，
+# 拿旧 space 重跑会重新上传 + 提交，造成同一条内容双发。
+if [ "$MODE" = "publish" ] && [ -n "$SPACE_ID" ]; then
+  echo "  ⚠ publish 模式忽略 SPACE_ID（复用旧现场有重复发布风险），改用新任务空间"
+  SPACE_ID=""
+fi
 
 LOG="/tmp/video-release-$(date +%Y%m%d-%H%M%S)-$$.log"
 exec > >(tee -a "$LOG") 2>&1
@@ -102,6 +116,39 @@ if [ -n "$COVER" ]; then
     "只有小红书会用它，视频号和抖音的封面在各自后台设"
 fi
 
+# ── 运行时默认配置（数据目录，升级 skill 不会清掉） ──────────────
+CONFIG="${WB_SKILLS_DATA:-$HOME/space/skills-data}/video-multi-release/config.json"
+read_cfg() {
+  # 解析失败不能静默：原来 2>/dev/null + set -e 会让脚本无诊断地停在这一行。
+  python3 -c "import json,sys,os; p=sys.argv[1]; k=sys.argv[2]; d=json.load(open(p,encoding='utf-8')) if os.path.exists(p) else {}; v=d.get(k); print(v if isinstance(v,str) else (','.join(v) if isinstance(v,list) else ''))" "$CONFIG" "$1" || {
+    echo "  ⚠ config.json 解析失败，已忽略默认值（$CONFIG）" >&2
+    printf ''
+  }
+}
+[ -n "$TOPICS" ] || TOPICS="$(read_cfg topics)"
+[ -n "$HOT_TOPICS" ] || HOT_TOPICS="$(read_cfg hot_topics)"
+
+# ── 视频体积前置检查 ────────────────────────────────────────────
+# 实测视频号上传 78MB 在 160 秒超时，压到 25MB 后 18 秒完成。
+# 超阈值就自动转一份 final_web.mp4 并用它发，避免每次靠人记得压缩。
+MAX_VIDEO_MB="${MAX_VIDEO_MB:-40}"
+VIDEO_MB=$(du -m "$VIDEO" | cut -f1 | tr -d ' ')
+if [ "${MAX_VIDEO_MB:-40}" != "0" ] && [ "$VIDEO_MB" -gt "$MAX_VIDEO_MB" ] 2>/dev/null; then
+  WEB_VIDEO="$(dirname "$VIDEO")/final_web.mp4"
+  # 缓存只在同一源视频下有效。源比压缩版新（换了片 / 重新渲染）就必须重转，
+  # 否则「存在即复用」会把上一次的压缩版当成这次的内容发出去（实测可复现）。
+  if [ ! -f "$WEB_VIDEO" ] || [ "$VIDEO" -nt "$WEB_VIDEO" ]; then
+    echo "  视频 ${VIDEO_MB}MB 超过 ${MAX_VIDEO_MB}MB，正在转码压缩版…"
+    ffmpeg -y -hide_banner -loglevel error -i "$VIDEO" \
+      -c:v libx264 -preset medium -crf 24 -maxrate 2600k -bufsize 5200k \
+      -pix_fmt yuv420p -c:a aac -b:a 160k -movflags +faststart "$WEB_VIDEO"
+  else
+    echo "  视频 ${VIDEO_MB}MB 超过 ${MAX_VIDEO_MB}MB，复用同源码的压缩版"
+  fi
+  VIDEO="$WEB_VIDEO"
+  echo "  实际发布文件: $(basename "$VIDEO")  $(du -h "$VIDEO" | cut -f1)"
+fi
+
 # 字数前置校验：能在启动浏览器之前发现的问题，不要留到浏览器里
 TITLE_LEN=$(python3 -c "import sys; print(len(sys.argv[1]))" "$TITLE")
 DESC_LEN=$(python3 -c "import sys; print(len(sys.argv[1]))" "$DESC")
@@ -155,6 +202,7 @@ if [ -z "$COVER_H" ] && [ -n "$VIDEO" ]; then
 fi
 
 SUMMARY=""
+FIRST_FAIL_RC=0        # CONTINUE_ON_FAIL=1 时保留第一个失败码，别被最后一个平台覆盖
 
 for platform in "${PLATFORM_ARRAY[@]}"; do
   EXIT_CODE=0
@@ -184,8 +232,9 @@ print(json.dumps({
     'coverVertical': sys.argv[8],
     'coverHorizontal': sys.argv[9] or None,
     'spaceId': sys.argv[11] or None,
+    'resume': sys.argv[12] == '1',
 }, ensure_ascii=False))
-" "$platform" "$VIDEO" "$TITLE" "$DESC" "$TOPICS_JSON" "$MODE" "$KEEP_ON_FAIL" "$COVER" "$COVER_H" "$HOT_JSON" "$SPACE_ID")
+" "$platform" "$VIDEO" "$TITLE" "$DESC" "$TOPICS_JSON" "$MODE" "$KEEP_ON_FAIL" "$COVER" "$COVER_H" "$HOT_JSON" "$SPACE_ID" "$RESUME")
 
   MJS="$SCRIPTS_DIR/${platform}.mjs"
   [ -f "$MJS" ] || { echo "缺少脚本: $MJS"; EXIT_CODE=11; SUMMARY="$SUMMARY\n  $platform  失败(11) 缺脚本"; continue; }
@@ -205,6 +254,12 @@ print(json.dumps({
   # 所以 $? 不可信。优先取 FAILED 块里脚本自己声明的 exit，其次取那行日志，最后才退回管道码。
   RC_BLOCK=$(grep -oE '^exit     : [0-9]+' "$EGO_OUT" | tail -1 | grep -oE '[0-9]+$' || true)
   RC_MSG=$(grep -oE 'exited with code [0-9]+' "$EGO_OUT" | tail -1 | grep -oE '[0-9]+$' || true)
+  # 汇总用的平台结果字段（必须在删临时文件之前取出）
+  OK_BLOCK=$(grep -oE '=== OK \([^)]*\) ===' "$EGO_OUT" | tail -1 || true)
+  P_STATE=$(printf '%s' "$OK_BLOCK" | sed -n 's/.*(\(.*\)).*/\1/p')
+  P_URL=$(grep -E '^url      : ' "$EGO_OUT" | tail -1 | sed 's/^url      : //' || true)
+  P_VF=$(grep -E '^verified : ' "$EGO_OUT" | tail -1 | sed 's/^verified : //' || true)
+  P_MISS=$(grep -E '^topics_missing: ' "$EGO_OUT" | tail -1 | sed 's/^topics_missing: //' || true)
   rm -f "$EGO_OUT"
 
   if [ -n "$RC_BLOCK" ]; then
@@ -215,9 +270,20 @@ print(json.dumps({
     EXIT_CODE=${RC_PIPE[1]:-0}
   fi
 
+  # ego-browser 异常时可能返回 0 但脚本根本没跑完。没有 OK 块一律不算成功，
+  # 否则 stage / draft / 卡死都会被汇总成「✅ 成功」。
+  if [ "$EXIT_CODE" -eq 0 ] && [ -z "$OK_BLOCK" ]; then
+    echo "  ⚠ 未见 === OK (...) === 块，判定为未确认（退出码 90）"
+    EXIT_CODE=90
+  fi
+
   if [ "$EXIT_CODE" -eq 0 ]; then
-    SUMMARY="$SUMMARY\n  $platform  ✅ 成功"
+    SUMMARY="$SUMMARY\n  $platform  ✅ ${P_STATE:-已确认}"
+    [ -n "$P_URL" ] && SUMMARY="$SUMMARY  ${P_URL}"
+    [ -n "$P_VF" ] && SUMMARY="$SUMMARY  核验=${P_VF}"
+    [ -n "$P_MISS" ] && SUMMARY="$SUMMARY  未挂话题=${P_MISS}"
   else
+    if [ "$FIRST_FAIL_RC" -eq 0 ]; then FIRST_FAIL_RC=$EXIT_CODE; fi
     SUMMARY="$SUMMARY\n  $platform  ❌ 失败(退出码 $EXIT_CODE)"
     # 默认第一个平台失败就停，避免带着问题继续发下一个。
     # 想「能发的先发」就设 CONTINUE_ON_FAIL=1。
@@ -233,4 +299,4 @@ echo "=========================================="
 echo -e "  结果${SUMMARY}"
 echo "  日志: $LOG"
 echo "=========================================="
-exit "$EXIT_CODE"
+exit "$FIRST_FAIL_RC"

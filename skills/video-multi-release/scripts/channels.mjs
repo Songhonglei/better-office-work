@@ -138,7 +138,7 @@ async function clickBox(box) {
 
 async function findTextBox(texts, within) {
   const scope = within || 'sr'
-  return shadow(`
+  const pick = `
     const scope = ${scope}
     const want = ${JSON.stringify(texts)}
     const els = [...scope.querySelectorAll('*')].filter(function (e) {
@@ -147,9 +147,17 @@ async function findTextBox(texts, within) {
     })
     if (!els.length) return { __err: 'not_found' }
     const el = els[els.length - 1]
-    el.scrollIntoView({ block: 'center' })
+  `
+  const rolled = await shadow(pick + `el.scrollIntoView({ block: 'center', behavior: 'instant' }); return { ok: true }`)
+  if (!rolled || rolled.__err) return rolled
+  await wait(1.2)
+  return shadow(pick + `
     const r = el.getBoundingClientRect()
-    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }
+    return {
+      x: Math.round(r.x + r.width / 2),
+      y: Math.round(r.y + r.height / 2),
+      inView: r.top >= 0 && r.bottom <= window.innerHeight,
+    }
   `)
 }
 
@@ -162,19 +170,8 @@ async function setCover(filePath) {
   await clickBox(editBox)
   await wait(2)
 
-  // 2) 点「上传封面」（DIV）
-  const upBox = await shadow(`
-    const wrap = sr.querySelector('.cover-set-wrap')
-    const scope = wrap || sr
-    const els = [...scope.querySelectorAll('*')].filter(function (e) {
-      return (e.innerText || '').trim() === '上传封面' && e.children.length === 0 && e.getBoundingClientRect().width > 0
-    })
-    if (!els.length) return { __err: 'no_upload_btn' }
-    const el = els[els.length - 1]
-    el.scrollIntoView({ block: 'center' })
-    const r = el.getBoundingClientRect()
-    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }
-  `)
+  // 2) 点「上传封面」（DIV）—— 复用 findTextBox 的「滚动→等待→重取坐标」
+  const upBox = await findTextBox(['上传封面'], `(sr.querySelector('.cover-set-wrap') || sr)`)
   if (!upBox || upBox.__err) { log('⚠ 封面面板里没有「上传封面」'); return 'no_upload_btn' }
   await clickBox(upBox)
   await wait(2)
@@ -192,19 +189,33 @@ async function setCover(filePath) {
   log('封面已投递: ' + filePath.split('/').pop())
   await wait(4)
 
-  // 4) 点「确认」
+  // 4) 点「确认」—— 同样要先滚动、等稳定、再取坐标（smooth scroll 会返回旧位置）
+  const okRolled = await shadow(`
+    const btns = [...sr.querySelectorAll('button')].filter(function (b) {
+      const t = (b.innerText || '').trim()
+      return (t === '确认' || t === '确定') && b.getBoundingClientRect().width > 0
+    })
+    if (!btns.length) return { __err: 'no_confirm' }
+    btns[0].scrollIntoView({ block: 'center', behavior: 'instant' })
+    return { ok: true }
+  `)
+  if (!okRolled || okRolled.__err) { log('⚠ 封面面板没有「确认」按钮'); return 'no_confirm' }
+  await wait(1.2)
   const okBox = await shadow(`
     const btns = [...sr.querySelectorAll('button')].filter(function (b) {
       const t = (b.innerText || '').trim()
       return (t === '确认' || t === '确定') && b.getBoundingClientRect().width > 0
     })
     if (!btns.length) return { __err: 'no_confirm' }
-    const b = btns[0]
-    b.scrollIntoView({ block: 'center' })
-    const r = b.getBoundingClientRect()
-    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }
+    const r = btns[0].getBoundingClientRect()
+    return {
+      x: Math.round(r.x + r.width / 2),
+      y: Math.round(r.y + r.height / 2),
+      inView: r.top >= 0 && r.bottom <= window.innerHeight,
+    }
   `)
   if (!okBox || okBox.__err) { log('⚠ 封面面板没有「确认」按钮'); return 'no_confirm' }
+  if (!okBox.inView) { log('⚠ 封面「确认」按钮在视口外，跳过自定义封面'); return 'out_of_view' }
   await clickBox(okBox)
   await wait(3)
   log('封面设置完成')
@@ -226,24 +237,58 @@ async function caretToEnd() {
   `)
 }
 
-async function clickByText(text) {
-  // wujie 沙箱里 el.click() 无效，必须 CDP 真实鼠标
-  const box = await shadow(`
+// 只取坐标，不滚动。inView 交给调用方判断，避免把点打在视口外。
+async function boxByText(text) {
+  return shadow(`
     const btn = [...sr.querySelectorAll('button')].find(function (b) {
       return (b.innerText || '').trim() === ${JSON.stringify(text)}
     })
     if (!btn) return { __err: 'no_button' }
-    btn.scrollIntoView({ block: 'center' })
     const r = btn.getBoundingClientRect()
-    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2), disabled: btn.disabled }
+    return {
+      x: Math.round(r.x + r.width / 2),
+      y: Math.round(r.y + r.height / 2),
+      disabled: !!btn.disabled,
+      inView: r.top >= 0 && r.bottom <= window.innerHeight && r.width > 0,
+      top: Math.round(r.top),
+      vh: window.innerHeight,
+    }
   `)
-  if (!box || box.__err) return box && box.__err
+}
+
+async function scrollByText(text) {
+  return shadow(`
+    const btn = [...sr.querySelectorAll('button')].find(function (b) {
+      return (b.innerText || '').trim() === ${JSON.stringify(text)}
+    })
+    if (!btn) return { __err: 'no_button' }
+    btn.scrollIntoView({ block: 'center', behavior: 'instant' })
+    return { ok: true }
+  `)
+}
+
+async function clickByText(text) {
+  // wujie 沙箱里 el.click() 无效，必须 CDP 真实鼠标。
+  // 关键坑：scrollIntoView 之后不能立刻 getBoundingClientRect —— 页面带
+  // scroll-behavior:smooth 时拿到的是滚动「前」的位置。曾把「发表」算成 y=1268，
+  // 而视口只有 756 高，点全打在屏幕外，表现就是「点了没反应 / 页面没跳转」。
+  // 流程必须是：滚动 → 等滚动稳定 → 重新取坐标 → 校验在视口内 → 再点。
+  const r0 = await scrollByText(text)
+  if (!r0 || r0.__err) return (r0 && r0.__err) || 'no_button'
+  await wait(1.2)
+
+  let box = await boxByText(text)
+  if (!box || box.__err) return (box && box.__err) || 'no_button'
+  if (!box.inView) {
+    await scrollByText(text)
+    await wait(1.2)
+    box = await boxByText(text)
+    if (!box || box.__err) return (box && box.__err) || 'no_button'
+    if (!box.inView) return 'out_of_view(top=' + box.top + ',vh=' + box.vh + ')'
+  }
   if (box.disabled) return 'disabled'
-  await wait(0.5)
-  await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y, button: 'none' })
-  await wait(0.2)
-  await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: box.x, y: box.y, button: 'left', clickCount: 1 })
-  await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: box.x, y: box.y, button: 'left', clickCount: 1 })
+
+  await clickBox(box)
   return 'clicked'
 }
 
@@ -296,27 +341,48 @@ async function main() {
   await cdp('DOM.setFileInputFiles', { files: [CFG.video], nodeId: videoInput.nodeId })
   log('已投递文件 ' + elapsed())
 
-  // 等上传完成：video 有 duration + 封面预览出现 + 没有"文件上传中"
+  // 等上传完成。别拿 video.duration 当判据：浏览器解码本地文件就能拿到时长，
+  // 视频还在传（实测卡在 14% / 90%）时它已经 >0，会误判成「上传完成 18.5s」。
+  // 唯一可靠的信号是「发表」按钮出现且未禁用 —— 上传中它是灰的或压根不渲染。
+  // 也别用 sr.textContent 搜「上传中」：它会把 <style> 里的 CSS 一起读进来，
+  // CSS 里有 0%/100%/uploading 之类字样，正则永远命中，判据直接失效（实测误伤 240s）。
+  // 只取真实文本节点，且只认「上传失败 / 重新上传」这种明确的错误文案。
   let uploaded = false
-  for (let i = 0; i < 40; i++) {
+  let lastState = ''
+  for (let i = 0; i < 60; i++) {
     await wait(4)
     const st = await shadow(`
       const v = sr.querySelector('video')
-      const t = sr.textContent || ''
+      const btn = [...sr.querySelectorAll('button')].find(function (b) {
+        return (b.innerText || '').trim() === '发表'
+      })
+      let txt = ''
+      const walker = document.createTreeWalker(sr, NodeFilter.SHOW_TEXT)
+      let n
+      while ((n = walker.nextNode())) {
+        const p = n.parentElement
+        if (p && /^(SCRIPT|STYLE)$/.test(p.tagName)) continue
+        txt += n.nodeValue
+      }
       return {
         dur: v ? Math.round(v.duration) : 0,
-        cover: t.indexOf('封面预览') >= 0,
-        uploading: t.indexOf('文件上传中') >= 0,
+        cover: txt.indexOf('封面预览') >= 0,
+        btnReady: !!(btn && !btn.disabled),
+        failed: /上传失败/.test(txt),
       }
     `)
-    if (st.dur > 0 && st.cover && !st.uploading) { uploaded = true; break }
+    lastState = JSON.stringify(st)
+    // 判据只认「发表按钮可用 + 拿到时长」。不看「重新上传」——那是传完之后的正常按钮，
+    // 拿它当错误标记会永远判失败（实测白等 240 秒）。failed 只留作排障信息。
+    if (st.btnReady && st.dur > 0) { uploaded = true; break }
   }
   if (!uploaded) {
     await fail('upload', 'E_UPLOAD_TIMEOUT', EXIT.UPLOAD,
-      '视频上传超时（160 秒）', {},
+      '视频上传超时（240 秒）', { last: lastState },
       ['检查文件是否可正常播放、体积是否过大',
        '重跑一次；若反复卡在 0%，刷新页面后重新上传',
-       '注意：删除已上传视频再重传可能卡在 0%，此时只能刷新重来'])
+       '注意：删除已上传视频再重传可能卡在 0%，此时只能刷新重来',
+       '实测 54MB / 103 秒的成片偶发卡在 14% 或 90%，属上传通道抖动，重试通常就过'])
   }
   log('上传完成 ' + elapsed())
 
@@ -398,13 +464,10 @@ async function main() {
   log('话题 ' + added.length + '/' + topics.length + (added.length ? ': ' + added.join(' ') : ''))
 
   if (topics.length && added.length < topics.length) {
+    // 话题缺失只少曝光，不该让整条已填好的内容发不出去（与 douyin/xhs 一致）
     const missing = topics.filter(function (t) { return added.indexOf(t) < 0 })
-    await fail('add-topics', 'E_TOPIC_NOT_ATTACHED', EXIT.TOPIC,
-      '有话题没挂上: ' + missing.join(' '),
-      { expected: topics, got: added },
-      ['话题缺失不影响发布，但会少曝光',
-       '接管手动补，或直接重跑',
-       '若反复失败，检查该话题在视频号是否真实存在'])
+    log('⚠ 未挂上的话题（降级继续发布）: ' + missing.join(' '))
+    console.log('topics_missing: ' + missing.join(' '))
   }
 
   // 收尾
@@ -422,36 +485,71 @@ async function main() {
     await fail('submit', 'E_SUBMIT_BUTTON', EXIT.SUBMIT,
       '点不到「' + target + '」按钮: ' + clickResult, {},
       ['接管看页面底部是否有"文件上传中"提示（说明上传没真的完成）',
-       '确认按钮是否被禁用'])
+       '确认按钮是否被禁用（短标题含逗号等非法字符会整行静默禁用）',
+       'out_of_view 表示按钮始终在视口外，通常是页面高度变了，重跑一次会自动重新定位'])
   }
   await wait(6)
 
   if (CFG.mode === 'publish') {
     // 发表成功会跳到作品列表页
-    let ok = false
-    for (let i = 0; i < 10; i++) {
-      const info2 = await pageInfo()
-      if (info2.url.indexOf('post/create') < 0) { ok = true; break }
-      await wait(3)
+    const waitLeaveCreate = async () => {
+      for (let i = 0; i < 15; i++) {
+        const p = await pageInfo()
+        if (p.url.indexOf('post/create') < 0) return true
+        await wait(3)
+      }
+      return false
+    }
+    let ok = await waitLeaveCreate()
+    if (!ok) {
+      // 不再「兜底再点一次」：第一下其实已提交、只是 wujie 的 history 更新滞后时，
+      // 第二下会造成同一条内容双发，代价远大于重试失败。交给列表核验判断。
+      log('⚠ 45 秒内没跳转，不重复点发表；先去作品列表确认是否已发出')
     }
     if (!ok) {
       await fail('verify', 'E_PUBLISH_UNCONFIRMED', EXIT.VERIFY,
-        '点了发表但页面没跳转', {},
-        ['不要立即重发，先去作品列表确认是否已经发出',
-         '接管检查是否有校验提示（如封面检测未通过）'])
+        '点了发表但页面 45 秒内没跳转（可能是已提交但路由更新滞后）', {},
+        ['不要重跑发布脚本，先去作品列表 /platform/post/list 确认是否已发出',
+         '列表里已有就直接当成功，别重复发',
+         '接管截图看是否有校验提示（封面 / 原创声明 / 内容检测）'])
     }
     const info3 = await pageInfo()
+
+    // ── 发布后核验：回到作品列表确认，别只信 URL 跳转 ──
+    // 视频号列表在 wujie 的 shadowRoot 里；列表渲染有时较慢，且不一定显示短标题，
+    // 所以查不到只告警、不判失败，交给人工确认（抖音那边则会严格判失败）。
+    const want = (CFG.title || '').slice(0, 10)
+    let verified = false
+    for (let i = 0; i < 8; i++) {
+      await wait(2)
+      const r = await shadow('return { has: (sr.textContent || "").indexOf(' +
+                             JSON.stringify(want) + ') >= 0 }')
+      if (r && r.has) { verified = true; break }
+    }
+    if (verified) log('作品列表已确认《' + want + '》')
+    else {
+      log('⚠ 作品列表暂未检索到《' + want + '》，列表可能还没刷新，请人工确认')
+      console.log('verify_warning: 作品列表未检索到标题，需人工确认')
+    }
+
     console.log('\n=== OK (published) ===')
     console.log('url      : ' + info3.url)
+    console.log('verified : ' + (verified ? 'yes' : 'manual'))
     console.log('space    : ' + TASK.id)
     return
   }
 
-  // draft：确认出现"已保存"
-  const saved = await shadow(`
-    const t = sr.textContent || ''
-    return { saved: t.indexOf('已保存') >= 0 }
-  `)
+  // draft：确认出现"已保存"。toast 有 1-3 秒延迟，点完立刻查必然查不到
+  // （实测会误报 unconfirmed），改成轮询 8 秒。
+  let saved = { saved: false }
+  for (let i = 0; i < 8; i++) {
+    await wait(1)
+    saved = await shadow(`
+      const t = sr.textContent || ''
+      return { saved: t.indexOf('已保存') >= 0 || t.indexOf('草稿箱') >= 0 }
+    `)
+    if (saved.saved) break
+  }
   console.log('\n=== ' + (saved.saved ? 'OK (draft saved)' : 'OK (draft, unconfirmed)') + ' ===')
   if (!saved.saved) {
     console.log('提示: 没抓到"已保存"字样，去 内容管理 → 草稿箱 手动确认')

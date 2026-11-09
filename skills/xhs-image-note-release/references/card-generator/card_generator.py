@@ -88,6 +88,33 @@ THEMES = {
         "grain": 0.0,
         "desaturate": 1.0,
     },
+    # 历史/古风口播专用：沿用 cinematic 的暗色电影感，主文案换本机隶书。
+    # 字体全部为本机可用字体，不依赖 Google Fonts 联网。
+    "history": {
+        "name": "古风电影感",
+        "bg": "#0A0806",
+        "bg_gradient": None,
+        "text": "#F3E7CE",
+        "muted": "#C4B49A",
+        "accent": "#C9A227",
+        "accent2": "#6E655A",
+        # 默认报隶：横扁厚重、碑刻感，配秦汉史/翻案解说比行楷更庄重且更清晰。
+        # 行楷飘逸但笔画细，更像古装剧片头，需要时用 --font-main "'Xingkai SC', serif" 切。
+        "font_main": ("'Baoli SC', 'STBaoliSC-Regular', '报隶-简', "
+                      "'Weibei SC Bold', '魏碑-简', "
+                      "'Xingkai SC', 'STXingkaiSC-Bold', '行楷-简', "
+                      "'Libian SC', '隶变-简', 'Kaiti SC', 'Songti SC', serif"),
+        "font_tag": "'PingFang SC', 'Microsoft YaHei', sans-serif",
+        "quote_color": "#C9A227",
+        "deco": "none",
+        "letter_spacing": 3,
+        "google_fonts": [],
+        "photo": True,
+        "scrim": 0.58,
+        "scrim_color": "#000000",
+        "grain": 0.0,
+        "desaturate": 1.0,
+    },
     "film": {
         "name": "胶片颗粒",
         "bg": "#14110E",
@@ -585,6 +612,10 @@ def resolve_theme(theme_key, options):
     """返回主题配置副本。当传入 --background 但主题非照片主题时，
     自动把文字/辅助色反转为亮色，保证压在照片上仍可读。"""
     t = dict(THEMES[theme_key])
+    # 显式指定的字体优先级最高（--font-main / gen_cards.py 透传），覆盖主题自带字体。
+    # 小字（标签/页码/署名）仍用主题的 font_tag，避免隶书小字号糊成一片。
+    if options.get("font_main"):
+        t["font_main"] = options["font_main"]
     if not options.get("background"):
         return t
     if t.get("photo"):
@@ -704,13 +735,48 @@ def build_svg(theme, width, height, content, options):
     show_page = options.get("show_page_number", True)
     show_account = options.get("show_account", True)
 
-    # 动态计算字号：按文字量自动缩放，确保不溢出
-    font_size = compute_font_size(lines, width, height, t)
+    # 文字位置：默认垂直居中（text_y_ratio=0.5）。可由 gen_cards.py 的
+    # segments[].text_pos 或自动留白检测结果覆盖；x_ratio / anchor 支持靠边排版。
+    y_ratio = max(0.0, min(1.0, float(options.get("text_y_ratio", 0.5))))
+    x_ratio = max(0.0, min(1.0, float(options.get("text_x_ratio", 0.5))))
+    anchor = options.get("text_anchor") or "middle"
+    if anchor not in ("start", "middle", "end"):
+        anchor = "middle"
+
+    # 靠边排版时可用宽度随之收窄，避免文字溢出画面
+    if anchor == "start":
+        width_ratio = max(0.35, min(0.78, (1.0 - x_ratio) * 0.92))
+    elif anchor == "end":
+        width_ratio = max(0.35, min(0.78, x_ratio * 0.92))
+    else:
+        # text 布局原本固定 0.78，保持既有字号不变；image-text 布局才用可配比例
+        width_ratio = (0.78 if options.get("layout", "text") == "text"
+                       else options.get("text_width_ratio", 0.78))
+
+    # anchor=start/end 时把起点收进可行域：极端 x_ratio 会让「下限 0.35 的宽度」
+    # 从 0.9W 往右延伸到 1.25W（或往左到 -0.25W），文字整块溢出画面。
+    if anchor == "start":
+        x_ratio = min(x_ratio, max(0.10, 0.98 - width_ratio))
+    elif anchor == "end":
+        x_ratio = max(x_ratio, min(0.90, width_ratio + 0.02))
+
+    font_size = compute_font_size(lines, width, height, t, text_width_ratio=width_ratio)
     letter_spacing = t.get("letter_spacing", 4)
 
     line_height = font_size * 1.6
     text_block_h = len(lines) * line_height
-    start_y = (height - text_block_h) / 2 - 20
+    start_y = height * y_ratio - text_block_h / 2 - 20
+    # 安全区：避开顶部标签(y=130)与底部页码(footer_y=height-130)
+    min_start = 175 if show_tag else 100
+    bottom_pad = 260 if subtitle else 185
+    max_start = height - bottom_pad - text_block_h
+    if max_start >= min_start:
+        start_y = max(min_start, min(max_start, start_y))
+    else:
+        # 两界交叉（矮画布 / 多行大字）时原来整段跳过 clamp，文字会压到页脚。
+        # 空间不够也至少从安全区顶部起排，别让下半块盖住页码。
+        start_y = min_start
+    text_x = width * x_ratio
 
     # 背景（渐变由 build_html 的 CSS 处理，SVG 侧用纯色）
     bg_style = f"fill: {t['bg']}"
@@ -735,7 +801,7 @@ def build_svg(theme, width, height, content, options):
         # 如果只有一行，可以稍微粗一点
         weight = "500" if len(lines) <= 2 else "400"
         text_parts.append(
-            f'<text x="{width/2}" y="{y}" text-anchor="middle" font-size="{font_size}" '
+            f'<text x="{text_x}" y="{y}" text-anchor="{anchor}" font-size="{font_size}" '
             f'fill="{t["text"]}" font-family="{t["font_main"]}" font-weight="{weight}" '
             f'letter-spacing="{letter_spacing}">{escape(line)}</text>'
         )
@@ -1272,6 +1338,14 @@ def main():
     parser.add_argument("--desaturate", type=float, nargs="?", const=0.65,
                         help="背景降饱和 0-1，1=原色。不带值时取 0.65")
     parser.add_argument("--grain", type=float, help="胶片颗粒强度 0-0.4（默认取主题预设）")
+    # ── 古风字体与文字位置（历史题材口播视频用） ──
+    parser.add_argument("--font-main", help="覆盖主题的 font_main（CSS font-family 字符串）。优先级高于主题自带字体")
+    parser.add_argument("--text-y-ratio", type=float, default=0.5,
+                        help="文字块中心在卡片高度的相对位置 0-1，默认 0.5（居中）")
+    parser.add_argument("--text-x-ratio", type=float, default=0.5,
+                        help="文字锚点在卡片宽度的相对位置 0-1，默认 0.5（居中）")
+    parser.add_argument("--text-anchor", choices=["start", "middle", "end"], default="middle",
+                        help="文字对齐方式，默认 middle")
     parser.add_argument("--width", type=int, default=1080, help="输出宽度")
     parser.add_argument("--height", type=int, default=1440, help="输出高度")
     parser.add_argument("--output", "-o", help="输出 PNG 路径")
@@ -1319,6 +1393,10 @@ def main():
         "blur": args.blur,
         "desaturate": args.desaturate,
         "grain": args.grain,
+        "font_main": args.font_main,
+        "text_y_ratio": args.text_y_ratio,
+        "text_x_ratio": args.text_x_ratio,
+        "text_anchor": args.text_anchor,
     }
 
     # 加载背景照片（转 base64 内嵌，避免 Chrome file:// 限制）

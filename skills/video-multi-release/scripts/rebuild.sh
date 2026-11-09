@@ -11,14 +11,19 @@
 #   out/                成片输出目录（自动创建）
 #
 # 可用环境变量:
-#   BGM=/path/to.mp3      背景音乐（默认数据目录的 Frost Waltz.mp3，找不到则报错提示先下载）
+#   BGM=/path/to.mp3      背景音乐（默认取 config.bgm，再兜底曲库）
 #   PRE / GAP / TAIL      时间轴留白，默认 0.6 / 0.45 / 1.5
+#   CANVAS_BG / CANVAS_STOPS   画布底色与渐变四段色（默认取 config.json；暗色主题必配）
+#   VERIFY=0              跳过成片后的音画同步联系表
+#   KEEP_SILENT=1         保留 out/silent.mp4（默认混音后删除，避免 out/ 堆积上百 MB）
 #   RATE                  已在 tts 阶段生效，此处不涉及
 #
 # 典型流程:
 #   tts.py → gen_cards.py → 本脚本 → release.sh
 
-set -e
+# 必须开 pipefail：渲染/混音都接了 | tail，不开的话管道只返回 tail 的 0，
+# 失败时会拿上一次残留的 out/final.mp4 误报「✓ 成片完成」。
+set -eo pipefail
 
 PROJECT_DIR="${1:-$PWD}"
 SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -26,8 +31,8 @@ SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_DIR"
 
 # ── 前置检查 ─────────────────────────────────────────────
-for f in voice_script.json index.html; do
-  [ "$f" = "index.html" ] && continue
+# index.html 是第 1 步生成的产物，不属于输入，所以这里不检查它。
+for f in voice_script.json; do
   [ -f "$f" ] || { echo "✗ 缺少 ${f}（在 ${PROJECT_DIR}）"; exit 10; }
 done
 [ -d voice ] || { echo "✗ 缺少 voice/ 目录，请先跑 tts.py 生成配音"; exit 10; }
@@ -35,11 +40,25 @@ ls assets/card_*.png >/dev/null 2>&1 || { echo "✗ 缺少 assets/card_*.png，�
 
 PRE="${PRE:-0.6}"; GAP="${GAP:-0.45}"; TAIL="${TAIL:-1.5}"
 
+# 运行时默认值放在数据目录，升级 skill 不会清掉
+CONFIG="${WB_SKILLS_DATA:-$HOME/space/skills-data}/video-multi-release/config.json"
+read_cfg() {
+  python3 -c "import json,sys,os; p=sys.argv[1]; k=sys.argv[2]; d=json.load(open(p,encoding='utf-8')) if os.path.exists(p) else {}; v=d.get(k); print(v if isinstance(v,str) else (','.join(v) if isinstance(v,list) else ''))" "$CONFIG" "$1" || {
+    echo "  ⚠ config.json 解析失败，已忽略默认值（$CONFIG）" >&2
+    printf ''
+  }
+}
+CANVAS_BG="${CANVAS_BG:-$(read_cfg canvas_bg)}"
+CANVAS_STOPS="${CANVAS_STOPS:-$(read_cfg canvas_stops)}"
+CANVAS_ARGS=()
+[ -n "$CANVAS_BG" ] && CANVAS_ARGS+=(--canvas-bg "$CANVAS_BG")
+[ -n "$CANVAS_STOPS" ] && CANVAS_ARGS+=(--canvas-stops "$CANVAS_STOPS")
+
 # ── 1) 时间轴（卡片时长由配音真实时长驱动） ────────────────
 echo "── 1/4 时间轴 ──"
 python3 "$SKILL_DIR/scripts/build_composition.py" \
   --script voice_script.json --voice-dir voice \
-  --pre "$PRE" --gap "$GAP" --tail "$TAIL"
+  --pre "$PRE" --gap "$GAP" --tail "$TAIL" "${CANVAS_ARGS[@]}"
 
 # ── 2) 内联 gsap（外链脚本在 hyperframes 里有时序 bug，必须内联） ──
 echo "── 2/4 内联 gsap ──"
@@ -76,7 +95,8 @@ echo "── 4/4 混音 ──"
 if [ -z "$BGM" ]; then
   # 曲库属运行时素材，放在 skill 目录之外（~/space/skills-data/video-multi-release/music）
   MUSIC_DIR="${WB_SKILLS_DATA:-$HOME/space/skills-data}/video-multi-release/music"
-  DEFAULT_BGM="$MUSIC_DIR/Frost Waltz.mp3"
+  CFG_BGM="$(read_cfg bgm)"
+  DEFAULT_BGM="${CFG_BGM:-$MUSIC_DIR/Frost Waltz.mp3}"
   if [ -f "$DEFAULT_BGM" ]; then
     BGM="$DEFAULT_BGM"
   else
@@ -87,8 +107,23 @@ if [ -z "$BGM" ]; then
 fi
 [ -f "$BGM" ] || { echo "✗ BGM 文件不存在: $BGM"; exit 11; }
 
+# 别在这里 rm -f out/final.mp4：删除会触发沙箱的批量删除保护，
+# 把整条混音拦下（实测 2026-11-10 踩过）。pipefail 已保证混音失败时脚本
+# 立即退出、不会打印「✓ 成片完成」；成功时 ffmpeg -y 会直接覆盖旧成片。
 python3 "$SKILL_DIR/scripts/mix_audio.py" \
   --silent out/silent.mp4 --bgm "$BGM" --out out/final.mp4 2>&1 | tail -3
+
+# ── 收尾：音画同步联系表 + 清理无声中间文件 ──────────────
+if [ "${VERIFY:-1}" = "1" ]; then
+  echo "── 音画同步校验 ──"
+  python3 "$SKILL_DIR/scripts/verify_sync.py" \
+    --timeline timeline.json --video out/final.mp4 \
+    --out-dir out/sync_check 2>&1 | tail -2
+fi
+if [ "${KEEP_SILENT:-0}" != "1" ]; then
+  rm -f out/silent.mp4
+  echo "  已清理 out/silent.mp4（KEEP_SILENT=1 可保留）"
+fi
 
 echo
 ls -la out/final.mp4

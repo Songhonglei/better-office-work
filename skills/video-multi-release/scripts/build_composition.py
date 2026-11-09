@@ -44,19 +44,13 @@ TEMPLATE = '''<!doctype html>
         width: {width}px;
         height: {height}px;
         overflow: hidden;
-        background: #faf7f2;
+        background: {canvas_bg};
       }}
       #root {{
         position: relative;
         width: {width}px;
         height: {height}px;
-        background: linear-gradient(
-          to bottom,
-          #fbf9f5 0%,
-          #faf7f2 12.5%,
-          #ede5d7 87.5%,
-          #eae0d1 100%
-        );
+        background: {canvas_gradient};
       }}
       .card {{
         position: absolute;
@@ -94,9 +88,26 @@ TEMPLATE = '''<!doctype html>
 '''
 
 
+LIGHT_BG = '#faf7f2'
+LIGHT_STOPS = ['#fbf9f5', '#faf7f2', '#ede5d7', '#eae0d1']
+
+
+def canvas_css(bg, stops):
+    """画布配色。暗色主题必须传进来，否则米白留白会在近黑卡片外形成刺眼白框。"""
+    if bg is None:
+        bg, ss = LIGHT_BG, LIGHT_STOPS
+    elif stops:
+        ss = stops
+    else:
+        ss = [bg] * 4            # 只给了底色 → 渐变四段同色，不再冒出默认米白
+    return bg, ('linear-gradient(to bottom, %s 0%%, %s 12.5%%, %s 87.5%%, %s 100%%)'
+                % tuple(ss))
+
+
 def build(script_path, voice_dir, out_path,
           pre=0.6, gap=0.5, tail=1.5, in_dur=0.9, exit_dur=0.7,
-          width=1080, height=1920, card_h=1440):
+          width=1080, height=1920, card_h=1440,
+          canvas_bg=None, canvas_stops=None):
 
     try:
         with open(script_path, encoding='utf-8') as f:
@@ -121,7 +132,9 @@ def build(script_path, voice_dir, out_path,
     total = clips[-1]['start'] + clips[-1]['audio'] + tail
     for i, c in enumerate(clips):
         is_last = (i == n - 1)
-        c['visible'] = c['audio'] + gap + (tail if is_last else 0)
+        # 中间卡的 gap 是留给下一卡起点之前的转场；末卡后面没有下一卡，
+        # 再叠一个 gap 会让末卡结束时间比 root 的 total 晚 gap 秒（GSAP 尾巴越界）。
+        c['visible'] = c['audio'] + (tail if is_last else gap)
 
     for c in clips:
         if in_dur + exit_dur > c['visible']:
@@ -164,12 +177,15 @@ def build(script_path, voice_dir, out_path,
                 .format(sel=sel, d=exit_dur, at=s + vis - exit_dur)
             )
 
+    bg, gradient = canvas_css(canvas_bg, canvas_stops)
     html = TEMPLATE.format(
         width=width,
         height=height,
         card_h=card_h,
         card_top=(height - card_h) // 2,
         total=total,
+        canvas_bg=bg,
+        canvas_gradient=gradient,
         imgs='\n'.join(img_lines),
         timeline='\n'.join(tl_lines),
     )
@@ -221,12 +237,22 @@ def main():
     ap.add_argument('--exit-dur', type=float, default=0.7, help='退场时长')
     ap.add_argument('--width', type=int, default=1080)
     ap.add_argument('--height', type=int, default=1920)
-    ap.add_argument('--card-h', type=int, default=1440)
+    ap.add_argument('--card-h', type=int, default=1440,
+                    help='卡片高度，默认 1440（居中留上下各 240px）；传 1920 可满幅')
+    ap.add_argument('--canvas-bg', default=None,
+                    help='画布底色，暗色主题务必传（如 #0a0806）；默认米白 #faf7f2')
+    ap.add_argument('--canvas-stops', default=None,
+                    help='画布渐变四段色，逗号分隔；只传 --canvas-bg 时四段同色')
     a = ap.parse_args()
+
+    stops = [s.strip() for s in a.canvas_stops.split(',')] if a.canvas_stops else None
+    if stops and len(stops) != 4:
+        sys.exit('--canvas-stops 必须是 4 个颜色，逗号分隔')
 
     build(a.script, a.voice_dir, a.out, pre=a.pre, gap=a.gap, tail=a.tail,
           in_dur=a.in_dur, exit_dur=a.exit_dur,
-          width=a.width, height=a.height, card_h=a.card_h)
+          width=a.width, height=a.height, card_h=a.card_h,
+          canvas_bg=a.canvas_bg, canvas_stops=stops)
     print('已写入', a.out)
 
 

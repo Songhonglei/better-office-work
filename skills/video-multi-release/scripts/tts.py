@@ -23,6 +23,8 @@ import time
 import urllib.error
 import urllib.request
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 ENDPOINT = ('https://token-plan.cn-beijing.maas.aliyuncs.com'
             '/api/v1/services/audio/tts/SpeechSynthesizer')
 MODEL = 'qwen-audio-3.0-tts-plus'
@@ -158,6 +160,8 @@ def main():
     ap.add_argument('--voice', help='直接指定 voice 参数，覆盖 preset')
     ap.add_argument('--allow-slow', action='store_true',
                     help='允许单段超过 8 秒不报错')
+    ap.add_argument('--target', type=float, default=None,
+                    help='目标成片时长（秒），用于 TTS 之前打印预估')
     a = ap.parse_args()
 
     try:
@@ -170,6 +174,19 @@ def main():
     segs = data.get('segments') or []
     if not segs:
         sys.exit('文案里没有 segments')
+
+    # TTS 之前先估一次，避免配完音才发现超时（只能砍字，调 rate 救不了）
+    try:
+        from estimate import estimate_script, print_report
+        print('── 时长预估（TTS 之前）──')
+        print_report(estimate_script(a.script, target=a.target))
+        print('')
+    except Exception as e:
+        print('（时长预估失败: %s）\n' % e)
+        # 预估失败时 --target 会完全失效，不能一声不吭继续配音
+        if a.target:
+            sys.exit('传了 --target 但时长预估失败，无法判断是否达标；'
+                     '先修正文案数据或修复 estimate.py')
 
     preset = PRESETS[a.preset]
     voice = a.voice or preset['voice']
@@ -192,7 +209,11 @@ def main():
         chars = len(seg['text'].replace('，', '').replace('。', ''))
         cps = chars / dur if dur else 0
         flag = ''
-        if dur > 8 and not a.allow_slow:
+        if dur > 10:
+            flag = '  ⚠ >10s 卡片停留偏久，建议拆段'
+        elif dur < 5:
+            flag = '  ⚠ <5s 切换偏急，建议与相邻段合并'
+        elif dur > 8 and not a.allow_slow:
             flag = '  ⚠ 超过 8 秒，建议精简或提高 rate'
         rows.append((seg['id'], chars, dur, cps, flag))
         print('  %-6s %2d字 %5.2fs %4.1f字/秒%s' % (seg['id'], chars, dur, cps, flag))
@@ -200,8 +221,8 @@ def main():
     print('纯语音合计 %.2fs（%d 段）' % (total, len(segs)))
     slow = [r for r in rows if r[4]]
     if slow:
-        print('有 %d 段偏长，整片会超过 40 秒。要么砍字，要么把 rate 提到 1.2。'
-              % len(slow))
+        print('有 %d 段节奏不均（>10s 或 <5s），建议拆段 / 合并；'
+              '想整体缩短只能砍文案，不要靠压 rate。' % len(slow))
     print('音频已写入 %s' % os.path.abspath(a.out_dir))
 
 
