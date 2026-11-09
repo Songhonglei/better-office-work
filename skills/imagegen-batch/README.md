@@ -4,8 +4,9 @@
 
 ## Features
 
-- **三道防覆盖机制** —— 提示词唯一前缀 + 默认顺序发 + 生成后立刻 `mv` 重命名。文生图工具的文件名是「截断的提示词前缀 + 秒级时间戳」，同前缀 + 同一秒 = 静默互相覆盖，谁都不知道丢了图。
-- **量水印，不猜** —— AI 水印固定压右下角。本 skill 给出一条「放大右下角 + 画坐标刻度」的量法，读出上沿的准确 y 值再裁，**不凭感觉裁**；并附 1536×1024 / 1408×704 两种尺寸的实测经验值。
+- **防覆盖：run 目录 + manifest.jsonl** —— 文生图工具的文件名是「截断的提示词前缀 + 秒级时间戳」，同前缀 + 同一秒 = 静默互相覆盖。现在一次批量一个带 uuid 的 run 目录，逐张 `mv` 并追加一行 manifest；提示词唯一前缀 + 默认顺序发仍作冗余保险。**最终文件名固定 `NN-<prompt摘要>.png`**，摘要取 prompt 开头的中文场景词，保证人能一眼看懂，不许只留 uuid。
+- **量水印：自动优先，人工兜底** —— 右下角 AI 水印优先用 `--auto-crop` 自动量上沿；量不到（极淡水印实测存在）时脚本**仍按尺寸经验值裁**并打印 `FALLBACK`，再退回「放大刻度 + `max` 突变 250+」的人工验真。**测不到 ≠ 没有水印**，绝不跳过裁切。
+- **失败退避 + 重出上限** —— 没落盘的失败按 5/15/45s 重发、最多 3 次；出图但不达标的重出，单张默认最多 4 版（用户可指定），到上限交付最不坏的一版并附未达标清单。
 - **留白相框可选** —— prompt 里写「四周留白」模型基本不遵守，要留白边只能用 `scripts/add_frame.py` 后期加。**默认不加框**，用户明确要求时才传 `--frame`；要加就用 `--line 0`（纯留白、不画黑线框）。
 - **人物「标识包」防塌脸** —— 同组图里每个角色固定五个维度（脸型骨相 / 五官 / 发型 / 体态 / 标志物），跨图复用同一套措辞。只写「一个方脸一个瘦脸」会塌成同一张脸。
 - **风格库** —— 已命名风格 `白纸速写`（`paper-sketch`）与 `水墨文艺风`（`ink-wash`），各带招牌配方、可复用后缀、调性变体和实测有效的分镜参考。以后只说名字，不必重述整段 prompt。
@@ -27,7 +28,7 @@
 clawhub install imagegen-batch
 
 # Or clone the mono-repo; the skill lives in skills/imagegen-batch/
-git clone https://github.com/Songhonglei/better-office-work-flow.git
+git clone https://github.com/Songhonglei/better-office-work.git
 ```
 
 ## Usage
@@ -38,8 +39,9 @@ git clone https://github.com/Songhonglei/better-office-work-flow.git
 
 - 「给这篇文章生成封面和 5 张插图」→ 分镜 + 批量生成 + 归档
 - 「用白纸速写风格做一套」→ 直接调风格库里的 `paper-sketch` 配方
-- 「图片右下角有水印」→ 量水印 → 按量裁 → 验真
-- 「这几张图的人物长得一样」→ 上「标识包」重出
+- 「图片右下角有水印」→ `--auto-crop` 自动量 → 按 CUT 裁 → 验真（量不到走 FALLBACK）
+- 「这几张图的人物长得一样」→ 上「标识包」重出（默认最多 4 版）
+- 「这张重出三版了还不对」→ 到上限就交付最不坏的一版 + 未达标清单
 
 ## 后期脚本
 
@@ -50,9 +52,13 @@ python3 -m pip install Pillow          # 唯一依赖
 
 S=scripts/add_frame.py
 
-# 默认：只裁水印，不加框
+# 默认：优先自动量水印，不加框
+python3 "$S" in.png out.png --auto-crop
+python3 "$S" in.png out.png --auto-crop --ratio 2.35             # 头条封面（2.35:1），再 sips -z 383 900
+
+# 已知 CUT（脚本 AUTO-CROP 行给出）→ 同批其余图直接复用
 python3 "$S" in.png out.png --crop-bottom 80
-python3 "$S" in.png out.png --crop-bottom 70 --ratio 2.35        # 头条封面（2.35:1），再 sips -z 383 900
+python3 "$S" in.png out.png --crop-bottom 70 --ratio 2.35
 
 # 用户明确要求留白边时，才加 --frame
 python3 "$S" in.png out.png --crop-bottom 80 --frame --line 0
@@ -61,6 +67,7 @@ python3 "$S" in.png out.png --crop-bottom 70 --frame --ratio 1 --pad 0.04 --line
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
+| `--auto-crop` | 关 | **自动量测水印上沿并裁底边**；量不到时按尺寸经验值裁并打印 `FALLBACK`。与 `--crop-bottom` 互斥 |
 | `--frame` | 关 | **加框总开关，默认不加**；用户要求留白边时才传 |
 | `--pad` | 0.06 | 外侧白边，取**短边**的比例；5%~6% 观感最好 |
 | `--gap` | 11 | 图像与线框之间的白隙（px）；`--line 0` 时它就是图像到外沿的留白 |
