@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — oss-pages-sync v1.0.0（2026-11-10）
+
+- 新增静态站镜像 Skill：抓取 GitHub Pages / Vercel 成品 → 改写绝对链接 → 按 MD5/ETag 增量上传到阿里云 OSS 子目录 → 自动验真漏文件；对应已备案域名的国内直连场景，不依赖 CDN。
+- 统一入口 `run.py` 支持 `--domain` / `--level 1|2|3` / `--site` / `--depth` / `--apply`，默认 dry-run，跑完逐个 GET 线上首页打印真实状态码；L3 用无头 Chrome 录同源 404 并比对源站/镜像 DOM。
+- 配置与依赖外置（`~/.workbuddy/oss-pages-sync/`），凭据只读环境变量或 `~/.ossutilconfig`；归档版把 bucket 名与默认域名占位化，不含个人资源标识与密钥。
+- 通过 `glic-check` 与 `skill-release-audit` 检查，非误报项已修复；定时任务真源仍在私有仓库 `Songhonglei/evan-file-syn`，本仓库只归档 Skill 本体。
+- 本次仅同步 GitHub，不发布到 skillhub.cn 或 clawhub.ai。
+
 ### Fixed — xhs-image-note-release v2.0.1（2026-11-09，图片上传判定误报）
 
 - 图文上传连续三次误报 `E_IMAGE_UPLOAD_TIMEOUT`（明细 `cdnImages:6 / editCount:"" / expected:8`），而页面上 8 张图早已全部上传成功。

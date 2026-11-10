@@ -1,0 +1,7 @@
+{
+  "script_home": "",
+  "domain": "your-domain.cn",
+  "bucket": "YOUR_OSS_BUCKET_NAME",
+  "endpoint": "https://oss-cn-hangzhou.aliyuncs.com",
+  "level": 2
+}

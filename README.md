@@ -20,6 +20,7 @@
 
 | Skill | Description |
 |---|---|
+| [oss-pages-sync](./skills/oss-pages-sync/) | 静态站镜像到阿里云 OSS 已备案域名：抓取改写链接 + ETag 增量上传 + L1/L2/L3 验真漏文件；支持指定域名与验真层级，默认只检查不写入（v1.0.0） |
 | [ai-model-weekly](./skills/ai-model-weekly/) | 全球 AI / LLM 模型发布周报：核实官方日期、规格、访问与权重状态，生成配图内嵌的中文 HTML 单文件；支持区间调整、图片替换、折叠与回退（v1.0.0） |
 | [local-music-creation](./skills/local-music-creation/) | Apple Silicon 本地音乐创作：YuE2 MLX 歌词生成、ABC 制谱/渲染、8bit/BF16 对照、转写与 cover；配置驱动迁移、冻结依赖与结果校验；仅通过 GitHub 提供 |
 | [sms-agent-mail](./skills/sms-agent-mail/) | 手机短信邮件读取：原生邮箱工具或 Agently CLI，支持一键读信与同进程浏览器登录；核对服务、SIM/尾号和有效期，保留外置配置与授权（v1.4.0） |
@@ -51,6 +52,8 @@ cp -r skills/zhihu-yanghao ~/.workbuddy/skills/
 cp -r skills/imagegen-batch ~/.workbuddy/skills/
 cp -r skills/macos-power-control ~/.workbuddy/skills/
 cp -r skills/mp-article-to-xhs ~/.workbuddy/skills/
+cp -r skills/oss-pages-sync ~/.workbuddy/skills/
+# 静态站镜像需外置配置（域名 / bucket）与凭据，模板见该 skill 的 config.example.json
 # 公众号转小红书依赖 ego-browser 与 xhs-image-note-release，装完跑自检：
 python3 ~/.workbuddy/skills/mp-article-to-xhs/scripts/doctor.py
 # 短信邮件助手用受限安装器保护外置设置，首次使用按 README 完成 onboarding
