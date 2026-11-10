@@ -2,7 +2,7 @@
 
 把 GitHub Pages / Vercel 上已发布的静态站镜像到已备案域名下的阿里云 OSS 子目录，同步后自动验真漏文件；同一个 Skill 还能设置和维护**指定 GitHub repo** 的自动同步。中国大陆、微信内可直接打开，不需要 CDN。
 
-版本：2.0.0 · 许可证：[MIT](LICENSE) · 执行入口：[SKILL.md](SKILL.md)
+版本：2.0.1 · 许可证：[MIT](LICENSE) · 执行入口：[SKILL.md](SKILL.md)
 
 ## 能做什么
 
@@ -46,7 +46,7 @@ python3 ~/.workbuddy/skills/oss-pages-sync/run.py --list
 python3 ~/.workbuddy/skills/oss-pages-sync/run.py --json
 ```
 
-输出示例（省略部分站点）：
+输出示例（节选，省略部分字段与站点）。失败时同样返回一个 JSON 对象（`ok=false` + `error` + `log`），提示性文字走 stderr：
 
 ```json
 {

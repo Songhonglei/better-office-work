@@ -22,7 +22,6 @@ import os
 import pathlib
 import subprocess
 import sys
-import tempfile
 import urllib.error
 import urllib.request
 
@@ -35,12 +34,24 @@ EXAMPLE = HERE / "config.example.json"
 SCRIPTS = HERE / "scripts"
 DEPS = CFG_DIR / ".deps"
 RUNTIME = CFG_DIR / "runtime"
+LOG_PATH = RUNTIME / "last-run.log"
 OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # 强制直连，绕开本机代理
+JSON_MODE = False   # --json 时 stdout 只允许出现一个 JSON 对象，失败也不例外
 
 
 def die(msg):
-    print("错误: " + msg)
+    """失败也要守 JSON 契约：调用方能拿到 error 与日志位置，而不是空 stdout。"""
+    if JSON_MODE:
+        print(json.dumps({"ok": False, "error": msg, "log": str(LOG_PATH)},
+                         ensure_ascii=False, indent=2))
+    else:
+        print("错误: " + msg)
     raise SystemExit(1)
+
+
+def note(msg, quiet=False):
+    """非结果性提示：json 模式写 stderr，保证 stdout 是纯 JSON。"""
+    print("⚠ " + msg, file=sys.stderr if quiet else sys.stdout)
 
 
 def load_config(quiet=False):
@@ -103,7 +114,7 @@ def credentials(cfg):
             if sec and cp.has_option(sec, "accessKeyID") and cp.has_option(sec, "accessKeySecret"):
                 return cp.get(sec, "accessKeyID"), cp.get(sec, "accessKeySecret"), "~/.ossutilconfig"
     except (OSError, configparser.Error) as exc:
-        print("警告: 读取 ~/.ossutilconfig 失败（%s）" % exc)
+        note("读取 ~/.ossutilconfig 失败（%s）" % exc, JSON_MODE)
     return None, None, "未配置"
 
 
@@ -179,13 +190,13 @@ def cmd_sync(args, cfg):
     oss = cfg["oss"]
     domain = clean_domain(args.domain or oss.get("domain"))
     if domain == "your-domain.cn":
-        print("警告: 目标域名还是占位值，请检查 config.oss.domain")
+        note("目标域名还是占位值，请检查 config.oss.domain", args.json)
     bucket = args.bucket or oss.get("bucket") or "YOUR_OSS_BUCKET_NAME"
     endpoint = args.endpoint or oss.get("endpoint") or "https://oss-cn-hangzhou.aliyuncs.com"
     level = int(args.level or (cfg.get("verify") or {}).get("level") or 2)
     depth = args.depth
     if level >= 3 and depth > 0:
-        print("⚠ L3 需要全量抓取才能比对 DOM，已强制 --depth 0")
+        note("L3 需要全量抓取才能比对 DOM，已强制 --depth 0", args.json)
         depth = 0
     apply = args.apply and not args.check_only
     items = selected(cfg, args.site)
@@ -199,7 +210,7 @@ def cmd_sync(args, cfg):
     if not (kid and ksec):
         if apply:
             die("没有 OSS 凭据却要求 --apply；请填 config.oss.access_key_id / access_key_secret")
-        print("⚠ 未找到 OSS 凭据，本次只做离线抓取 + 引用探活，清单比对会被跳过。")
+        note("未找到 OSS 凭据，本次只做离线抓取 + 引用探活，清单比对会被跳过。", args.json)
 
     RUNTIME.mkdir(parents=True, exist_ok=True)
     sites_conf = RUNTIME / "sites.conf"
@@ -227,7 +238,8 @@ def cmd_sync(args, cfg):
         "OSS_MAX_DEPTH": str(depth),
         "SYNC_DRY_RUN": "0" if apply else "1",
         "REQUIRE_UPLOAD": "1" if apply else "0",
-        "GITHUB_OUTPUT": str(pathlib.Path(tempfile.gettempdir()) / "oss-pages-sync-output.txt"),
+        # 按 pid 隔离：并发跑两次不会互相 unlink / 覆盖对方的 changed 输出
+        "GITHUB_OUTPUT": str(RUNTIME / ("github-output-%d.txt" % os.getpid())),
     })
     out_file = pathlib.Path(env["GITHUB_OUTPUT"])
     out_file.unlink(missing_ok=True)
@@ -237,7 +249,7 @@ def cmd_sync(args, cfg):
 
     log = None
     if args.json:
-        log = open(RUNTIME / "last-run.log", "w", encoding="utf-8")
+        log = open(LOG_PATH, "w", encoding="utf-8")
         sink = dict(stdout=log, stderr=subprocess.STDOUT)
     else:
         sink = {}
@@ -255,7 +267,12 @@ def cmd_sync(args, cfg):
                     key, value = line.split("=", 1)
                     outputs[key] = value
         if r1 != 0:
-            if not args.json:
+            if args.json:
+                print(json.dumps({"ok": False,
+                                  "error": "ci_sync.py 退出码 %d，已中止（未继续验真）" % r1,
+                                  "verify": "NOT_RUN", "log": str(LOG_PATH)},
+                                 ensure_ascii=False, indent=2))
+            else:
                 print("\n结果: FAIL（ci_sync.py 退出码 %d），未继续验真。" % r1)
             return 1
         if not args.json:
@@ -287,7 +304,7 @@ def cmd_sync(args, cfg):
         "verify": verify,
         "home_bad": bad,
         "sites": rows,
-        "log": str(RUNTIME / "last-run.log"),
+        "log": str(LOG_PATH),
     }
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -324,6 +341,9 @@ def main():
     ci.add_argument("action", choices=("setup", "update", "status", "run", "enable", "disable"))
     ci.add_argument("--no-wait", action="store_true", help="ci run 只触发不等待结论")
     args = ap.parse_args()
+
+    global JSON_MODE
+    JSON_MODE = bool(args.json)   # 必须在任何 die()/note() 之前设置
 
     if args.install_deps:
         return install_deps()

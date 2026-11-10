@@ -204,38 +204,58 @@ def deploy(cfg, action):
     return 0
 
 
+def show_gh(r, label):
+    """查询失败要说清原因，不能只打印空字符串然后照样 exit 0。"""
+    if r.returncode == 0:
+        print((r.stdout or "").strip() or ("(%s：无记录)" % label))
+        return True
+    err = (r.stderr or "").strip()
+    print("(%s 查询失败：%s)" % (label, (err or "gh 未返回内容")[:200]))
+    return False
+
+
 def status(cfg):
     ci = validate_ci(cfg)
     repo = ci["repo"]
     print("=== CI 状态: %s ===" % repo)
     print("调度: cron '%s'（%s，UTC）" % (ci.get("schedule"), ci.get("timezone")))
+    results = []
     print("-- workflows --")
-    print(gh(["workflow", "list", "-R", repo], check=False).stdout.strip())
+    results.append(show_gh(gh(["workflow", "list", "-R", repo], check=False), "workflows"))
     print("-- 最近 5 次运行 --")
-    print(gh(["run", "list", "-R", repo, "--workflow", ci.get("workflow"),
-              "-L", "5"], check=False).stdout.strip())
+    results.append(show_gh(gh(["run", "list", "-R", repo, "--workflow", ci.get("workflow"),
+                              "-L", "5"], check=False), "runs"))
     print("-- secrets（只列名，不读值）--")
-    print(gh(["secret", "list", "-R", repo], check=False).stdout.strip())
+    results.append(show_gh(gh(["secret", "list", "-R", repo], check=False), "secrets"))
+    if not any(results):
+        die("gh 三项查询全部失败；检查 gh auth login 与 config.ci.repo 权限")
     return 0
+
+
+def latest_run_id(repo, wf):
+    r = gh(["run", "list", "-R", repo, "--workflow", wf, "-L", "1",
+            "--json", "databaseId", "--jq", ".[0].databaseId"], check=False)
+    return r.stdout.strip() if r.returncode == 0 and r.stdout.strip().isdigit() else ""
 
 
 def trigger(cfg, wait):
     ci = validate_ci(cfg)
     repo, wf = ci["repo"], ci.get("workflow")
-    print("触发 %s / %s ..." % (repo, wf))
+    # 先记下触发前的最新 run；run 是异步创建的，直接取 -L 1 会拿回上一次的旧 run，
+    # 进而 watch 到旧 conclusion 并把本次误判为成功（静默失败）。
+    before = latest_run_id(repo, wf)
+    print("触发 %s / %s ...（触发前最新 run: %s）" % (repo, wf, before or "无"))
     gh(["workflow", "run", wf, "-R", repo])
     rid = ""
-    # 异步创建 run，短轮询等待它出现（不是重试失败命令）
-    for _ in range(8):
-        r = gh(["run", "list", "-R", repo, "--workflow", wf, "-L", "1",
-                "--json", "databaseId", "--jq", ".[0].databaseId"], check=False)
-        if r.returncode == 0 and r.stdout.strip().isdigit():
-            rid = r.stdout.strip()
+    for _ in range(15):
+        cur = latest_run_id(repo, wf)
+        if cur and cur != before:
+            rid = cur
             break
         time.sleep(2)
     if not rid:
-        die("已触发但没查到 run id，稍后用 run.py ci status 查看")
-    print("run id: %s" % rid)
+        die("已触发但 30 秒内没查到新的 run id；用 run.py ci status 查看，勿把旧 run 当本次结果")
+    print("run id: %s（新）" % rid)
     watch_ok = True
     if wait:
         r = gh(["run", "watch", rid, "-R", repo, "--exit-status", "--interval", "10"], check=False)

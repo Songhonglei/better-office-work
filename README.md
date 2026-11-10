@@ -20,7 +20,7 @@
 
 | Skill | Description |
 |---|---|
-| [oss-pages-sync](./skills/oss-pages-sync/) | 一份 config.json 收齐 OSS 凭据、域名、GitHub Pages/Vercel 源站与 CI 目标：本地增量镜像到已备案域名下并返回逐站 URL 与结构化结果，L1/L2/L3 验真漏文件；`ci setup/update/status/run` 一键部署并维护指定 repo 的自动同步（v2.0.0） |
+| [oss-pages-sync](./skills/oss-pages-sync/) | 一份 config.json 收齐 OSS 凭据、域名、GitHub Pages/Vercel 源站与 CI 目标：本地增量镜像到已备案域名下并返回逐站 URL 与结构化结果，L1/L2/L3 验真漏文件；`ci setup/update/status/run` 一键部署并维护指定 repo 的自动同步（v2.0.1） |
 | [ai-model-weekly](./skills/ai-model-weekly/) | 全球 AI / LLM 模型发布周报：核实官方日期、规格、访问与权重状态，生成配图内嵌的中文 HTML 单文件；支持区间调整、图片替换、折叠与回退（v1.0.0） |
 | [local-music-creation](./skills/local-music-creation/) | Apple Silicon 本地音乐创作：YuE2 MLX 歌词生成、ABC 制谱/渲染、8bit/BF16 对照、转写与 cover；配置驱动迁移、冻结依赖与结果校验；仅通过 GitHub 提供 |
 | [sms-agent-mail](./skills/sms-agent-mail/) | 手机短信邮件读取：原生邮箱工具或 Agently CLI，支持一键读信与同进程浏览器登录；核对服务、SIM/尾号和有效期，保留外置配置与授权（v1.4.0） |

@@ -110,7 +110,7 @@ def l2_manifest(pairs):
     kid = os.environ.get("OSS_ACCESS_KEY_ID")
     ksec = os.environ.get("OSS_ACCESS_KEY_SECRET")
     if not (kid and ksec):
-        print("=== L2 清单比对 ===\n跳过（未设置 OSS 凭据）")
+        print("=== 对象清单比对（L1/L2 共用）===\n跳过（未设置 OSS 凭据）")
         return 0
     import oss2
     auth = oss2.Auth(kid, ksec)
@@ -130,7 +130,7 @@ def l2_manifest(pairs):
     # ossutil 建的 0 字节目录标记不算脏对象；其余多出来的只告警（不删）
     extra = sorted(k for k in set(remote) - set(local)
                    if not k.endswith("/") and remote[k] > 0)
-    print("=== L2 清单比对 ===")
+    print("=== 对象清单比对（L1/L2 共用）===")
     print("本地 %d / 远端 %d | 漏传 %d | 远端多出 %d" % (len(local), len(remote), len(missing), len(extra)))
     for k in missing[:15]:
         print("   ✗ 漏传 %s" % k)

@@ -1,7 +1,7 @@
 ---
 name: oss-pages-sync
 description: 用一份外置 config.json（OSS AK/SK、目标域名、bucket、GitHub Pages / Vercel 源站清单、验真层级、CI 目标 repo 与调度）驱动静态站镜像：本地抓取改写后增量上传到阿里云 OSS 子目录，返回每站同步后的域名路径与结构化结果；同时能把脚本、站点清单、GitHub Actions 工作流与 Secrets 一键部署并维护到指定 repo，支持 ci status/run/update/enable/disable。This skill should be used when 用户要同步/更新静态站镜像、检查 OSS 是否漏文件、按 L1/L2/L3 层级验真、设置或维护某个 GitHub 仓库的自动同步、改定时频率、加删镜像站点，触发词包括：同步静态站、OSS 镜像、镜像同步、检查漏文件、深度验真、L2 检查、L3 验真、指定域名同步、自动同步、CI 同步、oss-pages-sync。
-version: 2.0.0
+version: 2.0.1
 python_optional: ["oss2", "websocket"]
 metadata: {"openclaw": {"envVars": [{"name": "OSS_ACCESS_KEY_ID", "required": false, "description": "覆盖配置里的 OSS AK（可选）"}, {"name": "OSS_ACCESS_KEY_SECRET", "required": false, "description": "覆盖配置里的 OSS SK（可选）"}]}}
 ---
@@ -53,7 +53,7 @@ chmod 600 ~/.workbuddy/oss-pages-sync/config.json
 | 「指定域名 other.cn」 | `run.py --domain other.cn`（同时确认 bucket/endpoint） |
 | 「有哪些站」 | `run.py --list` |
 
-`--json` 输出含 `ok / mode / domain / level / changed / uploaded / crawl_errors / verify / warnings / sites[]`，每个站点带 `url`（`https://<域名>/<站点名>/`）、`home_status`（真实 GET 状态码）、`ok`。日志写到 `~/.workbuddy/oss-pages-sync/runtime/last-run.log`，不污染 stdout。`crawl_errors=true` 会进 `warnings`（常见瞬时 TLS/DNS 抖动，建议重跑确认）。
+`--json` 输出含 `ok / mode / domain / level / changed / uploaded / crawl_errors / verify / warnings / sites[]`，每个站点带 `url`（`https://<域名>/<站点名>/`）、`home_status`（真实 GET 状态码）、`ok`。**stdout 恒为一个 JSON 对象**：失败时返回 `{"ok": false, "error": "...", "log": "..."}`，不会只剩退出码和空输出；所有提示性文字走 stderr。详细日志只在 `--json` 模式写入 `~/.workbuddy/oss-pages-sync/runtime/last-run.log`，普通模式日志直接打印到终端、不落文件。`crawl_errors=true` 会进 `warnings`（常见瞬时 TLS/DNS 抖动，建议重跑确认）。
 
 其余参数：`--level 1|2|3`、`--site`、`--depth N`（正式同步必须 0）、`--bucket` / `--endpoint`（覆盖配置）、`--check-only`、`--install-deps`。
 
@@ -61,10 +61,10 @@ chmod 600 ~/.workbuddy/oss-pages-sync/config.json
 
 | 命令 | 作用 |
 | --- | --- |
-| `run.py ci setup` | 首次部署：写 2 个 GitHub Secrets（AK/SK 只经 stdin 传），把 3 个脚本 + `sites.conf` + `.gitignore` + 生成的 `README.md` + 2 个 workflow 推到 `ci.repo`，按铁律回查远端 commit 与逐文件内容 |
+| `run.py ci setup` | 首次部署：写 2 个 GitHub Secrets（AK/SK 只经 stdin 传），把 3 个脚本 + `sites.conf` + `.gitignore` + 一份「本目录由 Skill 托管」的说明文件 + 2 个 workflow 推到 `ci.repo`，按铁律回查远端 commit 与逐文件内容 |
 | `run.py ci update` | 配置改动后重渲染并推送；内容一致时**不产生空提交**（幂等） |
 | `run.py ci status` | 查 workflow 列表、最近 5 次运行、secrets 名单、cron |
-| `run.py ci run` | 触发一次 `workflow_dispatch` 并等结论；`--no-wait` 只触发 |
+| `run.py ci run` | 触发一次 `workflow_dispatch`，只认「触发前不存在」的新 run id 并等结论；`--no-wait` 只触发 |
 | `run.py ci disable` / `enable` | 停用 / 恢复定时同步 |
 
 `setup` 生成的 workflow 会把 `OSS_TARGET_DOMAIN / OSS_BUCKET / OSS_ENDPOINT` 作为普通 env 注入（占位版脚本不再内置个人默认值），AK/SK 只走 `${{ secrets.* }}`。日常同步在无变化时会短路跳过 L2；手动触发强制验真。`ci run` 不靠 CLI 退出码判成败，会解析远端 run 的 `conclusion` 与每个步骤的结论。

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — oss-pages-sync v2.0.1（2026-11-10，UGLIC 复核后修复）
+
+- `--json` 失败时 stdout 恒为一个 JSON 对象（`ok=false` + `error` + `log`），不再只剩退出码与空输出；所有提示性文字改走 stderr，`die()` 与 `ci_sync.py` 退出码非 0 两条失败路径都覆盖。
+- `ci run` 记录触发前最新 run id，只认新出现的 run 并等它的结论，避免 watch 到上一次的旧 run 把本次误判为成功（静默失败）。
+- `ci status` 查询失败时打印 `gh` 报错原因，三项全失败才报红；`GITHUB_OUTPUT` 改成按 pid 隔离的 runtime 文件，并发实例不再互相覆盖。
+- 文档与代码对齐：日志只在 `--json` 模式落盘、清单比对标题不再写死 L2、`sync.py` 旧注释更正为 oss2 正式上传路径；消除 `README.md` 反引号被审计器判断链。
+- 检查与实测：完整 UGLIC 5 维复核（U/G/L/I/C）+ `skill-release-audit` 复跑，0 ERROR、5/6 模块 PASS，剩余 3 条 WARN 均为已复核的上层 `try/except` 误报；`--json` 成功/失败均可 `json.loads`，全量 L2 PASS、6 个首页 206、warnings 0。
+
 ### Changed — oss-pages-sync v2.0.0（2026-11-10，单一配置 + CI 全托管）
 
 - 目标从「本机手动入口」升级为**单一控制面**：外置 `config.json` 收齐 OSS AK/SK、域名、bucket、endpoint、GitHub Pages/Vercel 源站清单、验真层级、CI 目标 repo 与 cron；Skill 包 `scripts/` 成为唯一代码真源。本地与 CI 共用同一份脚本、同一份由 config 渲染的 `sites.conf`。

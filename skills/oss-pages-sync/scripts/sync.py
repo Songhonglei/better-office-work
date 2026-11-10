@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-# 把「已发布」的 GitHub Pages 站点抓下来，同步到阿里云 OSS 子目录。
-# 只依赖 Python 标准库 + 本机 ossutil；从线上成品抓取，不关心仓库怎么构建。
+# 把「已发布」的 GitHub Pages / Vercel 站点抓下来，改写链接后落到 staging/。
+# 抓取只依赖 Python 标准库；正式上传走同目录 ci_sync.py（oss2 + ETag 增量），
+# 旧版 sync.py --push 路径才用本机 ossutil。从线上成品抓取，不关心源仓库怎么构建。
 #
 #   python3 sync.py                # 默认 dry-run：抓取到 staging/ 并打印清单，不上传
 #   python3 sync.py --push         # 真正上传到 OSS
