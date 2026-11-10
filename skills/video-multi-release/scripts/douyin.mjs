@@ -371,13 +371,32 @@ async function main() {
     const btn = [...document.querySelectorAll('button')].find(function (b) {
       return (b.innerText || '').trim() === '发布' && b.getBoundingClientRect().width > 0
     })
-    if (!btn) return null
+    if (!btn) return { err: 'no_btn' }
+    btn.scrollIntoView({ block: 'center' })
     const r = btn.getBoundingClientRect()
-    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }
+    const cx = Math.round(r.x + r.width / 2)
+    const cy = Math.round(r.y + r.height / 2)
+    // 坐标必须在视口内：CDP 点击落在视口外会静默失效（或命中别的元素），
+    // 表现是「点了 → 跳到 manage → 作品却没发出」。
+    const inView = cx > 0 && cy > 0 && cx < window.innerWidth && cy < window.innerHeight
+    return { x: cx, y: cy, disabled: !!btn.disabled, inView: inView,
+             tail: (document.body.innerText || '').slice(-160) }
   })()`)
-  if (!box) {
+  if (!box || box.err) {
     await fail('submit', 'E_NO_PUBLISH_BTN', EXIT.SUBMIT, '找不到发布按钮', {},
       ['接管滚到底部确认'])
+  }
+  // 按钮禁用时点击无效，但页面可能仍会跳转，制造「假成功」（2026-11-10 实测）
+  if (box.disabled) {
+    await fail('submit', 'E_PUBLISH_BTN_DISABLED', EXIT.FORM,
+      '发布按钮是禁用的，点了也不会提交', { tail: box.tail },
+      ['看页面尾部有没有未通过的校验（封面 / 必填项 / 原创声明）',
+       '补齐后接管手动点发布'])
+  }
+  if (!box.inView) {
+    await fail('submit', 'E_PUBLISH_BTN_OUT_OF_VIEW', EXIT.SUBMIT,
+      '发布按钮坐标不在视口内，点击会落空', { x: box.x, y: box.y },
+      ['接管确认页面高度是否变了', '重跑一次会重新定位'])
   }
   await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y, button: 'none' })
   await wait(0.2)
@@ -408,12 +427,31 @@ async function main() {
 
   // ── 发布后核验：URL 跳到 manage 页 ≠ 真的发出去 ──────────────
   // 实测会跳到 content/manage?enter_from=publish，但作品数纹丝不动。
-  // 必须回列表确认标题出现（列表有延迟，最多轮询 16 秒）。
+  // 跳转过来的 manage 页还可能带着旧列表缓存，先站内点一次「内容管理」
+  // 重拉（不刷新页面、不掉登录态），否则会把「已经发出」误判成失败。
+  const navBox = await js(`(() => {
+    const a = [...document.querySelectorAll('a,div,span,li')].find(function (e) {
+      return (e.innerText || '').trim() === '内容管理' && e.getBoundingClientRect().width > 0
+    })
+    if (!a) return null
+    const r = a.getBoundingClientRect()
+    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }
+  })()`)
+  if (navBox) {
+    await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x: navBox.x, y: navBox.y, button: 'none' })
+    await wait(0.3)
+    await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: navBox.x, y: navBox.y, button: 'left', clickCount: 1 })
+    await wait(0.12)
+    await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: navBox.x, y: navBox.y, button: 'left', clickCount: 1 })
+    log('已点「内容管理」重拉列表')
+    await wait(4)
+  }
+
   const want = (CFG.title || '').slice(0, 12)
   let confirmed = false
   let count = null
-  for (let i = 0; i < 8; i++) {
-    await wait(2)
+  for (let i = 0; i < 12; i++) {
+    await wait(2.5)
     const r = await js(`(() => {
       const b = document.body.innerText || ''
       const m = b.match(/作品[^0-9]{0,4}[(]([0-9]+)[)]/)
