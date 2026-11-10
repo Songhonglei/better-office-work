@@ -29,9 +29,10 @@ DESC="${DESC:-}"
 TOPICS="${TOPICS:-}"
 COVER="${COVER:-}"
 COVER_HORIZONTAL="${COVER_HORIZONTAL:-}"
-# 封面增强（可选）：
-#   COVER_VERTICAL / COVER_HORIZONTAL —— 竖屏(3:4)与横屏(16:9)封面图路径；
-#     留空时若 VIDEO 同目录存在 card_01_h.png（gen_cards.py --ratio horizontal 产物）则自动用作横屏封面
+# 封面（可选）：
+#   COVER —— 竖版(3:4)封面图路径，三个平台通用（抖音为尽力而为，失败只告警）
+#   COVER_HORIZONTAL —— 横版(16:9)封面；留空时若 assets/card_01_h.png 存在则自动用作横屏封面
+#     （该文件由 gen_cards.py --cover-h 生成，不是 --ratio horizontal）
 # 热点话题（可选）：
 #   HOT_TOPICS=auto —— 拉抖音热榜按 DESC 相关度自动挑（最多 HOT_TOPICS_MAX 个，默认 2）
 #   HOT_TOPICS="词1,词2" —— 手动指定热点话题；留空则不关联热点
@@ -109,12 +110,11 @@ for p in "${PLATFORM_ARRAY[@]}"; do
   esac
 done
 
-# 封面只在部分平台生效，传了不支持的会明确告知，避免以为设置成功
+# 封面三平台通用；抖音是「尽力而为」，失败只告警不阻断（douyin.mjs setDouyinCover）
 if [ -n "$COVER" ]; then
   [ -f "$COVER" ] || usage_fail "E_COVER_NOT_FOUND" "封面图不存在: $COVER" \
-    "COVER 是可选参数，不传就用平台默认首帧" \
-    "只有小红书会用它，视频号和抖音的封面在各自后台设"
-fi
+    "COVER 是可选参数，不传就用平台默认首帧（首帧通常就是 card_01）" \
+    "小红书/视频号/抖音都会尝试设置；抖音失败只告警"
 
 # ── 运行时默认配置（数据目录，升级 skill 不会清掉） ──────────────
 CONFIG="${WB_SKILLS_DATA:-$HOME/space/skills-data}/video-multi-release/config.json"
@@ -127,6 +127,22 @@ read_cfg() {
 }
 [ -n "$TOPICS" ] || TOPICS="$(read_cfg topics)"
 [ -n "$HOT_TOPICS" ] || HOT_TOPICS="$(read_cfg hot_topics)"
+
+# 曲库全部是 CC-BY 4.0（assets/music/README.md），对外发布必须在简介里署名。
+# 这里只提醒、不改用户的 DESC —— 擅自追加文案属于意外副作用。
+CFG_BGM="$(read_cfg bgm)"
+MUSIC_DIR="${WB_SKILLS_DATA:-$HOME/space/skills-data}/video-multi-release/music"
+if [ -n "$CFG_BGM" ]; then
+  case "$CFG_BGM" in
+    "$MUSIC_DIR"/*)
+      case "$DESC" in
+        *"Kevin MacLeod"*) ;;
+        *) echo "  ⚠ BGM 来自 CC-BY 曲库（$(basename "$CFG_BGM")），对外发布需在简介末尾署名："
+           echo "      音乐: <曲名> - Kevin MacLeod (incompetech.com) / CC BY 4.0" ;;
+      esac
+      ;;
+  esac
+fi
 
 # ── 视频体积前置检查 ────────────────────────────────────────────
 # 实测视频号上传 78MB 在 160 秒超时，压到 25MB 后 18 秒完成。
@@ -237,7 +253,15 @@ print(json.dumps({
 " "$platform" "$VIDEO" "$TITLE" "$DESC" "$TOPICS_JSON" "$MODE" "$KEEP_ON_FAIL" "$COVER" "$COVER_H" "$HOT_JSON" "$SPACE_ID" "$RESUME")
 
   MJS="$SCRIPTS_DIR/${platform}.mjs"
-  [ -f "$MJS" ] || { echo "缺少脚本: $MJS"; EXIT_CODE=11; SUMMARY="$SUMMARY\n  $platform  失败(11) 缺脚本"; continue; }
+  if [ ! -f "$MJS" ]; then
+    echo "缺少脚本: $MJS"
+    # 不能直接 continue：那会跳过失败累计，结尾 exit "$FIRST_FAIL_RC" 变成 0，
+    # 汇总里写着「失败(11)」而进程返回成功（实测可复现）。
+    if [ "$FIRST_FAIL_RC" -eq 0 ]; then FIRST_FAIL_RC=11; fi
+    SUMMARY="$SUMMARY\n  $platform  ❌ 失败(11) 缺脚本"
+    if [ "${CONTINUE_ON_FAIL:-0}" != "1" ]; then break; fi
+    continue
+  fi
 
   # 把参数作为常量前置拼进去：ego-browser nodejs 不继承 shell 环境变量
   EGO_OUT="$(mktemp)"

@@ -3,6 +3,23 @@
 All notable changes to this skill are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+### v2.0.3 (2026-11-10)
+
+UGLIC 审计修复。
+
+- **Fix（假成功）**：`card_generator.py` 渲染失败不传导退出码——`-o <目录>` 时没产出任何 PNG，仍打印「输出: /tmp」并 `exit 0`。现在失败与「文件不存在」都 `exit 1`。
+- **Fix**：图文笔记 + `COVER_IMAGE` 会先做文件校验，传个不存在的路径直接 `E_COVER_NOT_FOUND`/exit 10，与文档「图文模式忽略该参数」不符。改为先置空再校验。
+- **Fix**：`--text-x-ratio` 配 `anchor=middle` 时文字可能被画布左右裁掉——居中分支补了 `[w/2, 1-w/2]` 边界约束。
+- **Fix**：`--text-y-ratio` 落进安全区外时静默无效（0.05/0.10/0.15/0.20 出图完全相同）。现在打一行 stderr 告警并给出实际生效值。
+- **Fix**：主题表被一段正文从中间劈开，29 个主题里有 25 行脱离表格、渲染成裸文本。注记已移到表后。
+- **Fix**：参数表缺本轮新增的 4 个参数（`--font-main` / `--text-y-ratio` / `--text-x-ratio` / `--text-anchor`），补行并标注默认值与取值域。
+- **Fix**：主题数 6 处不一致（README 4 处写 28、SKILL 正文「3 种氛围主题」、`card_generator.py` 注释「= 25 种」）。全部对齐 29 / 4。
+- **Fix**：`SEL`/`T` 写「9 个选择器 / 9 个超时（毫秒）」，实际 14 / 8，且 `spaReady` 单位是秒。
+- **Fix**：注意事项 #18 说「点草稿箱面板是校验草稿最直接的方式」，#21 说「该入口点了不展开、别再走这条路」。合并为「一律走 IndexedDB」。
+- **Fix**：`stage` 没在「收尾模式」里定义（只在代码注释里），且不释放 space。补定义 + cleanup 命令。
+- **Fix**：`publish_note.sh` 无条件把 `~/.local/bin` 前置到 PATH，会顶掉调用方自选的 ego-browser（审计时桩脚本就被顶掉、真启动了浏览器）。改为仅在找不到时追加。
+- **Docs**：图文示例标注「插画需自备」；`error-handling.md` 的 step 表补 `precheck`。
+
 ### v2.0.2 (2026-11-10)
 
 **为历史题材口播视频补卡片能力**（由 `video-multi-release` 的 A1/A2 需求驱动；本 skill 的生成器被跨 skill 复用，故一并版本化）。

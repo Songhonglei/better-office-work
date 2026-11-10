@@ -6,8 +6,10 @@ description: >
   然后发布到小红书、视频号、抖音三个渠道。支持 stage（只准备不提交）、draft（存草稿）、
   publish（直接发）三种模式。当用户要做口播视频、给卡片视频配音、把视频发到小红书/视频号/抖音时使用。
   前置依赖：ego-browser 已安装且目标平台已登录；ffmpeg；ffprobe。
-version: 1.3.0
-bins: [ffmpeg, ffprobe, python3, node, npm, npx]
+version: 1.3.1
+slug: video-multi-release
+displayName: 口播视频制作与多平台发布
+bins: [ffmpeg, ffprobe, python3, node, npm, npx, ego-browser]
 metadata:
   openclaw:
     requires:
@@ -20,8 +22,8 @@ metadata:
 
 把「一组卡片 + 一段文案」变成「带配音的竖屏视频」，再发到视频号和抖音。
 
-跟 `xhs-image-note-release` 的关系：那个管小红书图文/视频，这个管视频号 + 抖音。
-两者共用卡片生成器，但发布流程完全不同，不要互相塞。
+跟 `xhs-image-note-release` 的关系：那个管**单条**小红书图文/视频笔记，这个管**多平台同发**（视频号 + 抖音，也含小红书）。
+两者共用卡片生成器，但发布流程完全不同，不要互相塞；只有一条小红书笔记时走那个，别为了发一条笔记拉起三平台编排。
 
 ## 不适用场景
 
@@ -31,8 +33,9 @@ metadata:
 
 ## 硬边界（先看这条）
 
-**抖音不能全自动。** 点「发布」必然触发短信二次验证，是平台级真人校验，脚本绕不过去。
-所以抖音默认 `MODE=stage`：把视频传好、标题描述话题填好，停在那里，最后一步由人完成。
+**抖音大多能全自动，但短信验证是概率性触发。** 2026-11-07 起实测可直接发布成功；
+一旦命中短信二次验证（平台级真人校验，任何自动化都绕不过），会以 exit 75 中止并保留现场。
+所以抖音默认 `MODE=stage`：把视频传好、标题描述话题填好停在那里，先人工确认再发。
 
 **视频号和小红书可以全自动**，前提是已扫码登录。
 
@@ -51,7 +54,7 @@ metadata:
 | 话题机制 | 输入 `#` 选词条 | **输入 `#话题名` 自动标签化** | 输入 `#话题名` + **回车** |
 | 封面 | 3:4 单张 | 3:4（默认首帧够用） | 竖 3:4 + 横 4:3 **双封面**（图层式编辑器，脚本不处理） |
 | 草稿 | `_onSave()` | 「保存草稿」**云端可见** | 「暂存离开」**不可靠，等于没存** |
-| 全自动 | 是 | 是 | **否，卡在短信验证** |
+| 全自动 | 是 | 是 | 多为是；短信验证概率性触发（命中即 exit 75） |
 
 ## 首次配置（onboard）
 
@@ -72,6 +75,27 @@ Key 在阿里云百炼控制台 → API-KEY 管理创建。读取优先级：
 
 ## 快速开始
 
+**唯一输入是 `voice_script.json`**，先有它再谈后面：
+
+```json
+{
+  "segments": [
+    {"id": "s01", "text": "旁白第一段……", "lines": ["坑儒？", "压根没有"]},
+    {"id": "s02", "text": "旁白第二段……", "lines": ["公元前219年", "琅琊遇方士"], "text_pos": "top"}
+  ]
+}
+```
+
+| 键 | 必填 | 作用 |
+|---|---|---|
+| `segments` | 是 | 段落数组；一段 = 一张卡片 = 一个 mp3 |
+| `segments[].id` | 是 | 决定配音文件名（`<id>.mp3`），`build_composition.py` 按它找音频，**必须唯一** |
+| `segments[].text` | 是 | 旁白原文，TTS 读它；字数决定该卡时长 |
+| `segments[].lines` | 否 | 卡片上的大字（建议手写 2 行）；缺省自动从 `text` 拆 |
+| `segments[].text_pos` | 否 | 文字位置覆盖，优先级最高（见「文字位置：三级优先」） |
+| `segments[].font_main` | 否 | 该卡单独换字体 |
+| `segments[].image` | 否 | 单独指定背景图，默认按序号取 `images/img_NN.png` |
+
 ```bash
 SKILL=~/.workbuddy/skills/video-multi-release
 
@@ -87,20 +111,23 @@ python3 $SKILL/scripts/gen_cards.py \
 python3 $SKILL/scripts/tts.py \
   --script voice_script.json \
   --preset female \
-  --out-dir audio/female
+  --out-dir voice
 
-# 2) 生成音频驱动的时间轴
+# 2a) 生成音频驱动的时间轴（分步复跑时才需要）
 python3 $SKILL/scripts/build_composition.py \
   --script voice_script.json \
-  --voice-dir audio/female \
+  --voice-dir voice \
   --pre 0.5 --gap 0.4 --tail 1.2
 
-# 2) 一键重建：时间轴 + 内联 gsap + 渲染 + 混 BGM → out/final.mp4
+# 2b) 一键重建：时间轴 + 内联 gsap + 渲染 + 混 BGM → out/final.mp4
 #    （等于下面 3)(4) 两步；改了卡片或配音后重跑它即可，时间轴自动重算）
 bash $SKILL/scripts/rebuild.sh /path/to/project
 #    可选：BGM=/path/to.mp3 PRE=0.6 GAP=0.45 TAIL=1.5 bash rebuild.sh ...
 
 # 3)（rebuild.sh 的分解视图）无声画面（HyperFrames 项目里）
+#    注意先内联 gsap：build_composition.py 产出的 index.html 引的是外链
+#    assets/vendor/gsap.min.js，只有 rebuild.sh 第 2 步会把它内联进 HTML。
+#    跳过这步直接 render，会命中 SUB_TIMELINE_SCRIPT_FAILURE。
 npx hyperframes@0.9.1 render --output /tmp/silent.mp4
 
 # 4)（rebuild.sh 的分解视图）混音成片
@@ -129,7 +156,7 @@ MODE=stage \
 
 | 参数 | 说明 | 谁在用 |
 |---|---|---|
-| `COVER` | 竖版 3:4 封面图路径 | 视频号（唯一封面位）、抖音（3:4 作品封面） |
+| `COVER` | 竖版 3:4 封面图路径 | 三平台通用；抖音为尽力而为（失败只告警，人工可补） |
 | `COVER_HORIZONTAL` | 横版 16:9 封面图路径 | 留空时自动探测 `VIDEO` 同目录的 `../assets/card_01_h.png` |
 | — | 不传则用平台自动截帧封面 | 全部 |
 
@@ -200,7 +227,7 @@ python3 $SKILL/scripts/hot_topics.py --desc "今天立冬，聊聊立冬吃什�
 总时长 total = 末卡 start + 末卡音频 + tail
 ```
 
-默认 `pre=0.5 gap=0.4 tail=1.2`。想更从容就调大 gap。
+默认 `pre=0.6 gap=0.45 tail=1.5`（与 `rebuild.sh` 一致；`build_composition.py` 单独调用时 gap 默认 0.5，以 rebuild.sh 为准）。想更从容就调大 gap。
 末卡原先也叠了 gap，导致末卡结束比 root 的 `total` 晚 `gap` 秒（GSAP 尾巴越界），
 2026-11-10 审计后修掉，现在末卡结束与 `total` 严格相等。
 
@@ -247,7 +274,7 @@ platform : 视频号
 step     : upload
 code     : E_UPLOAD_TIMEOUT
 exit     : 30
-message  : 视频上传超时（160 秒）
+message  : 视频上传超时（240 秒）
 what_now :
   1. 检查文件是否可正常播放、体积是否过大
   2. 重跑一次；若反复卡在 0%，刷新页面后重新上传
@@ -263,14 +290,16 @@ cleanup  : ego-browser nodejs -e "await completeTaskSpace(12, { keep: false })"
 | 10 | 参数/文件校验 | 改参数重跑，无副作用 |
 | 11 | 依赖缺失（缺 mjs、缺 ffmpeg） | 补依赖 |
 | 12 | 任务空间被占用 / SPACE_ID 无效 | 见下方「失败之后怎么重跑」 |
-| 20 | 未登录 | 让用户扫码，回复 continue 后重跑 |
+| 20 | 未登录 | 小红书/视频号：扫码后重跑。**抖音：必须带 `SPACE_ID=<id>` 或 `RESUME=1` 重跑**，裸跑会 `Page.reload` 杀掉刚扫的码 |
 | 21 | 找不到「上传视频」入口（小红书） | 接管手动点一下 tab，或页面改版需更新选择器 |
 | 30 | 上传失败/超时 | 重跑；卡 0% 就刷新 |
 | 40 | 填表失败 | 接管看页面，可能改版 |
 | 50 | 话题没挂上 | 接管手动补 |
-| 60 | 提交失败 | 看 what_now |
-| 70 | 提交后没跳转 | **不要立即重发**，先去作品列表确认 |
+| 60 | 封面处理失败（已降级，通常不阻断） | 看 what_now；抖音封面失败只告警 |
+| 70 | 提交按钮不可用 / 点不到 | 接管检查按钮是否 `disabled`、是否在视口外，别急着当「平台拒发」 |
 | 75 | 需要人工验证（抖音短信） | 让用户输验证码 |
+| 80 | 发布未确认（点了但列表里没找到） | **不要立即重发**，接管点「内容管理」重拉列表确认 |
+| 90 | 未捕获异常 / 输出丢失 | 看日志尾部；通常是页面改版或 ego 交权 |
 
 失败默认保留浏览器现场（`KEEP_ON_FAIL=1`）。接管用 `claimTaskSpace`，
 **不是** `takeOverTaskSpace`——保留现场后 ownership 变成 user。
@@ -385,7 +414,7 @@ channels.mjs 现在的顺序是：打开 → 等 → **先判 `login` 重定向 
 `fillInput(TITLE_SEL)` → 编辑器 `Input.insertText` 描述 → `caretToEnd` + `#话题` +
 `pressKey('Enter')` 逐个挂话题。注意 `caretToEnd` 是 douyin.mjs 内部函数需内联，
 `fillInput/uploadFile/pressKey` 是 ego 全局可直接用。
-实测发布不再触发短信验证（2026-11-07，此前 stage 模式 assumed 必有）。
+实测发布不再必然触发短信验证（2026-11-07）；但它是概率性的，命中即以 exit 75 交人工（此前 stage 模式 assumed 必有）。
 
 **小红书发布按钮在 closed Shadow DOM 里。** `<xhs-publish-btn>` 内部拿不到，
 常规 `click()` 全部失效，只能 `host._onPublish()` / `host._onSave()`，
@@ -406,7 +435,7 @@ channels.mjs 现在的顺序是：打开 → 等 → **先判 `login` 重定向 
 
 **排障铁律：按钮整行禁用 → 先查校验，别查网络。** 遇到「点了没反应/按钮灰」，
 第一动作是把整页（含滚出视口的区域）的校验红字、必填提示全找出来
-（`sr.textContent` 搜「不支持/仅支持/超出/请输入/错误」），
+（用 `createTreeWalker(sr, NodeFilter.SHOW_TEXT)` 跳过 `SCRIPT`/`STYLE` 搜「不支持/仅支持/超出/请输入/错误」，别用 `sr.textContent`——原因见上方「别用 `sr.textContent` 搜状态词」），
 其次才是查网络请求和状态机。本次在网络层空转了一小时，实际是表单校验不过。
 
 **ego 排障必须用脚本同款空间名。** `claimTaskSpace(N)` 之后要
@@ -455,6 +484,10 @@ scripts/
 references/
 └── platform-specs.md      平台规格细节与完整踩坑记录
 ```
+
+**什么时候读 `references/platform-specs.md`（369 行）**：改选择器、新增平台、排查 DOM 结构时读；
+日常发布**不要读**。注意该文件截至 2026-11-02，其中的上传完成判据、视频号成功标志、
+抖音封面结论**已被 11-09/11-10 的修复推翻**，冲突时一律以本文件为准。
 
 ## 依赖
 
@@ -581,141 +614,27 @@ CANVAS_BG=#0a0806 CANVAS_STOPS='#0b0806,#0a0806,#100c08,#080604' \
 | BGM | 比成片短时自动 `-stream_loop -1`（`Frost Waltz` 135.5s 曾让 158s 片尾静音） |
 | 配置 | 默认值在数据目录 `config.json`：`account` / `tag` / `topics` / `hot_topics` / `bgm` / `canvas_*` |
 
-### 新增踩坑（2026-11-09 实测）
+## 全检铁律：视觉质量不能抽样
 
-**抖音「编辑页就绪」≠「上传完成」，跳到管理页 ≠ 发布成功。**
-78MB 原件时编辑页 24 秒就出来，页面仍显示「已上传 15MB/23MB」；
-此时点发布会跳到 `content/manage?enter_from=publish`，看着像成功，
-**作品数纹丝不动**。同一文件压到 25MB 后 18 秒传完才真发出去。
-判定发布成功一律以「作品列表里出现标题」为准。
+卡片生成后**必须全检所有张**，不能抽查。`gen_cards.py` 会自动调 `cards_contact_sheet.py`
+产出 `<out-dir>/_check/group_*.png`（每组 6 张）与 `all.png`；`--no-proof` 可关但不建议。
+重点看「白字有没有压住人物头部 / 面部」。
 
-**视频号上传 78MB 必然超时。** 160 秒死线，同文件小红书 83 秒能过。
-压到 25MB（crf 24 / maxrate 2600k）后 18.6 秒完成，抽帧看画质无差。
-结论：视频号先压再传，别反复重试。
+- **抽样翻车史**：18 张只抽 6 张，得出「5/6 没问题」，而漏掉的第 01 张（钩子卡）正好压在秦始皇额头上。
+- **算法盲区**：`find_safe_area.py` 在全幅暗调图上最优/次优只差 0.1 分，等于没有信号，只是险胜。
+  它会输出 `confidence`，判为 `low` 的必须人工复核并用段级 `text_pos` 固化。
+- **根治在生图**：`config.json` 的 `image_prompt_presets.history_dark` 是硬约束
+  （主体放下三分之一、上方 40% 纯暗留白、不出现面部五官），下次生图直接拼用。
 
-**`SPACE_ID` 复用时不能无条件 `Page.reload`。** 抖音 passport 登录态撑不过刷新，
-刷新还会清空已填的标题/描述/话题 —— 用户刚扫完码，一重跑全没了。
+算法三轮迭代与 18 张逐张结论见 [CHANGELOG.md](CHANGELOG.md)。
 
-**抖音手工补话题别用退格。** 编辑器里话题标签是整体一个单元，
-连按退格会连已挂上的标签一起删（实测误删 `#历史真相`）。
-挂不上的宁可留成纯文本，也别去清。
 
-**暗色主题的画布底色必须显式传。** `build_composition.py` 原本写死米白
-`#faf7f2`，近黑卡片外面会套一圈刺眼白框；且 `rebuild.sh` 每次重生成
-`index.html`，手工 patch 会被覆盖。现在走 `--canvas-bg` / `--canvas-stops`。
+## 二次审计：修复清单与已知限制
 
-**TTS 之前先估时长，不要靠压 `rate`。** 实测 `male-narrative` rate=1.12
-约 3.7 字/秒，1036 字 → 245s。`estimate.py` 会直接算出「需砍多少字」；
-`tts.py` 也会在每段标出 >10s / <5s 的节奏不均段落。
+19 项修复的完整清单已移入 [CHANGELOG.md](CHANGELOG.md)；这里只留**仍然影响行为**的边界，
+避免下次把它们当 bug 重复报。
 
----
-
-## 2026-11-10 全检复盘：视觉质量不能抽样
-
-### 教训
-
-18 张卡片做完只抽查 6 张（02/06/10/14/15/18），得出「5/6 完全避开人物头部」，
-对外报成合格。**全检后发现第 01 张（钩子卡，最重要）文字正好压在秦始皇额头/眉眼上** ——
-抽的 6 张恰好漏掉了最糟的一张。另有 02/13/15 压住车驾、宫殿飞檐、长城墙体。
-
-**铁律：卡片生成后必须全检所有张，不能抽样。** `gen_cards.py` 现在生成完会自动调用
-`cards_contact_sheet.py`，产出 `<out-dir>/_check/group_*.png`（每组 6 张，3x2，360px 宽）
-和 `all.png`（全部缩略总览）；`--no-proof` 可关闭，但不建议。
-逐组看完再进渲染，重点看「白字有没有压住人物头部 / 面部」。
-
-### 为什么算法会漏（根因，非调参能解）
-
-打分明细：img_01 全幅暗调，最优窗口 53.5 分、次优 53.6 分，**差 0.1**。
-暗色人脸和暗背景在灰度上几乎不可分，算法其实没有信号，只是险胜选了 top，
-把文字推到额头。06/13/18 这类「主体集中在下半部」的图，top 分数明显最低，反而很准。
-
-三个结构问题（已修）：
-1. 检测窗口 40 行（33% 画高）比实际文字块（约 22%）大一半，
-   窗口里空的部分替有脸的部分「背书」→ 改为 28 行、步长 6。
-2. 评分用整行 90px 全宽，左右暗角会稀释五官边缘信号
-   → 改为只评文字覆盖区（x ∈ 10%~90%），结构梯度权重 6 → 8。
-3. 18 张里 12 张都选 top，全挤在标签（y=130）下方，节奏单调
-   → 对 y_ratio < 0.30 加轻微惩罚。
-
-### 置信度机制（关键）
-
-`find_safe_area.py` 现在输出 `confidence` 与 `gap`（**次优 − 最优**的分数差，恒为正）：
-
-| gap | confidence | 处理 |
-|---|---|---|
-| ≥ 10 | high | 直接用 |
-| 3~10 | medium | 可用，日志标 `[medium]` |
-| < 3 | **low** | 打警告，**必须人工复核并写段级 `text_pos` 固化** |
-
-低置信段落会在 `gen_cards.py` 末尾汇总列出。本项目 5 张 low（s02/s10/s12/s14/s16）
-全部人工确认后写进 `voice_script.json` 的 `text_pos`，加上另外两张人工判断更优的
-（s01 改 bottom 露脸、s09 改 top 避开城墙），共固化 7 张，剩下 11 张交给算法。
-固化后重跑 **0 张 low 告警**，算法也不会再漂移。
-
-⚠️ 滑窗步长 6 / 窗高 28，相邻窗口重叠约 79%，所以 `gap` 的分差系统性偏小：
-本项目 18 张实测分布是 `high 1 / medium 12 / low 5`，`high` 本就少见。
-这不是 bug —— 5 张 `low` 恰好就是人工复核后判定「必须覆盖」的那 5 张，
-判据与人工结论吻合。别照着「≥10 才算有信号」去调阈值，
-要改判据就得把全部卡片重新全检一遍。
-
-### 最根本的解法：生图时就给文字留位置
-
-事后找留白永远受「暗色人物 ≈ 暗背景」限制。源头是提示词只写了
-「画面暗部留白便于叠加文字」，AI 照样把人脸放正中。
-数据目录 `config.json` 的 `image_prompt_presets.history_dark` 已固化硬约束：
-
-> 构图硬约束：主要人物与建筑主体全部置于画面下三分之一；
-> 画面上方 40% 保持大面积纯暗留白，不要出现面部、五官或任何高对比细节；
-> 两行白色大字将叠加在上方留白区。
-
-下次生图直接拼 `style + composition + 场景描述`。这批 18 张图已定，
-源头模板对它们不生效，所以才需要 7 张人工兜底。
-
-### 本次全检结论（最终版 18 张）
-
-| 判定 | 卡片 |
-|---|---|
-| ✅ 完全避开人物头部与主体 | 01、02、04、05、06、08、09、10、11、12、14、16、17、18 |
-| ⚠ 压住非人物主体（无脸，可接受） | 03 船队、07 竹简、13 宫殿飞檐、15 长城山体 |
-| ❌ 压住人物头部 | 无（原 01 已修） |
-
-13 / 15 是插画本身没有大片留白，且不涉及人物，按「不能挡头部 + 尽量放空区」
-的规则可接受；若要求更严，只能重生成这两张配图。
-
----
-
-## 2026-11-10 二次审计：修复清单与已知限制
-
-改动推 GitHub 前做了一轮 GLIC（G/L/I/C）审计 + 两个独立审计员交叉复核 + 实测验证。
-**审计发现里有误报，复核后没盲改**：置信度 gap「机制失效」被真实 18 张分布推翻
-（low 5 张恰是人工确认要覆盖的 5 张）；`config.json` 的 `account`/`tag`/`font_main`
-等键被报「无人读取」，实际 `gen_cards.py` 都在读；`rebuild.sh` 前置检查跳过
-`index.html` 也是刻意的（它是第 1 步生成的产物，不是输入）。
-
-### 已修（都是可复现问题）
-
-| 文件 | 问题 | 修法 |
-|---|---|---|
-| `release.sh` | 转码产物 `final_web.mp4` 存在即复用，换了源视频会**发错片** | 源文件比压缩版新（`-nt`）就重转 |
-| `release.sh` | `CONTINUE_ON_FAIL=1` 时 `EXIT_CODE` 被下一平台重置，整体 exit 0 掩盖失败 | 循环外累计 `FIRST_FAIL_RC` |
-| `release.sh` | 没有 OK 块 / `stage` / `draft` 都被汇总成「✅ 成功」；`P_STATE` 只认纯小写 | 成功必须有 `=== OK (...) ===`，正则放宽 `[^)]*`，兜底改「已确认」 |
-| `release.sh` | `publish` + `SPACE_ID` 会拿旧现场重新上传提交，造成双发 | publish 强制忽略 `SPACE_ID` |
-| `release.sh` / `rebuild.sh` | `read_cfg` 的 `2>/dev/null` 配合 `set -e` 让配置损坏时无诊断退出 | 保留报错并打告警，回退空值 |
-| `douyin.mjs` | 上传完成判据要同时出现「重新上传」、且 busy 只认「已上传：」，与真实文案「已上传 15MB/23MB」不符 → **永久等不到信号** | 改为「上传中/正在上传/取消上传/xx% 全消失且至少 4 轮」，补上传失败立即报错；与 11-09 实测成功脚本口径一致 |
-| `douyin.mjs` | `MODE=draft` 没有分支，会一路走到真的点「发布」 | draft 退化为 stage |
-| `douyin.mjs` | `RESUME` 时话题循环仍会往描述末尾重复插文本 | 只核对已挂标签，不重插 |
-| `xhs.mjs` / `channels.mjs` | 注释写「话题缺失不影响发布」，实现却 `fail(EXIT.TOPIC)` 整条终止 | 降级为 `topics_missing` 告警并继续发布 |
-| `channels.mjs` | 30 秒没跳转就「兜底再点一次发表」，第一下其实已提交时会双发 | 去掉重复提交，等待延到 45 秒，交给列表核验 |
-| `build_composition.py` | 末卡也叠 gap，结束时间比 `total` 晚 `gap` 秒（实测 158.984 vs 158.484） | 末卡 `visible = audio + tail` |
-| `cards_contact_sheet.py` | 补黑帧写死 4:3，卡片非 1080×1440 时 hstack 报错、全检表缺失 | 按首张卡片真实宽高算尺寸，缩略图统一 pad |
-| `gen_cards.py` | 全检联系表失败被静默降级、仍以成功收尾（违反「全检铁律」） | 打印 stderr 并非 0 退出 |
-| `rebuild.sh` | 只有 `set -e`，`| tail` 吞掉渲染/混音失败码，拿旧 `final.mp4` 误报成功 | 加 `set -o pipefail`；**不要**在混音前 `rm -f` 旧成片（会触发沙箱批量删除保护、把混音整个拦下），靠 ffmpeg `-y` 覆盖即可 |
-| `tts.py` | 时长预估 `except Exception` 全吞，`--target` 静默失效 | 传了 `--target` 且预估失败时直接退出 |
-| `find_safe_area.py` | `axis=both` 的左右评分用整行（含暗角），与 vertical 口径不一致 | 统一用 `X0..X1` 文字覆盖区 |
-| `card_generator.py` | 极端 `x_ratio` + `anchor` 文字溢出画面；安全区上下界交叉时整段跳过 clamp | 起点 clamp 进可行域；交叉时至少从安全区顶部起排 |
-| 两侧文档 | xhs 主题数 28→29、照片主题 3→4；版本 `2.0.1→2.0.2` / `1.2.1→1.3.0`；gap 符号写反；时间轴公式 | 已同步，CHANGELOG 补 v2.0.2 条目 |
-
-### 已知限制（有意未改，别当 bug 重复报）
+### 已知限制（有意未改）
 
 - **`--text-x-ratio` / `--text-anchor` 在自动留白检测开启时被覆盖**：自动检测只给 `y`，
   默认 `axis=vertical` 恒返回 `x=0.5 / middle`。要改水平位置先加 `--no-auto-safe-area`。
@@ -731,44 +650,13 @@ CANVAS_BG=#0a0806 CANVAS_STOPS='#0b0806,#0a0806,#100c08,#080604' \
 
 ---
 
-## 2026-11-10 实战：三平台删旧发新
+## 替换已发布的视频（删旧发新）
 
-改版后要替换已发布的视频时，删除没有现成脚本，下面是实测可用的定位方式。
+改版后要替换线上视频时：先在三个平台后台删旧稿，再用 `release.sh` 重发。
+完整入口与实测坑见 [references/replace-published-video.md](references/replace-published-video.md)，
+**只在真的要替换线上内容时加载**。
 
-### 删除入口
-
-| 平台 | 管理页 | 删除入口 | 确认弹窗 |
-|---|---|---|---|
-| 小红书 | `creator.xiaohongshu.com/new/note-manager` | hover 卡片后 `.note-card__action-btn--del` | `.d-modal`，文本「删除后将无法恢复，确定要删除《标题》」 |
-| 视频号 | `channels.weixin.qq.com/platform/post/list` | **内容在 `wujie-app` 的 shadowRoot 里**；hover 行后 `.opr-item-wrap` 内的 `.opr-item`（图标，不是下方 `.action-content` 文字） | `.weui-desktop-dialog`，文本「删除视频」 |
-| 抖音 | `creator.douyin.com/creator-micro/content/manage` | 目标行内「删除作品」 | `.semi-modal`，文本「确定要移除此作品吗」 |
-
-四条实测经验：
-
-1. **视频号点文字没反应，必须点图标**。`.action-content`（文字「删除」）点击不触发，事件绑在 `.opr-item`（32×32 图标）上，且要先 hover 到行上让操作区出现。
-2. **视频号页面里有多个 `.weui-desktop-dialog`**，第一个可能是「切换视频号」。必须按「删除视频」文本挑，否则会点错或判定成「弹窗不在」。
-3. **抖音用 DOM `el.click()` 比坐标点击可靠**。坐标点击后弹窗消失但作品没删（连 toast 都没有）；`el.click()` 立即出现「删除成功」。
-4. **抖音作品数标签有缓存**。删除后标题已从列表消失、toast 报「删除成功」，顶部「作品 (N)」仍是旧数字。**核验以列表里标题消失为准，别信数字。**
-
-删完要逐平台核验：小红书看总数是否 -1 + toast，视频号看 `.post-feed-item` 行数 -1，抖音看标题从列表消失。
-
-### 抖音发布失败的两个真实原因
-
-用 `release.sh` 发抖音报 `E_PUBLISH_UNCONFIRMED`（URL 已跳到 `manage?enter_from=publish`，
-但作品数没变、列表没新作品），接管后确认**确实没发出去**；改手动流程重发一次即成功
-（作品数 4→5）。对比两次差异，补了两处防护：
-
-- **发布按钮可点性没校验**：旧实现只 `window.scrollTo(bottom)` 后取坐标，不 `scrollIntoView`、
-  不检查 `disabled`、不校验坐标是否在视口内。按钮被浮层挡住或在视口外时，CDP 点击会静默失效
-  （或命中别的元素），页面照样跳转，制造「假成功」。现在先 `scrollIntoView({block:'center'})`，
-  再检查 `disabled` 与视口范围，分别报 `E_PUBLISH_BTN_DISABLED` / `E_PUBLISH_BTN_OUT_OF_VIEW`。
-- **核验前没有重拉列表**：跳转过来的 manage 页可能带旧缓存，直接读 `body.innerText` 会读不到
-  刚发的作品。现在先站内点一次「内容管理」重拉（不刷新、不掉登录态），轮询从 16 秒延到 30 秒。
-
-另一个观察：**话题挂不上时会在描述末尾留纯文本**（如 ` #课本没教的事`）。它不阻断发布，
-但发布前值得看一眼描述区是否干净。本项目第二次发布去掉该话题后一次成功。
-
-### 视频号的 `verified: manual` 是正常现象
-
-视频号作品列表**显示描述首句，不是短标题**。`channels.mjs` 拿短标题前 10 字去查自然查不到。
-看到 `verified : manual` 不代表没发出，去列表按发布时间确认即可（本项目 01:59 那条就是新版）。
+三条最容易翻车的：视频号删除要点**图标** `.opr-item`，且弹窗要按「删除视频」文本挑
+（页面里有多个同类 `.weui-desktop-dialog`，第一个可能是「切换视频号」）；抖音删除用 DOM
+`el.click()`，作品数标签有缓存、以标题消失为准；`release.sh` 报 `E_PUBLISH_UNCONFIRMED`
+时必须接管、点「内容管理」重拉列表再决定是否重发。

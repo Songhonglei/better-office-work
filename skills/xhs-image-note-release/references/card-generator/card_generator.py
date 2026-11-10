@@ -34,6 +34,7 @@ CHROME_CANDIDATES = [
 # ─── 主题配置 ──────────────────────────────────────────────────────
 # 每个主题：背景、文字、点缀、装饰元素、字体
 # 来源：text-to-elegant-image 仓库 18 种（其中小红书拆 A/B 两模式）+ 4 种年轻人风格 + warm 原创 + warm_illust 图文 = 25 种
+# 现为 29 种：在上述基础上增加 4 种照片背景氛围主题（cinematic / film / journal / history）
 THEMES = {
     # ── 原创风格 ──────────────────────────────────────────────
     "warm": {
@@ -759,6 +760,10 @@ def build_svg(theme, width, height, content, options):
         x_ratio = min(x_ratio, max(0.10, 0.98 - width_ratio))
     elif anchor == "end":
         x_ratio = max(x_ratio, min(0.90, width_ratio + 0.02))
+    else:
+        # 居中排版时文字块向左右各延伸 width_ratio/2，x 太靠边会被画布裁掉
+        half = width_ratio / 2
+        x_ratio = min(max(x_ratio, half + 0.01), 0.99 - half)
 
     font_size = compute_font_size(lines, width, height, t, text_width_ratio=width_ratio)
     letter_spacing = t.get("letter_spacing", 4)
@@ -771,7 +776,14 @@ def build_svg(theme, width, height, content, options):
     bottom_pad = 260 if subtitle else 185
     max_start = height - bottom_pad - text_block_h
     if max_start >= min_start:
-        start_y = max(min_start, min(max_start, start_y))
+        clamped = max(min_start, min(max_start, start_y))
+        # y_ratio 太小/太大时会被安全区吃掉，表现为「换了参数但图没变」。
+        # 打一行提示，别让它静默失效。
+        if abs(clamped - start_y) > 1:
+            effective = (clamped + text_block_h / 2 + 20) / height
+            print("[warn] --text-y-ratio %.2f 超出安全区，实际生效 %.2f"
+                  % (y_ratio, effective), file=sys.stderr)
+        start_y = clamped
     else:
         # 两界交叉（矮画布 / 多行大字）时原来整段跳过 clamp，文字会压到页脚。
         # 空间不够也至少从安全区顶部起排，别让下半块盖住页码。
@@ -1447,8 +1459,15 @@ def main():
         Path(out_path).parent.mkdir(parents=True, exist_ok=True)
 
         html = build_html(args.theme, args.width, args.height, content, options, illustration=illustration)
-        if render_png(html, out_path, args.width, args.height):
-            print(f"输出: {out_path}")
+        if not render_png(html, out_path, args.width, args.height):
+            print(f"[ERROR] 渲染失败，未生成图片: {out_path}", file=sys.stderr)
+            sys.exit(1)
+        # render_png 成功也可能没有落盘（--output 传了目录、路径不可写等），
+        # 不校验的话上层会拿一个不存在的路径继续发小红书。
+        if not os.path.isfile(out_path):
+            print(f"[ERROR] 渲染返回成功但文件不存在: {out_path}", file=sys.stderr)
+            sys.exit(1)
+        print(f"输出: {out_path}")
 
 
 if __name__ == "__main__":

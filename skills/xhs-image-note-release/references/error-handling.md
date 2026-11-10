@@ -72,6 +72,7 @@ ego-browser nodejs -e "await completeTaskSpace(12, { keep: false })"
 
 | step | 做什么 |
 |---|---|
+| `precheck` | 参数/依赖校验（未启动浏览器，无副作用） |
 | `open-publish-page` | 建 task space + 打开创作平台 + 等 SPA 渲染 |
 | `auth` | 登录态检查（URL + 侧栏入口双重判据） |
 | `ensure-upload-tab` | 切到视频/图文上传页 |

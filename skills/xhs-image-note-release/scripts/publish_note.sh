@@ -22,7 +22,9 @@
 
 set -euo pipefail
 
-export PATH="$HOME/.local/bin:$PATH"
+# 只在 PATH 里确实找不到 ego-browser 时才追加，否则会静默顶掉调用方自选的版本，
+# 让后面的 command -v 检查失去意义（审计时用桩替换 ego-browser 就被这行顶掉过）。
+command -v ego-browser >/dev/null 2>&1 || export PATH="$HOME/.local/bin:$PATH"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MJS="$SCRIPT_DIR/publish_note.mjs"
@@ -138,14 +140,17 @@ elif media_type == 'image' and len(files) > 18:
     err = 'E_MEDIA_IMAGE_COUNT: 图文笔记最多 18 张，当前 %d 张' % len(files)
 
 cover = (cover_image or '').strip()
+# 图文笔记没有封面概念，先置空再校验。原来的顺序把文件检查放在前面，
+# 「图文 + 一个不存在的 COVER_IMAGE」会直接 E_COVER_NOT_FOUND / exit 10，
+# 而文档承诺的是「图文模式忽略该参数」。
+if cover and media_type != 'video':
+    cover = ''
 if cover and not err:
     if not os.path.isfile(cover):
         err = 'E_COVER_NOT_FOUND: COVER_IMAGE 文件不存在 -> %s' % cover
     elif os.path.splitext(cover)[1].lower() not in IMAGE_EXT:
         err = 'E_COVER_NOT_IMAGE: COVER_IMAGE 必须是图片（%s），当前 %s' % (
             '/'.join(sorted(IMAGE_EXT)), cover)
-    elif media_type != 'video':
-        cover = ''   # 图文没有封面概念，静默忽略
 
 params = {
     "runId": run_id,
