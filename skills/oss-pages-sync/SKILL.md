@@ -1,117 +1,118 @@
 ---
 name: oss-pages-sync
-description: 把 GitHub Pages / Vercel 等已发布的静态站镜像到阿里云 OSS 已备案域名下的子目录，并在同步后自动验真是否漏文件。支持指定目标域名（--domain）、验真层级（--level 1/2/3）、只处理某站（--site）、只检查不写入（默认）或真正同步（--apply）。This skill should be used when 用户要同步/更新静态站镜像、检查 OSS 镜像是否漏文件、验证 evansong.cn 各站点是否正常、按 L2/L3 深度验真、新增或调整镜像站点，触发词包括：同步静态站、OSS 镜像、镜像同步、检查漏文件、深度验真、L2 检查、L3 验真、指定域名同步、evansong.cn 同步、oss-pages-sync。
-version: 1.0.0
+description: 用一份外置 config.json（OSS AK/SK、目标域名、bucket、GitHub Pages / Vercel 源站清单、验真层级、CI 目标 repo 与调度）驱动静态站镜像：本地抓取改写后增量上传到阿里云 OSS 子目录，返回每站同步后的域名路径与结构化结果；同时能把脚本、站点清单、GitHub Actions 工作流与 Secrets 一键部署并维护到指定 repo，支持 ci status/run/update/enable/disable。This skill should be used when 用户要同步/更新静态站镜像、检查 OSS 是否漏文件、按 L1/L2/L3 层级验真、设置或维护某个 GitHub 仓库的自动同步、改定时频率、加删镜像站点，触发词包括：同步静态站、OSS 镜像、镜像同步、检查漏文件、深度验真、L2 检查、L3 验真、指定域名同步、自动同步、CI 同步、oss-pages-sync。
+version: 2.0.0
 python_optional: ["oss2", "websocket"]
-metadata: {"openclaw": {"envVars": [{"name": "OSS_ACCESS_KEY_ID", "required": false, "description": "OSS AK；不设则读 ~/.ossutilconfig"}, {"name": "OSS_ACCESS_KEY_SECRET", "required": false, "description": "OSS SK；不设则读 ~/.ossutilconfig"}]}}
+metadata: {"openclaw": {"envVars": [{"name": "OSS_ACCESS_KEY_ID", "required": false, "description": "覆盖配置里的 OSS AK（可选）"}, {"name": "OSS_ACCESS_KEY_SECRET", "required": false, "description": "覆盖配置里的 OSS SK（可选）"}]}}
 ---
 
-# OSS Pages Sync — 静态站镜像检查与同步
+# OSS Pages Sync — 单一配置驱动的静态站镜像 + CI 托管
 
 ## 概述
 
-源站（GitHub Pages / Vercel 成品）→ 抓取并改写链接 → 阿里云 OSS 子目录（`https://<域名>/<站点名>/`）→ 自动验真。中国大陆 / 微信内可直接打开，无需 CDN。
+**两份真源**：`~/.workbuddy/oss-pages-sync/config.json` 是唯一配置真源（凭据、域名、bucket、源站清单、CI 目标与调度全在里面）；本 Skill 的 `scripts/` 是唯一代码真源。本地运行和 GitHub Actions 用的是同一份脚本、同一份由 config 渲染出的 `sites.conf`，不再有第二套需要手工维护的脚本。
 
-- **代码真源**：private 仓库 `Songhonglei/evan-file-syn` 的 `oss-pages-sync` 目录。完整使用说明、排障表与已知限制见 https://github.com/Songhonglei/evan-file-syn/blob/main/oss-pages-sync/README.md （需仓库权限）；自动任务在仓库的 GitHub Actions 工作流 `sync-to-oss`，每 3 天北京时间 05:00 跑，源站无变化时自动短路。
-- **本 Skill 定位**：对话里的手动入口。统一入口是 `run.py`，支持指定域名与验真层级，执行「检查 + 同步」。
-- **脚本来源优先级**：`OSS_PAGES_SYNC_HOME` 环境变量 → 外部配置的 `script_home`（本机仓库真源）→ `scripts/` 内置兜底副本。仓库在就用仓库版，避免两份代码分叉；换机器时内置副本仍可独立跑。显式指定的路径无效会直接报错，不会静默降级到旧副本。改了仓库脚本，内置副本要重新复制一次。公开仓库 better-office-work 里的归档副本已把默认 bucket / 域名占位化，从真源复制脚本时请保留这一差异，别把个人默认值带回公开仓库。
+- **本地**：`run.py` 读 config → 生成运行时 `sites.conf` → 抓 GitHub Pages / Vercel 成品 → 改写绝对链接 → 按 ETag 增量上传 OSS → 验真 → 返回每站镜像 URL 与结构化结果。
+- **CI**：`run.py ci setup|update` 把脚本、`sites.conf`、两个 workflow 渲染后推到 `config.ci.repo`，并用 `gh secret set` 写入 AK/SK；`ci status/run/enable/disable` 负责日常维护。改配置后跑一次 `ci update` 即可，不用进仓库改 YAML。
+- 中国大陆 / 微信内可直接打开，无需 CDN。默认**只检查不写入**，`--apply` 才真同步。
 
-## 意图 → 命令（照此执行）
+## 配置（唯一真源）
+
+复制模板到 skill 目录之外（重装 Skill 不会丢），然后按下面填写：
+
+```bash
+mkdir -p ~/.workbuddy/oss-pages-sync
+cp ~/.workbuddy/skills/oss-pages-sync/config.example.json ~/.workbuddy/oss-pages-sync/config.json
+chmod 600 ~/.workbuddy/oss-pages-sync/config.json
+```
+
+**这个文件含 AK/SK，必须 `chmod 600`，绝不入库、不进命令回显**；`run.py` 发现权限过宽会自动收紧。
+
+| 字段 | 说明 |
+| --- | --- |
+| `oss.access_key_id` / `access_key_secret` | OSS 凭据。也可留占位，回落环境变量或 `~/.ossutilconfig`；但 `ci setup` 要求这里填真值才能写 GitHub Secrets |
+| `oss.domain` / `bucket` / `endpoint` | 目标已备案域名（只填 host）、OSS bucket 裸名、endpoint |
+| `sites[]` | 数组：`name`（OSS 子目录名）、`url`（已发布的源站根 URL，GitHub Pages / Vercel 均可）、可选 `root: true`（源站用 `/v2/…` 这类根绝对路径时需改写前缀） |
+| `verify.level` | 默认验真层级 1/2/3 |
+| `ci.repo` / `branch` / `dir` | 自动同步部署到哪个仓库、分支、脚本目录 |
+| `ci.workflow` / `deep_workflow` | 日常同步与深度验真工作流文件名 |
+| `ci.schedule` / `timezone` | cron 表达式（GitHub Actions 按 UTC）与时区标注 |
+| `ci.secrets` | 两个 Secret 的名称，通常用默认值即可 |
+
+加站、删站、改域名、改频率**都只改这一个文件**，然后本地跑一次体检、CI 侧跑一次 `ci update`。包内 `scripts/sites.conf` 只是示例与旧版兜底，不是真源。
+
+## 本地同步
 
 | 用户说 | 执行 |
 | --- | --- |
-| 「检查一下镜像 / 有没有漏文件」 | `python3 ~/.workbuddy/skills/oss-pages-sync/run.py --level 2` |
-| 「同步 / 更新 / 上线这些站」 | 同上 **加 `--apply`** |
-| 「按 L3 深度验一下」 | `run.py --level 3`（要同步就再加 `--apply`） |
-| 「只看看 html-golive」 | `run.py --site html-golive --level 2` |
-| 「指定域名 other.cn，L3 深度同步」 | `run.py --domain other.cn --level 3 --apply` |
+| 「检查一下镜像 / 有没有漏文件」 | `python3 run.py` |
+| 「同步 / 更新 / 上线这些站」 | `python3 run.py --apply` |
+| 「返回域名路径和结果」 | `python3 run.py --json`（纯 JSON，可直接解析） |
+| 「按 L3 深度验一下」 | `run.py --level 3`（要同步再加 `--apply`） |
+| 「只看看 html-golive」 | `run.py --site html-golive` |
+| 「指定域名 other.cn」 | `run.py --domain other.cn`（同时确认 bucket/endpoint） |
 | 「有哪些站」 | `run.py --list` |
 
-默认**不写入 OSS**（dry-run：抓取 + ETag 比对 + 验真）。只有用户明确说同步/更新/上线，才加 `--apply`。这是部署类动作，不需要二次确认，但**必须按下方验真铁律查远端真实状态**。
+`--json` 输出含 `ok / mode / domain / level / changed / uploaded / crawl_errors / verify / warnings / sites[]`，每个站点带 `url`（`https://<域名>/<站点名>/`）、`home_status`（真实 GET 状态码）、`ok`。日志写到 `~/.workbuddy/oss-pages-sync/runtime/last-run.log`，不污染 stdout。`crawl_errors=true` 会进 `warnings`（常见瞬时 TLS/DNS 抖动，建议重跑确认）。
 
-## 参数
+其余参数：`--level 1|2|3`、`--site`、`--depth N`（正式同步必须 0）、`--bucket` / `--endpoint`（覆盖配置）、`--check-only`、`--install-deps`。
 
-| 参数 | 默认 | 说明 |
-| --- | --- | --- |
-| `--domain` | 外部配置的 `domain`（模板为 `your-domain.cn`） | 目标镜像域名；只取 host 部分，协议和路径会被剥掉，保证与链接改写目标一致。影响绝对链接改写与验真目标；换域名若 bucket 不同，同时给 `--bucket` / `--endpoint` |
-| `--level 1\|2\|3` | 外部配置的 `level`（2） | 验真深度层级，见下表 |
-| `--site` | 空 = 全部 6 站 | 只处理 `sites.conf` 里某个站 |
-| `--depth N` | `0`（不限） | 抓取 BFS 层数；仅快速体检用，**正式同步必须 0**。`--level 3` 会自动强制为 0 |
-| `--apply` | 关 | 真正写 OSS；不加则 `SYNC_DRY_RUN=1` |
-| `--check-only` | — | 显式声明只检查（与默认相同，用于语义清晰） |
-| `--bucket` / `--endpoint` | 外部配置 | 覆盖 OSS 目标 |
-| `--list` / `--install-deps` | — | 列站点 / 首次装依赖 |
+## CI 托管（指定 repo 的自动同步）
+
+| 命令 | 作用 |
+| --- | --- |
+| `run.py ci setup` | 首次部署：写 2 个 GitHub Secrets（AK/SK 只经 stdin 传），把 3 个脚本 + `sites.conf` + `.gitignore` + 生成的 `README.md` + 2 个 workflow 推到 `ci.repo`，按铁律回查远端 commit 与逐文件内容 |
+| `run.py ci update` | 配置改动后重渲染并推送；内容一致时**不产生空提交**（幂等） |
+| `run.py ci status` | 查 workflow 列表、最近 5 次运行、secrets 名单、cron |
+| `run.py ci run` | 触发一次 `workflow_dispatch` 并等结论；`--no-wait` 只触发 |
+| `run.py ci disable` / `enable` | 停用 / 恢复定时同步 |
+
+`setup` 生成的 workflow 会把 `OSS_TARGET_DOMAIN / OSS_BUCKET / OSS_ENDPOINT` 作为普通 env 注入（占位版脚本不再内置个人默认值），AK/SK 只走 `${{ secrets.* }}`。日常同步在无变化时会短路跳过 L2；手动触发强制验真。`ci run` 不靠 CLI 退出码判成败，会解析远端 run 的 `conclusion` 与每个步骤的结论。
+
+需要 `gh` CLI 且已登录、对目标 repo 有写权限与 Secrets 权限。commit 署名固定 `Evan Song <Songhonglei@users.noreply.github.com>`。
 
 ## 依赖
 
-- **Python 3.8+**；必需包 `oss2`（上传 / 清单比对）、`websocket-client`（仅 L3，import 名是 `websocket`）。frontmatter 的 `python_optional` 按 import 名声明，pip 包名是 `websocket-client`。
-- 首次安装：`python3 ~/.workbuddy/skills/oss-pages-sync/run.py --install-deps`，装到 skill **目录之外**的 `~/.workbuddy/oss-pages-sync/.deps`，不污染系统 Python，重装 skill 也不会丢。等价手工命令：`python3 -m pip install oss2 websocket-client`。
-- L3 另需本机 Chrome / Chromium；旧路径 `sync.py --push` 另需 `ossutil`；查 CI 结论需 `gh`。
-- 依赖装在外部目录，所以复跑 `skill-release-audit` 时要带 `PYTHONPATH=~/.workbuddy/oss-pages-sync/.deps`，否则审计器看不到，会误报「包未安装」。
+- **Python 3.8+**；`oss2`（上传 / 清单比对）、`websocket-client`（仅 L3，import 名为 `websocket`）。frontmatter 的 `python_optional` 用 import 名，pip 包名是 `websocket-client`。
+- 首次安装：`python3 run.py --install-deps`，装到配置目录的 `.deps/`（不污染系统 Python、重装 Skill 不丢）。等价命令：`python3 -m pip install oss2 websocket-client`。
+- **CI 管理另需 `gh` CLI**（已登录）；L3 另需本机 Chrome / Chromium。
+- 复跑 `skill-release-audit` 时带 `PYTHONPATH=~/.workbuddy/oss-pages-sync/.deps`，否则审计器看不到私有依赖会误报未安装。
 
-## 环境变量
+## 环境变量（都是可选覆盖）
 
-| 变量 | 默认 | 说明 |
-| --- | --- | --- |
-| `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET` | 无 | 上传与清单比对凭据；不设则读 `~/.ossutilconfig`，再缺则只做离线 dry-run |
-| `OSS_PAGES_SYNC_CONFIG` | `~/.workbuddy/oss-pages-sync/config.json` | 覆盖外部配置文件路径 |
-| `OSS_PAGES_SYNC_HOME` | 无 | 覆盖脚本目录（须含 sync.py / ci_sync.py） |
-| `OSS_TARGET_DOMAIN` | 由 `--domain` 注入 | 链接改写与验真的目标域名 |
-| `OSS_BUCKET` / `OSS_ENDPOINT` | 外部配置 | OSS bucket 裸名 / endpoint |
-| `ONLY_SITE` | 由 `--site` 注入 | 只处理某站 |
-| `OSS_MAX_DEPTH` | 由 `--depth` 注入 | 抓取层数，0 = 不限 |
-| `SYNC_DRY_RUN` / `REQUIRE_UPLOAD` | 由 `--apply` 注入 | 只比对不写入 / 缺凭据必须报红 |
-| `GITHUB_OUTPUT` | CI 注入 | 同步脚本写 `changed` / `crawl_errors` / `uploaded` / `source_404` 供 workflow 判断 |
+| 变量 | 说明 |
+| --- | --- |
+| `OSS_PAGES_SYNC_CONFIG` | 覆盖配置文件路径 |
+| `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET` | 覆盖配置里的凭据 |
+| `OSS_SITES_CONF` / `OSS_STAGING_DIR` | 由 `run.py` 自动注入，指向配置目录下的 `runtime/`；手工直接跑脚本时才需要自己设 |
+| `OSS_TARGET_DOMAIN` / `OSS_BUCKET` / `OSS_ENDPOINT` / `ONLY_SITE` / `OSS_MAX_DEPTH` | 由 `run.py` 或 workflow 注入 |
+| `SYNC_DRY_RUN` / `REQUIRE_UPLOAD` / `GITHUB_OUTPUT` | 控制只比对 / 缺凭据报红 / CI 输出 `changed` 等 |
 
-这些变量都有默认值或仅在 GitHub Actions 中注入，不是必填项，因此不在 frontmatter 声明为 required。完整字段说明见仓库使用说明。
-
-## 验真层级（`--level`）
+## 验真层级
 
 | 层级 | 内容 | 用途 |
 | --- | --- | --- |
-| L1 | 本地 staging ↔ OSS 对象清单比对，查漏传 | 秒级体检 |
-| L2 | L1 + 页面引用逐条 GET 探活（约 130 条） | **默认**，有变化的同步后必跑 |
-| L3 | L2 + 无头 Chrome 录同源 404、点交互入口、源站/镜像 DOM 对比 | 源站大改 / 加新站 / 怀疑漏文件，约 3-4 分钟 |
+| L1 | staging ↔ OSS 对象清单比对，查漏传 | 秒级体检 |
+| L2 | L1 + 页面引用逐条 GET 探活（约 130 条） | **默认**，同步后必跑 |
+| L3 | L2 + 无头 Chrome 录同源 404、点交互入口、源站/镜像 DOM 对比 | 源站大改 / 加新站，约 3-4 分钟 |
 
-爬取式镜像**无法保证不漏文件**，策略是让漏自动报红。L3 需要 `websocket-client` 与本机 Chrome。CI 侧对应手动工作流 `verify-oss-deep`（仅 workflow_dispatch，无 schedule）。
+爬取式镜像无法保证不漏文件，策略是让漏自动报红。CI 侧另有 `ci.deep_workflow`（仅手动触发）等价 L3。
 
-## 首次使用（一次性）
+## 验真铁律（每次 `--apply` 或 `ci setup` 后）
 
-1. 把配置模板复制到 skill 目录**之外**（重装 skill 不会丢）：
-   ```
-   mkdir -p ~/.workbuddy/oss-pages-sync
-   cp ~/.workbuddy/skills/oss-pages-sync/config.example.json ~/.workbuddy/oss-pages-sync/config.json
-   ```
-   再把 `script_home` 改成本机 `evan-file-syn` 仓库内 `oss-pages-sync` 目录的绝对路径，留空则用内置副本。
-2. `python3 ~/.workbuddy/skills/oss-pages-sync/run.py --install-deps` 装依赖。
-3. 凭据二选一：环境变量 `OSS_ACCESS_KEY_ID` / `OSS_ACCESS_KEY_SECRET`，或本机 `~/.ossutilconfig` 的 `[default]` 段。Skill 只读不写，**任何密钥都不得写进配置文件、SKILL.md、命令回显或仓库**。
-4. `run.py --list` 看站点清单，`run.py --level 2` 跑一次 dry-run 体检。
-
-## 验真铁律（每次 `--apply` 后必做）
-
-`run.py` 已内置：跑 `ci_sync.py` → `verify.py --level N` → **逐个 GET 线上站点首页打印真实状态码**（强制直连，绕开本机代理），最后汇总 `changed / uploaded / crawl_errors / L%s / 首页异常数`。退出码 0 不代表内容到了远端，必须看这段结论：
-
-- `L2/L3: PASS` 且 `线上首页异常: 0` 才算成功；异常时按输出里报红的 URL 去 `curl` 复核，别只看 `changed`。
-- `changed=false` 表示源站与 OSS 完全一致、上传 0 个，属正常，不是失败。
-- 定时任务侧用 `gh run list -R Songhonglei/evan-file-syn --workflow=sync-to-oss.yml -L 5` 与 `gh run view <id> --log` 查真实 run 结论。
-- 代码改动 push 后要 `git ls-remote origin refs/heads/main` + `git fetch` 后 `git show origin/main:<path>` 比对远端文件，不能只信本地和 CLI 退出码。
-
-## 加站 / 改域名 / 改脚本
-
-加站在仓库 `oss-pages-sync` 目录的 `sites.conf` 加一行 `目录名|源站根 URL|[root=1]`（`root=1` 用于 `/v2/…` 这类根绝对路径站点），先 `run.py --site <新站> --level 2` 体检，再 `--apply`，最后 `--level 3` 深度验。删站只停止同步，远端旧对象不自动删。改域名用 `--domain`，或改外部配置的 `domain` 作为默认值。完整字段说明、排障表、已知限制见 https://github.com/Songhonglei/evan-file-syn/blob/main/oss-pages-sync/README.md 。
-包内 `scripts/` 是兜底副本：改了仓库真源的 `sync.py` / `ci_sync.py` / `verify.py` / `sites.conf` 后，重新复制这 4 个文件到 `scripts/`，否则换机器时会跑旧代码。
+`run.py` 已内置：跑 `ci_sync.py` → `verify.py --level N` → **逐个 GET 线上站点首页打印真实状态码**（强制直连绕开本机代理）→ 汇总。`ci setup` 还会 `git fetch` 后比对远端 commit 与全部部署文件的字节内容；`ci run` 回查远端 run 结论与步骤。退出码 0 不代表内容真的到了远端，必须看这些业务级输出：`verify=PASS`、`home_bad=0`、run `conclusion=success`。`changed=false`（源站没变、上传 0 个）是正常结果，不是失败。
 
 ## 排障速查
 
 | 现象 | 处理 |
 | --- | --- |
-| 缺少依赖提示 | `run.py --install-deps`；复跑审计要带 `PYTHONPATH=~/.workbuddy/oss-pages-sync/.deps` |
-| 配置丢失 / 脚本来源不符 | 检查 `~/.workbuddy/oss-pages-sync/config.json` 的 `script_home`；显式设置了无效路径会直接报错 |
-| `/<站名>/` 回落主页或 404 | OSS 需 `main.html` + `SupportSubDir=true`；脚本会自动补 `main.html` |
+| 缺依赖 / 找不到 gh | `run.py --install-deps`；CI 命令需 `gh auth login` |
+| 配置是旧格式 | 按 `config.example.json` 升级为 `oss / sites / verify / ci` 四段 |
+| `crawl_errors=true` 但 L2 PASS | 多为瞬时 TLS/DNS 抖动；`curl` 复测目标 URL 后重跑一次 |
+| `/<站名>/` 回落主页或 404 | OSS 需 `main.html` + `SupportSubDir=true`；脚本自动补 `main.html` |
 | 页面骨架在、交互失效 | 动态 `import()` 的 `.mjs` 漏抓 / MIME 不对，L3 能抓到同源 404 |
 | L2 报 404 但源站也 404 | 加进 `verify.py` 的 `ALLOW_404`，不要直接放行 |
-| 一直 `changed=true` | 源站每次构建字节在变（时间戳/hash），正常增量上传 |
-| 定时任务不跑了 | private 仓库 60 天无仓库活动会停用 schedule，手动跑一次或 push 一次 |
-| 凭据缺失却 `--apply` | 直接拒绝执行；先配环境变量或 `~/.ossutilconfig` |
+| 定时任务不跑了 | 私有仓库 60 天无活动会停用 schedule；`ci status` 看状态，push 一次或 `ci enable` |
+| `ci setup` 报缺凭据 | 填 `oss.access_key_id` / `access_key_secret`，或改用环境变量 + 手工写 Secrets |
 
-已知限制：登录态 / 运行时拼接 URL / SSR / API / RSC 无法静态镜像；Next.js 站未纳入；脚本只增不删；`liquidtime` 的 `/power` 是动态 API，静态 OSS 必然 404（已豁免）。
+已知限制：登录态 / 运行时拼接 URL / SSR / API / RSC 无法静态镜像；Next.js 站未纳入；脚本只增不删（删站后远端旧对象不自动清理）；`cron` 的 `*/3` 在每月 1 号会重置节奏，要严格等间隔需改外部调度；`liquidtime` 的 `/power` 是动态 API，静态 OSS 必然 404（已豁免）。

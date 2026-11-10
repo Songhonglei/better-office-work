@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — oss-pages-sync v2.0.0（2026-11-10，单一配置 + CI 全托管）
+
+- 目标从「本机手动入口」升级为**单一控制面**：外置 `config.json` 收齐 OSS AK/SK、域名、bucket、endpoint、GitHub Pages/Vercel 源站清单、验真层级、CI 目标 repo 与 cron；Skill 包 `scripts/` 成为唯一代码真源。本地与 CI 共用同一份脚本、同一份由 config 渲染的 `sites.conf`。
+- 本地 `run.py` 新增 `--json`：输出纯 JSON（逐站镜像 URL、真实首页状态码、`changed/uploaded/crawl_errors/verify/warnings`），日志另写 `runtime/last-run.log`，不污染 stdout；`--apply` 才写入 OSS。
+- 新增 `ci_manage.py` 与 `ci/*.tpl`，`run.py ci setup/update/status/run/enable/disable` 可把 3 个脚本 + `sites.conf` + 2 个 workflow 部署到**指定 repo**，`gh secret set` 经 stdin 写入 AK/SK；内容一致时不产生空提交。
+- 验真加强：`ci setup` 回查远端 commit 与 7 个文件字节内容；`ci run` 解析远端 run 的 `conclusion` 与步骤结论，不以 CLI 退出码判成败；workflow 注入 `OSS_TARGET_DOMAIN/OSS_BUCKET/OSS_ENDPOINT`，脚本默认值全面占位化。
+- 安全：含 AK/SK 的配置放 skill 目录外、`chmod 600`、绝不入库；自动收紧过宽权限；模板与包内文件零密钥、零个人 bucket 名。
+- 实测：本地 dry-run 与 `--apply` 均 `exit 0`，132 文件 / 130 引用全 200 / 6 个线上首页 206；`ci setup` 部署 8 个文件后远端逐字节一致，CI run `42818794334` success（`Sync to OSS` + `Verify (L2)` 均 success，业务日志连真实 bucket、占位值 0 命中）；`ci update` 幂等无空提交。
+- 本次仅同步 GitHub，不发布到 skillhub.cn 或 clawhub.ai。
+
 ### Added — oss-pages-sync v1.0.0（2026-11-10）
 
 - 新增静态站镜像 Skill：抓取 GitHub Pages / Vercel 成品 → 改写绝对链接 → 按 MD5/ETag 增量上传到阿里云 OSS 子目录 → 自动验真漏文件；对应已备案域名的国内直连场景，不依赖 CDN。

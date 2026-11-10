@@ -14,8 +14,11 @@ import urllib.parse
 import urllib.request
 
 HERE = pathlib.Path(__file__).parent
-CONF = HERE / "sites.conf"
-STAGING = HERE / "staging"
+# 站点清单与抓取产物都可由外部注入：Skill 用 config.json 生成 sites.conf 到
+# ~/.workbuddy/oss-pages-sync/runtime/，CI 部署时则写在仓库的脚本目录里。
+# 两者共用同一份脚本，运行时数据不落进 skill 包。
+CONF = pathlib.Path(os.environ.get("OSS_SITES_CONF") or (HERE / "sites.conf"))
+STAGING = pathlib.Path(os.environ.get("OSS_STAGING_DIR") or (HERE / "staging"))
 
 
 def _clean_domain(value):
@@ -188,6 +191,8 @@ def load_sites():
     第三列 root=1 表示该站用根绝对路径，需要补 /<repo> 前缀。"""
     sites = []
     ROOT_PATH_SITES.clear()
+    if not CONF.is_file():
+        raise RuntimeError("找不到站点清单 %s；请用 run.py 从 config.json 生成，或设置 OSS_SITES_CONF" % CONF)
     for line in CONF.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if line and not line.startswith("#"):

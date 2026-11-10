@@ -1,7 +1,28 @@
 {
-  "script_home": "",
-  "domain": "your-domain.cn",
-  "bucket": "YOUR_OSS_BUCKET_NAME",
-  "endpoint": "https://oss-cn-hangzhou.aliyuncs.com",
-  "level": 2
+  "_note": "唯一配置真源。复制到 ~/.workbuddy/oss-pages-sync/config.json 后填写；含 AK/SK 的文件必须 chmod 600 且绝不入库。",
+  "oss": {
+    "access_key_id": "YOUR_ACCESS_KEY_ID",
+    "access_key_secret": "YOUR_ACCESS_KEY_SECRET",
+    "bucket": "YOUR_OSS_BUCKET_NAME",
+    "endpoint": "https://oss-cn-hangzhou.aliyuncs.com",
+    "domain": "your-domain.cn"
+  },
+  "sites": [
+    {"name": "site-one", "url": "https://OWNER.github.io/site-one/"},
+    {"name": "site-two", "url": "https://site-two.vercel.app/", "root": true}
+  ],
+  "verify": {"level": 2},
+  "ci": {
+    "repo": "OWNER/REPO",
+    "branch": "main",
+    "dir": "oss-pages-sync",
+    "workflow": "sync-to-oss.yml",
+    "deep_workflow": "verify-oss-deep.yml",
+    "schedule": "0 21 */3 * *",
+    "timezone": "Asia/Shanghai",
+    "secrets": {
+      "access_key_id": "OSS_ACCESS_KEY_ID",
+      "access_key_secret": "OSS_ACCESS_KEY_SECRET"
+    }
+  }
 }
