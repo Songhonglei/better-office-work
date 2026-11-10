@@ -14,6 +14,23 @@
 > v1.3.2 之前有几节「发布链路行为清单」「新增踩坑」「全检复盘细节」曾被放在本文件里，
 > 属于误置——它们是执行指引，不是版本记录。已迁出，见上面的表。
 
+## v1.3.4 (2026-11-10)
+
+**UGLIC 深度检查（文档断言 vs 代码实际行为逐条比对）。**
+
+- **Fix（注释与代码矛盾，WARN）**：`channels.mjs:344` 的注释斩钉截铁写「别拿 video.duration 当判据……
+  唯一可靠信号是发表按钮未禁用」，但 377 行代码实际是 `st.btnReady && st.dur > 0`（双条件）。
+  维护者若照注释删掉 `dur > 0` 会引入回归。注释改为「别把 duration 当**唯一**判据；
+  主判据是按钮未禁用，实际用 btnReady && dur>0 双条件」，与代码和 SKILL.md 口径一致。
+- **Fix（I 维度，错误码漏列）**：小红书路径 `xhs.mjs:344` 产生 `E_BODY_NOT_APPLIED`，
+  但 `references/error-handling.md` 只列了视频号用的 `E_DESC_NOT_APPLIED`，按 code 名查小红书这个会落空。
+  已补入小红书分表并注明「语义同视频号的 E_DESC_NOT_APPLIED」。
+- **Verify（0 问题）**：抖音上传判据（`!busy && i>=3`，即 ≥4 轮）、视频号短标题 16 字截断、
+  末卡 `visible = audio + tail`、`CANVAS_*` 传参、`gen_cards.py` 生成器路径解析、SEL/T 计数、
+  estimate.py 参数（`--script` 非位置参数）——逐条与代码比对，均一致。
+- **Verify**：33 个 SKILL.md 出现的 CLI 参数全部真实存在于对应脚本；`E_*` 码代码 44 / 文档 48，
+  差集经核实均为 regex 截断噪声（`KEEP_ON_FAIL`→`E_ON_FAIL` 之类），非真漏。
+
 ## v1.3.3 (2026-11-10)
 
 **文档归位**：把误置在 CHANGELOG 里的执行内容迁到 references，并修掉一处断链。

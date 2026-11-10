@@ -11,7 +11,7 @@ description: >
   前置依赖：ego-browser (ego-lite) 运行中，小红书已登录。
 slug: xhs-image-note-release
 displayName: 小红书笔记发布（图文/视频）
-version: 2.0.6
+version: 2.0.7
 bins: [node, python3]
 ---
 
@@ -121,7 +121,10 @@ bins: [node, python3]
 
 **视频**：只有一个 input、无 multiple，`uploadFile()` 一次传完，然后**等转码**。判据是「重新上传」文案 **和** 标题输入框**同时**出现（最多轮询约 2 分钟）。页面上 `video` 元素可能有 4 个（预览/封面候选），**别用数量判定**。
 
-**封面（仅视频，`COVER_IMAGE` 可选）**：留空就完全不碰，走小红书默认第一帧。传了图就走四步替换链路，其中「编辑封面」按钮平时 `boundingRect` 是 `0×0`，**必须先用 CDP 派发真实 `mouseMoved` 悬停**才渲染出来——`el.click()`、`scrollIntoView`、`getByText` 全部无效。任一环节失败**只告警不中止**（`⚠ 自定义封面没设上（CODE），保留平台自动封面，继续发布`）——封面是锦上添花，不该拖垮整条发布。
+**封面（仅视频，`COVER_IMAGE` 可选）**：留空就完全不碰，走小红书默认第一帧。传了图就走四步替换链路，其中「编辑封面」按钮平时 `boundingRect` 是 `0×0`，**必须先用 CDP 派发真实 `mouseMoved` 悬停**才渲染出来——`el.click()`、`scrollIntoView`、`getByText` 全部无效。任一环节失败脚本 `exit 60` 中止，不会带错误封面继续发。
+
+> ⚠️ 别和 `video-multi-release` 搞混：那个 skill 的 `scripts/xhs.mjs` 封面失败是**只告警继续发**，
+> 本 skill 的 `scripts/publish_note.mjs` 是 **exit 60 中止**。两套脚本各自独立，行为不同是有意的。
 
 ### 4. 填标题
 

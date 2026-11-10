@@ -8,21 +8,19 @@
 
 ```
 === FAILED ===
-step     : fill-title
-code     : E_TITLE_NOT_APPLIED
-exit     : 40
-message  : 标题写入后回读不一致
-detail   : {"expected":"标题A","actual":"标题"}
+step     : set-cover
+code     : E_COVER_NOT_APPLIED
+exit     : 60
+message  : 自定义封面设置失败
+detail   : {"before":"url(\"https://...","after":"url(\"https://..."}
 what_now :
-  1. 标题可能含非法字符被平台清洗（单引号、emoji、超 20 字）
-  2. 接管看输入框实际内容，改好后可直接在该页手动点发布
+  1. 走完了流程但封面缩略图 URL 没变，说明图片没真正替换
+  2. 重跑一次通常就能成功；若连续失败，先不传 COVER_IMAGE 用默认第一帧
 space    : 12（页面已保留）
 takeover : ego-browser nodejs -e "await claimTaskSpace(12)"
 cleanup  : ego-browser nodejs -e "await completeTaskSpace(12, { keep: false })"
 === END FAILED ===
 ```
-
-> **封面失败不会走到这里。** `E_COVER_*` 只打告警、不返回失败块，见下方退出码表 60 行。
 
 成功时输出 `=== OK ===` 块，字段相同（step / exit / 可选 space）。
 
@@ -38,7 +36,7 @@ cleanup  : ego-browser nodejs -e "await completeTaskSpace(12, { keep: false })"
 | 30 | 素材上传 | `E_VIDEO_UPLOAD_TIMEOUT` `E_IMAGE_UPLOAD_TIMEOUT` | 检查文件/网络，直接重跑 |
 | 40 | 填表 | `E_TITLE_INPUT_MISSING` `E_TITLE_NOT_APPLIED` `E_EDITOR_MISSING` `E_BODY_NOT_APPLIED` | 页面可能改版，接管看现场 |
 | 50 | 话题 | `E_TOPIC_NOT_ATTACHED` | 话题缺失不影响发布，可接管手动补 |
-| 60 | 封面 | `E_COVER_AREA_MISSING` `E_COVER_ENTRY_HIDDEN` `E_COVER_EDITOR_NOT_OPEN` `E_COVER_NOT_APPLIED` `E_COVER_DONE_BTN_MISSING` | **当前不会出现**：封面失败已降级为告警并继续发布。若真看到 60，是旧脚本或别处复用 |
+| 60 | 封面 | `E_COVER_AREA_MISSING` `E_COVER_ENTRY_HIDDEN` `E_COVER_EDITOR_NOT_OPEN` `E_COVER_NOT_APPLIED` `E_COVER_DONE_BTN_MISSING` `E_COVER_MODAL_STUCK` | 按 `what_now` 分级处理；连续失败就不传 `COVER_IMAGE` 用默认第一帧 |
 | 70 | 提交 | `E_SUBMIT_DISABLED` `E_SAVE_DISABLED` `E_NO_PUBLISH_HOST` `E_NO_ONPUBLISH` `E_NO_ONSAVE` | 必填项没填完，接管看哪个字段标红 |
 | 80 | 提交后校验 | `E_PUBLISH_UNCONFIRMED` `E_DRAFT_COUNT_UNREADABLE` | **不要立即重发**，先去笔记管理确认 |
 | 90 | 内部异常 | `E_UNEXPECTED` | 脚本 bug，把 code + detail 给 agent |

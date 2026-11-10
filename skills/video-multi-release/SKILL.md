@@ -6,7 +6,7 @@ description: >
   然后发布到小红书、视频号、抖音三个渠道。支持 stage（只准备不提交）、draft（存草稿）、
   publish（直接发）三种模式。当用户要做口播视频、给卡片视频配音、把视频发到小红书/视频号/抖音时使用。
   前置依赖：ego-browser 已安装且目标平台已登录；ffmpeg；ffprobe。
-version: 1.3.3
+version: 1.3.4
 slug: video-multi-release
 displayName: 口播视频制作与多平台发布
 bins: [ffmpeg, ffprobe, python3, node, npm, npx, ego-browser]

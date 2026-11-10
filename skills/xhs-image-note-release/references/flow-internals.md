@@ -218,11 +218,12 @@ await wait(4)
 - **PK 封面引导气泡会遮挡**：`.pk-cover-guide-tooltip` / `.pk-cover-guide` 首屏可能自动弹出，先 `display: none` 掉（纯视觉层，不影响提交数据）。
 - **不要用「智能推荐封面/一键生成」**：那是 AI 生成封面，会消耗 HeyGen 类额度且不可控，本技能只做「上传自己的图」。
 - **校验信号**：完成回到编辑页后，页面出现「✅ 封面效果评估通过，未发现封面质量问题」即封面已被服务端接受。
-- **失败只告警、不中止**：任一环节失败（悬停没出按钮 / 编辑器没开 / 找不到完成按钮 / 弹窗没关 / URL 没变）
-  `setVideoCover()` 返回 `{ok:false, code:'E_COVER_*'}`，上层打一行
-  `⚠ 自定义封面没设上（CODE），保留平台自动封面，继续发布`，然后照常提交。
-  封面是锦上添花，不该为一格封面放弃整条发布——小红书改版后「编辑封面」入口时常消失
-  （`E_COVER_ENTRY_HIDDEN`），一失败就 `exit 60` 太脆。早期版本确实是中止，已废弃。
+- **失败即中止**：任一环节失败（悬停没出按钮 / 编辑器没开 / 找不到完成按钮 / 弹窗没关 / URL 没变）
+  `setVideoCover()` 返回 `{ok:false, code:'E_COVER_*'}`，上层 `publish_note.mjs:586`
+  调 `fail('set-cover', r.code, EXIT.COVER, ...)`，**`exit 60` 中止整条流程**，
+  不会带着错误封面继续发。`what_now` 按 code 给分级提示（见 `error-handling.md`）。
+  > 注意：`video-multi-release` 的 `scripts/xhs.mjs` 对同一件事是「只告警、继续发布」——
+  > 那是另一个脚本的有意设计，别把两者行为互相套用。
 
 ## 4. 填写标题
 

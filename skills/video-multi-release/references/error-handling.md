@@ -56,6 +56,7 @@
 | code | exit | step | 成因 / 处置 |
 |---|---|---|---|
 | `E_VIDEO_TAB_NOT_FOUND` | 21 | ensure-tab | 上传视频 tab 没出现，或 file input 一直不来。接管手动点 tab |
+| `E_BODY_NOT_APPLIED` | 40 | fill-desc | 正文写入失败（小红书用的 code，语义同视频号的 `E_DESC_NOT_APPLIED`）。重跑；反复失败接管手填 |
 | `E_NO_PUBLISH_HOST` | 70 | submit | 找不到 `<xhs-publish-btn>` 宿主元素。页面改版时更新 `SEL.publishHost` |
 | `E_NO_ONSAVE` / `E_NO_ONPUBLISH` | 70 | submit | 宿主要在，但内部方法没了。组件升级导致，需重新探方法名 |
 | `E_SAVE_DISABLED` / `E_SUBMIT_DISABLED` | 70 | submit | 组件自身置了 `save-disabled` / `submit-disabled`。**先查表单校验红字**，别查网络 |

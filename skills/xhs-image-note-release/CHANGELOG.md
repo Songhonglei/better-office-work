@@ -15,22 +15,27 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
 > 下面历史条目里有不少 root cause 推演（如 v1.6.2 为什么批量 `setFileInputFiles` 不行）。
 > 那些是当时的排查记录，**对应的现行操作口径都已写入上面三个 reference**；两者冲突时以 reference 为准。
 
+### v2.0.7 (2026-11-10)
+
+**撤销 v2.0.6 的封面误改 + UGLIC 深度检查修复。**
+
+- **Revert（严重）**：v2.0.6 把封面失败描述从「exit 60 中止」改成「只告警继续发」是**错的**。
+  我当时误拿了 `video-multi-release/scripts/xhs.mjs`（那个确实只告警）的行为，套到本 skill 的
+  `scripts/publish_note.mjs` 上——两个是**不同脚本**。本 skill 的 `publish_note.mjs:586`
+  实际是 `fail('set-cover', r.code, EXIT.COVER, ...)`，即 **exit 60 中止**。三处文档已全部改回，
+  并在 SKILL.md §3 加「别和 video 的 xhs.mjs 混淆」的显式区分，防止再次误改。
+- **教训**：改「文档 vs 代码」一致性前，必须先确认对照的是**同一个脚本**。跨 skill 复用同名逻辑时尤其危险。
+
 ### v2.0.6 (2026-11-10)
 
-**文档与代码对齐**：修掉一处「封面失败就中止」的过期描述，涉及 3 个文件。
+**CHANGELOG 归位 + 表格竖线转义。**
 
-- **Fix（文档与代码矛盾）**：SKILL.md §3、`references/flow-internals.md` §3c、`references/error-handling.md`
-  都还写着「任一环节失败脚本 `exit 60` 中止，不会带错误封面继续发」。
-  实际 `xhs.mjs:378` 起早已降级：`setVideoCover()` 返回 `{ok:false}` 后只打一行
-  `⚠ 自定义封面没设上（CODE），保留平台自动封面，继续发布`，然后照常提交。
-  三处统一改为「只告警不中止」，并说明为什么降级（小红书改版后「编辑封面」入口时常消失，
-  为一格封面放弃整条发布不值得）。
-- **Fix（示例失真）**：`error-handling.md` 的 FAILED 块示例用的是 `E_COVER_NOT_APPLIED / exit 60`——
-  这个码现在根本不会产生失败块。换成真实会失败的 `E_TITLE_NOT_APPLIED / exit 40`。
-- **Fix（退出码表）**：60 行标注「当前不会出现；真看到就是旧脚本」，避免排障时往死路找。
-- **Chore**：确认 CHANGELOG 无「唯一执行源」——逐条比对过 `uploadFile` / `setFileInputFiles` /
-  `note-manage` / `published=true` / `E_DRAFT_COUNT_UNREADABLE` 等 9 个关键字，
-  均在 SKILL.md 或 references 有对应，本文件仅作历史记录。
+- **Chore**：CHANGELOG 顶部加「本文件只记版本变更」声明与 reference 指引表；确认本文件无「唯一执行源」
+  （逐条比对 `uploadFile` / `setFileInputFiles` / `note-manage` / `published=true` / `E_DRAFT_COUNT_UNREADABLE`
+  等 9 个关键字，均在 SKILL.md 或 references 有对应）。
+- **Fix（渲染错列）**：`references/flow-internals.md` 表格里 `` `!m || m.offsetParent === null` `` 的
+  竖线未转义，把表格列劈开。改为 `\|\|`。
+- **Reverted in v2.0.7**：本轮曾把封面失败描述改为「只告警继续发」，**该修改有误，已在 v2.0.7 撤销**。
 
 ### v2.0.5 (2026-11-10)
 
