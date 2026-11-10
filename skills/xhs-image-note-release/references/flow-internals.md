@@ -212,13 +212,17 @@ await wait(4)
 | 编辑入口 | `.cover-edit-entry` | 文本「编辑封面」，**平时 0×0，必须 hover 才出现** |
 | 封面图片 input | `input[type="file"][accept*="image/png"]` | 编辑器打开后才存在（页面此时有 2 个 file input） |
 | 完成按钮 | `span.circle-button-content`（文本「完成」） | 在视口外，需 `scrollIntoView` |
-| 编辑器容器 | `.d-modal.cover-modal` | 关闭判定：`!m || m.offsetParent === null` |
+| 编辑器容器 | `.d-modal.cover-modal` | 关闭判定：`!m \|\| m.offsetParent === null` |
 
 - **不要点「上传」按钮**：编辑器打开后 image input 已在 DOM 里，直接 `uploadFile` 就能替换封面，省一步。
 - **PK 封面引导气泡会遮挡**：`.pk-cover-guide-tooltip` / `.pk-cover-guide` 首屏可能自动弹出，先 `display: none` 掉（纯视觉层，不影响提交数据）。
 - **不要用「智能推荐封面/一键生成」**：那是 AI 生成封面，会消耗 HeyGen 类额度且不可控，本技能只做「上传自己的图」。
 - **校验信号**：完成回到编辑页后，页面出现「✅ 封面效果评估通过，未发现封面质量问题」即封面已被服务端接受。
-- **失败即中止**：任一环节失败（悬停没出按钮 / 编辑器没开 / 找不到完成按钮 / 弹窗没关）脚本会 `exit 60`（`EXIT.COVER`），不会带着错误封面继续发。
+- **失败只告警、不中止**：任一环节失败（悬停没出按钮 / 编辑器没开 / 找不到完成按钮 / 弹窗没关 / URL 没变）
+  `setVideoCover()` 返回 `{ok:false, code:'E_COVER_*'}`，上层打一行
+  `⚠ 自定义封面没设上（CODE），保留平台自动封面，继续发布`，然后照常提交。
+  封面是锦上添花，不该为一格封面放弃整条发布——小红书改版后「编辑封面」入口时常消失
+  （`E_COVER_ENTRY_HIDDEN`），一失败就 `exit 60` 太脆。早期版本确实是中止，已废弃。
 
 ## 4. 填写标题
 

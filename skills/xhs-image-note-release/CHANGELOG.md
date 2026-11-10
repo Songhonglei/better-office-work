@@ -3,6 +3,35 @@
 All notable changes to this skill are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+本文件只记**版本变更本身**（改了什么、为什么改）。执行时要用的步骤、判据、排障指引一律不在这里：
+
+| 内容 | 位置 |
+|---|---|
+| 执行步骤与硬规则 | `SKILL.md` |
+| 完整退出码表、code 清单、故障判断 | `references/error-handling.md` |
+| 选择器、JS 片段、CDP 坐标、踩坑成因 | `references/flow-internals.md` |
+| 卡片生成器参数与主题 | `references/card-generator-usage.md` |
+
+> 下面历史条目里有不少 root cause 推演（如 v1.6.2 为什么批量 `setFileInputFiles` 不行）。
+> 那些是当时的排查记录，**对应的现行操作口径都已写入上面三个 reference**；两者冲突时以 reference 为准。
+
+### v2.0.6 (2026-11-10)
+
+**文档与代码对齐**：修掉一处「封面失败就中止」的过期描述，涉及 3 个文件。
+
+- **Fix（文档与代码矛盾）**：SKILL.md §3、`references/flow-internals.md` §3c、`references/error-handling.md`
+  都还写着「任一环节失败脚本 `exit 60` 中止，不会带错误封面继续发」。
+  实际 `xhs.mjs:378` 起早已降级：`setVideoCover()` 返回 `{ok:false}` 后只打一行
+  `⚠ 自定义封面没设上（CODE），保留平台自动封面，继续发布`，然后照常提交。
+  三处统一改为「只告警不中止」，并说明为什么降级（小红书改版后「编辑封面」入口时常消失，
+  为一格封面放弃整条发布不值得）。
+- **Fix（示例失真）**：`error-handling.md` 的 FAILED 块示例用的是 `E_COVER_NOT_APPLIED / exit 60`——
+  这个码现在根本不会产生失败块。换成真实会失败的 `E_TITLE_NOT_APPLIED / exit 40`。
+- **Fix（退出码表）**：60 行标注「当前不会出现；真看到就是旧脚本」，避免排障时往死路找。
+- **Chore**：确认 CHANGELOG 无「唯一执行源」——逐条比对过 `uploadFile` / `setFileInputFiles` /
+  `note-manage` / `published=true` / `E_DRAFT_COUNT_UNREADABLE` 等 9 个关键字，
+  均在 SKILL.md 或 references 有对应，本文件仅作历史记录。
+
 ### v2.0.5 (2026-11-10)
 
 第二轮 UGLIC 审计。**4 个 ERR 全部实测复现**，另修 11 项一致性问题。

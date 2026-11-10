@@ -6,7 +6,7 @@ description: >
   然后发布到小红书、视频号、抖音三个渠道。支持 stage（只准备不提交）、draft（存草稿）、
   publish（直接发）三种模式。当用户要做口播视频、给卡片视频配音、把视频发到小红书/视频号/抖音时使用。
   前置依赖：ego-browser 已安装且目标平台已登录；ffmpeg；ffprobe。
-version: 1.3.2
+version: 1.3.3
 slug: video-multi-release
 displayName: 口播视频制作与多平台发布
 bins: [ffmpeg, ffprobe, python3, node, npm, npx, ego-browser]
@@ -141,6 +141,8 @@ python3 $SKILL/scripts/mix_audio.py \
   --out out/final.mp4
 
 # 5) 发布
+#    体积超过 MAX_VIDEO_MB（默认 40）会自动转 final_web.mp4 再发，源文件更新才重转；
+#    MAX_VIDEO_MB=0 关闭。视频号 78MB 原件必超 160 秒，别手工跟它较劲。
 PLATFORMS=xhs,channels,douyin \
 VIDEO=$PWD/out/final.mp4 \
 TITLE="四十岁以后，我不再跑那么快了" \
@@ -251,11 +253,23 @@ python3 $SKILL/scripts/hot_topics.py --desc "今天立冬，聊聊立冬吃什�
 所以默认 `rate=1.12`，并且指令里**只说语气、不说快慢**。
 6 段 150 字左右，配出来约 36-40 秒；想要 30 秒内必须砍字，不是调参数能解决的。
 
+**配之前先估**，别配完才发现超时长：
+
+```bash
+python3 $SKILL/scripts/estimate.py --script voice_script.json --target 180   # 按 3.7 字/秒估，算要砍多少字
+```
+
+实测 `male-narrative` rate=1.12 约 3.7 字/秒，1036 字 → 245s，比 180s 目标多 65s。
+`tts.py` 还会在每段标出 >10s / <5s 的节奏不均段落。
+
 ## 发布后必须核验（别只信退出码）
 
 脚本打印 `=== OK (published) ===` 只代表按钮点下去了、URL 变了，**不代表作品真的存在**。
 2026-11-09 实测：两个平台都返回 published，后台列表却是空的；还遇到过点发表后页面跳回空白
 上传页、内容被清空，脚本却报成功。发完必须回创作后台按标题核验一遍。
+
+**`=== OK (...) ===` 块是唯一的成功标记。** 子进程返回 0 但没打印这个块（stage/draft/卡死），
+`release.sh` 一律判 90 未确认，不会汇总成「✅ 成功」。
 
 | 平台 | 核验地址 | 判断方式 |
 |---|---|---|
@@ -330,6 +344,9 @@ SPACE_ID=66 PLATFORMS=channels MODE=stage ... bash release.sh
 ⚠ `SPACE_ID` 是**在旧空间里重跑全流程**，不是「接着填」。如果旧页面里已经上传过视频/填过内容，
 再投递文件会撞 `E_UPLOAD_TIMEOUT`（exit 30）——这种情况必须用 A，别用 B。
 
+- **`RESUME=1`** 语义同 `SPACE_ID`，但额外跳过开头的 `Page.reload`（抖音扫码后这一步会杀登录态）。
+- **`MODE=publish` 会强制忽略 `SPACE_ID`**，防止拿旧现场重发造成双发；要在旧现场发，用 `MODE=stage` 让用户点。
+
 **退出码不可信 `$?`。** `ego-browser nodejs` 会把子进程退出码统一改写成自己进程的 `1`，
 真实码只打在 stdout 的一行 `ego's nodejs process exited with code NN.` 里。
 `release.sh` 已经改成从 FAILED 块的 `exit : NN` 解析真实码（兜底解析那行日志，再兜底用管道码），
@@ -338,7 +355,9 @@ SPACE_ID=66 PLATFORMS=channels MODE=stage ... bash release.sh
 
 ## 必须知道的坑
 
-按平台分组。每条只留「判据 + 为什么」，完整推演见 [CHANGELOG.md](CHANGELOG.md)。
+按平台分组。每条只留「判据 + 为什么」；完整错误码对照看
+[references/error-handling.md](references/error-handling.md)，脚本行为细节看
+[references/release-behavior.md](references/release-behavior.md)。
 
 ### 渲染（hyperframes）
 
@@ -382,11 +401,16 @@ SPACE_ID=66 PLATFORMS=channels MODE=stage ... bash release.sh
 
 ### 抖音
 
+- **上传完成判据：「上传中 / 正在上传 / 取消上传 / xx%」全部消失，且至少过 4 轮。**
+  编辑页出现 ≠ 传完——78MB 原件时编辑页 24 秒就出来，页面还显示「已上传 15MB/23MB」，
+  此时点发布会跳到 `content/manage`，看着像成功、**作品数纹丝不动**。
+  抖音没有「重新上传」这种信号，别照抄视频号那套。出现「上传失败」立即报错。
 - **话题必须回车。** 输入 `#话题名` 后 `Enter`，下拉首项就是精确匹配。`el.click()` 无效，
   CDP 点坐标会点到隔壁（列表会重排）。**补挂失败别用退格**——标签是整体单元，连按会把已挂的一起删
   （实测误删 `#历史真相`），宁可留成纯文本。
 - **刷新即清空。** 内容没提交前刷新，标题描述话题全没。
 - **「暂存离开」不保存。** 点完回上传页，内容管理和首页都找不到草稿，别当草稿用。
+  因此 **`MODE=draft` 在抖音退化为 stage**（只准备不提交），不是真存草稿。
 - **封面编辑器是图层式。** 上传的图会进时间轴但画布不切换，「完成」要等有效封面才可点。脚本不处理，让人手动设。
 - **登录态撑不过 reload（2026-11-07 实测）。** ego 任务空间存储隔离，passport 登录后一刷新就掉回登录页，
   所以 `release.sh` 开头的 `Page.reload` 每次都会杀掉刚扫的码。用户扫码后**不要重跑 release.sh**，
@@ -442,6 +466,9 @@ scripts/
 ├── channels.mjs           视频号流程
 └── douyin.mjs             抖音流程
 references/
+├── release-behavior.md    发布链路实际行为（体积转码/上传判据/现场复用/汇总/配置键）
+├── error-handling.md      完整 code↔exit↔step 对照 + 常见故障判断顺序
+├── card-text-safety.md    卡片叠字定位：全检铁律、confidence 判据、算法根因、text_pos 兜底
 ├── platform-specs.md      平台规格细节与完整踩坑记录（改选择器/排查 DOM 时才读）
 └── replace-published-video.md  三平台删旧发新的入口与实测坑（只在替换线上内容时读）
 assets/music/
@@ -449,9 +476,18 @@ assets/music/
 └── download.sh            曲库下载脚本（87MB，不入 git）
 ```
 
-**什么时候读 `references/platform-specs.md`（373 行，只做参考，改动后可能已过期）**：改选择器、新增平台、排查 DOM 结构时读；
-日常发布**不要读**。注意该文件截至 2026-11-02，其中的上传完成判据、视频号成功标志、
-抖音封面结论**已被 11-09/11-10 的修复推翻**，冲突时一律以本文件为准。
+**按需加载，日常发布一个都不用读**：
+
+| 什么时候读 | 读哪个 |
+|---|---|
+| 脚本返回非零、FAILED 块看不懂 | `error-handling.md` |
+| 想确认「脚本到底做不做某件事」（会不会自动转码、draft 怎么走、汇总怎么判） | `release-behavior.md` |
+| 卡片文字压住人物 / `find_safe_area.py` 报 low | `card-text-safety.md` |
+| 改选择器、新增平台、排查 DOM 结构 | `platform-specs.md`（**已部分过期**） |
+| 要换掉线上视频 | `replace-published-video.md` |
+
+⚠ `platform-specs.md` 截至 2026-11-02，其中上传完成判据、视频号成功标志、抖音封面结论
+**已被 11-09/11-10 的修复推翻**。冲突时一律以本文件与上述三个新 reference 为准。
 
 ## 依赖
 
@@ -511,14 +547,11 @@ macOS 自带、可直接用的古风字体（在 `AssetsV2/com_apple_MobileAsset
 
 ---
 
-## 历史题材：卡片与字体
+## 历史题材：项目配置与文字位置
 
-### 历史题材的两处差异
-
-快速开始那套命令原样可用，只需替换两个点：
+快速开始那套命令原样可用，**只需额外传画布底色**（`--content-type history` 见上一节）：
 
 ```bash
---content-type history                                    # gen_cards.py：自动套暗色古风主题 + 留白定位
 CANVAS_BG=#0a0806 CANVAS_STOPS='#0b0806,#0a0806,#100c08,#080604' bash .../rebuild.sh $PROJ
 ```
 
@@ -526,7 +559,7 @@ CANVAS_BG=#0a0806 CANVAS_STOPS='#0b0806,#0a0806,#100c08,#080604' bash .../rebuil
 `rebuild.sh` 还会顺带产出 `out/sync_check/contact_sheet.png`（音画同步联系表，`VERIFY=0` 跳过）
 并清理 `out/silent.mp4`（`KEEP_SILENT=1` 保留）。
 
-### 文字位置：三级优先，别再压住人物头部
+### 文字位置：四级优先，别再压住人物头部
 
 `card_generator.py` 原本把文字**硬编码垂直居中**（`start_y=(height-text_block_h)/2-20`），
 而 AI 历史插画的主体也常落在中部 —— 实测 6 张卡片有 3 张压住人物头部。
@@ -561,9 +594,8 @@ CANVAS_BG=#0a0806 CANVAS_STOPS='#0b0806,#0a0806,#100c08,#080604' bash .../rebuil
 卡片生成后**必须全检所有张**，不能抽查：`gen_cards.py` 会自动产出 `<out-dir>/_check/group_*.png`
 （每组 6 张）与 `all.png`，`--no-proof` 可关但不建议。重点看「白字有没有压住人物头部 / 面部」。
 抽样翻过车——18 张只抽 6 张、报了「5/6 没问题」，漏掉的第 01 张（钩子卡）正压在秦始皇额头上。
-`find_safe_area.py` 会输出 `confidence`，判 `low` 的必须人工复核并用段级 `text_pos` 固化；
-根治办法是生图就用 `config.json` 的 `image_prompt_presets.history_dark` 硬约束
-（主体放下三分之一、上方 40% 纯暗留白、不出现面部五官）。
+`find_safe_area.py` 会输出 `confidence`，判 `low` 的必须人工复核并用段级 `text_pos` 固化。
+判据细节、算法根因、生图提示词硬约束见 [references/card-text-safety.md](references/card-text-safety.md)。
 
 以下几条是**有意保留**的行为边界，别当 bug 重复报（19 项修复清单见 [CHANGELOG.md](CHANGELOG.md)）：
 
