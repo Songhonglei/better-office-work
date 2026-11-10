@@ -3,6 +3,43 @@
 All notable changes to this skill are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+### v2.0.5 (2026-11-10)
+
+第二轮 UGLIC 审计。**4 个 ERR 全部实测复现**，另修 11 项一致性问题。
+
+**ERR**
+
+1. **快速复用示例照抄必失败**：多行 `MEDIA_DIR="..."` 只是 shell 赋值，脚本作为独立子进程读不到，
+   全部变成空值。实测 `bash -c 'echo $MEDIA_DIR'` 输出空 → 脚本报 `E_PARAM_MISSING`。
+   加 `export`，并在注释里写明原因；一行式前缀赋值本来就等效于 export，补了说明。
+2. **图文示例语法断裂**：`--illustration ./my-illust.svg \   # 注释` —— 续行符后跟行内注释，
+   后续参数变成独立命令。实测报 `command not found: --theme`。注释移到上一行。
+3. **draft 成功判据说法不准**：「核对失败只告警不判失败」只对 IndexedDB 那步成立；
+   草稿箱计数读不到时脚本**直接 `exit 80`**（`E_DRAFT_COUNT_UNREADABLE`）。已精确区分两步。
+4. **封面失败退出码写错**：flow-internals 3c 写 `exit 1`，实际 `exit 60`（`EXIT.COVER`）。
+
+**一致性**
+
+- **流程链总览重复两遍**（重构拼接时的疏漏），删一份
+- **§3b 与 §3c 自相矛盾**：3b 说「要换封面得手动操作，脚本不处理」，3c 却在讲脚本怎么处理。
+  改为「不传 `COVER_IMAGE` 就完全不碰，传了走 §3c」
+- **登录判定文件写错**：说内置于 `publish_note.sh`，实际在 `.mjs` 的 auth 步骤
+- **`photo-background.md` 标题写「四种主题」但表里只有 3 行**，补 `history` 一行
+- **退出码速查漏 11**（依赖缺失）
+- **参数个数写「20 个」**，实际 argparse 31 个 → 改为「常用参数 + `--help` 看全量」
+- **图文等待时长写「最后再等 10s」**，代码是 `wait(6)` × N + `wait(4)` → 改为 4s
+- **`stage` 没写不释放 space 的后果** → 补「需手动 `completeTaskSpace`，否则常驻」
+- **封面表格少一个 `|`**，整块渲染错乱 → 修正
+- **`publish-method.md` 有 4 处已证伪做法**（v1.x 时代的方法论）：
+  ① 推荐「CDP 批量 setFileInputFiles + 手动触发 input/change」——实测只留空占位符，正确是 `uploadFile()` 逐张；
+  ② 发布判据写跳转 `note-manage`——该路径已 404，主判据是 `published=true`；
+  ③ 「正文里的 #话题 会被自动识别」——实际必须从下拉点选；
+  ④ 整体流程图标「上传图片（CDP 批量）」。
+  前两处就地加 🔴 修正块并说明原因，后两处直接改正；文件头加过期声明与「冲突以 SKILL.md 为准」。
+
+**判定为误报、未改**：frontmatter 超字段（同 video，平台支持且本机多数 skill 如此）；
+目录里有 README/CHANGELOG（glic-check 自己也带）；`card-generator/__pycache__/`（`.gitignore` 已覆盖）。
+
 ### v2.0.4 (2026-11-10)
 
 文档结构重构（U 维度瘦身）。**SKILL.md 673 → 320 行**，信息零丢失——纯搬家 + 去重。

@@ -1,13 +1,17 @@
-# 小红书图文笔记自动发布方法
+# 小红书图文笔记自动发布方法（技术原理）
 
-> 通过 ego-browser 自动化发布小红书图文笔记的完整技术文档
+> 通过 ego-browser 发布小红书笔记的方法论文档。
+>
+> ⚠️ **本文件写于 v1.x，部分结论已被后续实测推翻。** 下面 4 处已就地修正并标注；
+> **与 `SKILL.md` 冲突时一律以 SKILL.md 为准**。日常执行不要读本文件，
+> 它只用于理解 `_onPublish` / `_onSave` 这类底层机制。
 
 ## 一、整体流程（9 步）
 
 ```
 创建 task space → 打开创作平台 → 等待 SPA 渲染
-→ 上传图片（CDP 批量）→ 填标题 → 填正文 → 关闭弹窗
-→ 调用 _onPublish() 发布 → 等待跳转确认 → 清理 task space
+→ 上传图片（uploadFile 逐张）→ 填标题 → 填正文 → 关闭弹窗
+→ 调用 _onPublish() 发布 → 等待 published=true → 清理 task space
 ```
 
 ## 二、各步骤技术要点
@@ -46,7 +50,12 @@ URL: https://creator.xiaohongshu.com/publish/publish
 
 **不能用** `uploadFile()` 传逗号分隔的多文件路径（不生效，只上传第一张或无反应）。
 
-**正确做法**：用 CDP（Chrome DevTools Protocol）批量设置文件，然后**必须手动触发 `input` + `change` 事件**，否则 Vue 等前端框架不会开始实际上传，编辑器会显示「图片编辑 10/18」但缩略图是空占位符，保存草稿后图片为空。
+> 🔴 **【已推翻，2026-08 实测】** 原文推荐「CDP `DOM.setFileInputFiles` 批量设置 + 手动触发
+> `input`/`change`」，实测这条路**走不通**：编辑器会显示「图片编辑 10/18」，但缩略图全是空占位符，
+> 存草稿后图片为空。**正确做法是 `uploadFile()` 逐张上传**（每张等 6s，全部传完再等 4s），
+> 每次调用都会触发真实的文件选择事件。当前 `publish_note.mjs` 已按逐张实现。
+>
+> 下面这段 CDP 批量代码**仅作历史记录，不要照用**。
 
 ```js
 const doc = await cdp('DOM.getDocument', {})
@@ -157,8 +166,12 @@ host._onPublish()
 #### 验证发布状态
 
 - 按钮进入 loading：`host.getAttribute('submit-loading')` 变为 `'true'`
-- 发布成功：页面约 5-10 秒后跳转到 `https://creator.xiaohongshu.com/publish/note-manage`
-- 检查方式：`pageInfo().url.includes('note-manage')`
+- **发布成功（主判据）**：页面约 5-10 秒后 URL 出现 `published=true`
+- 检查方式：`pageInfo().url.includes('published=true')`
+
+> 🔴 **【已修正，2026-11-02】** 原文写的判据是跳转 `note-manage`。
+> 现在直接访问 `/publish/note-manage` 已 **404**，该路径只作旧行为兜底；
+> 主判据是 `published=true`。确认发布结果请走侧栏「笔记管理」入口，别手工拼 URL。
 
 ### 7b. 存草稿模式（_onSave 方法）
 
@@ -224,7 +237,7 @@ await completeTaskSpace(task.id, { keep: false })
 
 1. **沙箱限制**：WorkBuddy 的 Bash 工具即使在"完全访问"模式下，ego-browser 仍可能检测到 macOS sandbox。如果报错 `from the default agent sandbox`，需要在 WorkBuddy 设置中关闭沙箱。
 2. **SPA 渲染**：小红书创作平台首次加载需要 15 秒，不要用 `waitForNetworkIdle` 代替。
-3. **话题标签**：正文中的 `#话题` 会自动被小红书识别为话题标签，输入后会弹出建议列表，按 `Escape` 关闭。
+3. **话题标签**：输 `#` 会弹建议列表，**必须从列表里点选才算挂上**。直接粘贴 `#话题1 #话题2` 只生成纯文本，不会挂载。选完后按 `Escape` 关弹窗。
 4. **图片尺寸**：推荐 1080x1440（3:4 竖屏），最多 18 张。
 5. **发布频率**：不要短时间内连续发布多篇，可能触发风控。
 6. **标题字数**：小红书标题限制 20 字符。

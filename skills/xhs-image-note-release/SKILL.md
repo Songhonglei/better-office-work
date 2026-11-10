@@ -11,7 +11,7 @@ description: >
   前置依赖：ego-browser (ego-lite) 运行中，小红书已登录。
 slug: xhs-image-note-release
 displayName: 小红书笔记发布（图文/视频）
-version: 2.0.4
+version: 2.0.5
 bins: [node, python3]
 ---
 
@@ -96,7 +96,7 @@ bins: [node, python3]
 |---|---|---|
 | `publish`（默认） | 调 `_onPublish()` 真发 | URL 含 `published=true` |
 | `draft` | 调 `_onSave()` 存本地草稿箱 | 草稿箱计数 +1 或 IndexedDB 读到该标题 |
-| `stage` | 填完就停，不提交、不释放 space | 内容已就位（需人工点发布） |
+| `stage` | 填完就停，不提交、**也不释放 space** | 内容已就位（需人工点发布）|
 
 用户说「存草稿 / 推到草稿箱 / 自己点发布」→ `draft`；说「发小红书 / 发布」→ `publish`；说「先给我看看」→ `stage`。
 
@@ -117,7 +117,7 @@ bins: [node, python3]
 
 ### 3. 上传素材
 
-**图文**：必须 `uploadFile()` **逐张**上传（每张等 6s，最后再等 10s）。批量 `DOM.setFileInputFiles` 只会留下空占位符——编辑器显示「图片编辑 10/18」，但缩略图是空的，存草稿后图片不存在。最多 18 张，路径必须绝对。
+**图文**：必须 `uploadFile()` **逐张**上传（每张等 6s，全部传完再等 4s）。批量 `DOM.setFileInputFiles` 只会留下空占位符——编辑器显示「图片编辑 10/18」，但缩略图是空的，存草稿后图片不存在。最多 18 张，路径必须绝对。
 
 **视频**：只有一个 input、无 multiple，`uploadFile()` 一次传完，然后**等转码**。判据是「重新上传」文案 **和** 标题输入框**同时**出现（最多轮询约 2 分钟）。页面上 `video` 元素可能有 4 个（预览/封面候选），**别用数量判定**。
 
@@ -151,7 +151,7 @@ host._onSave()      // 存草稿
 
 `publish`：等 URL 出现 `published=true`（脚本主判据）。`note-manage` 只作旧行为兜底——该路径直接访问已 404，**别手工拼 URL 去确认**，走侧栏「笔记管理」入口。
 
-`draft`：页面**不跳转**（草稿存当前浏览器本地，不是云端），脚本直读 IndexedDB（`draft-database-v1`）按时间取最新一条比对标题，成功打印 `draft verified: 标题「…」，保存于 …`。核对失败只告警不判失败。
+`draft`：页面**不跳转**（草稿存当前浏览器本地，不是云端）。脚本先读「草稿箱(N)」计数——**读不到就 `exit 80`**（`E_DRAFT_COUNT_UNREADABLE`，因为连保存成功与否都无法确认）；读到了再直读 IndexedDB（`draft-database-v1`）按时间取最新一条比对标题，成功打印 `draft verified: 标题「…」，保存于 …`。**IndexedDB 核对失败只告警**（本地库结构可能再变），不推翻已确认的保存。
 
 ### 8. 清理
 
@@ -190,7 +190,7 @@ takeover : ego-browser nodejs -e "await claimTaskSpace(12)"
 === END FAILED ===
 ```
 
-退出码速查：`0` 成功 · `10` 参数（改完重跑，无副作用） · `20` 登录 · `21` 上传页 · `30` 素材上传 · `40` 填表 · `50` 话题 · `60` 封面 · `70` 提交 · `80` 提交后待确认（**别立即重发**） · `90` 内部异常。
+退出码速查：`0` 成功 · `10` 参数（改完重跑，无副作用） · `11` 依赖缺失（缺 mjs/ffmpeg/ego-browser） · `20` 登录 · `21` 上传页 · `30` 素材上传 · `40` 填表 · `50` 话题 · `60` 封面 · `70` 提交 · `80` 提交后待确认（**别立即重发**） · `90` 内部异常。
 
 失败默认保留现场（`KEEP_ON_FAIL=1`），空间不销毁、页面留着，可直接接管排查；传 `KEEP_ON_FAIL=0` 关闭。每次运行日志在 `/tmp/xhs-publish-<ts>-<pid>.log`。
 
@@ -204,30 +204,31 @@ takeover : ego-browser nodejs -e "await claimTaskSpace(12)"
 
 图文：
 ```bash
-MEDIA_DIR="/path/to/assets"
-MEDIA_FILES="img1.png,img2.png,img3.png"   # 最多 18 张
-TITLE="标题"
-BODY='正文内容'
-TOPICS="话题1,话题2,话题3"
-MODE="publish"   # publish=直接发布；draft=存草稿箱；stage=只准备好内容停在页面（自己检查发布）
+# 必须 export：脚本是独立子进程，光赋值不导出，它读到的全是空值。
+export MEDIA_DIR="/path/to/assets"
+export MEDIA_FILES="img1.png,img2.png,img3.png"   # 最多 18 张
+export TITLE="标题"
+export BODY='正文内容'
+export TOPICS="话题1,话题2,话题3"
+export MODE="publish"   # publish=直接发布；draft=存草稿箱；stage=只准备好内容停在页面
 
 bash ~/.workbuddy/skills/xhs-image-note-release/scripts/publish_note.sh
 ```
 
 视频：
 ```bash
-MEDIA_DIR="/path/to/assets"
-MEDIA_FILES="video.mp4"                     # 视频只能 1 个
-COVER_IMAGE="/path/to/cover.png"            # 可选，留空=默认第一帧
-TITLE="标题"
-BODY='正文内容'
-TOPICS="话题1,话题2"
-MODE="stage"
+export MEDIA_DIR="/path/to/assets"
+export MEDIA_FILES="video.mp4"                     # 视频只能 1 个
+export COVER_IMAGE="/path/to/cover.png"            # 可选，留空=默认第一帧
+export TITLE="标题"
+export BODY='正文内容'
+export TOPICS="话题1,话题2"
+export MODE="stage"
 
 bash ~/.workbuddy/skills/xhs-image-note-release/scripts/publish_note.sh
 ```
 
-一行式（不改文件）：
+一行式（前缀赋值自带导出，等效于 export）：
 ```bash
 MEDIA_DIR=/abs/path MEDIA_FILES=video.mp4 TITLE="标题" BODY='正文' TOPICS="话题1,话题2" MODE=stage \
   bash ~/.workbuddy/skills/xhs-image-note-release/scripts/publish_note.sh
@@ -263,7 +264,7 @@ python3 "$CG" --list-themes    # 打印全部 29 个主题
 
 主题速查：照片背景 `cinematic` / `film` / `journal` / `history`（**必须配 `--background`**）；生活 `warm` / `xhs` / `xhs_rich` / `morandi` / `fresh`；科技 `cyberpunk` / `apple` / `cowork` / `carbon`；文艺 `ink` / `palace` / `elegant` / `newspaper` / `steampunk`。
 
-> **完整主题表、20 个参数、图文布局（`--layout image-text`）、批量出图见 [references/card-generator-usage.md](references/card-generator-usage.md)** —— 只在真要做图时加载。照片背景的图层栈原理另见 [references/photo-background.md](references/photo-background.md)。
+> **完整主题表、全部 CLI 参数、图文布局（`--layout image-text`）、批量出图见 [references/card-generator-usage.md](references/card-generator-usage.md)** —— 只在真要做图时加载。照片背景的图层栈原理另见 [references/photo-background.md](references/photo-background.md)。
 
 出图后把目录填进 `MEDIA_DIR`、文件名列进 `MEDIA_FILES`，直接跑 `publish_note.sh` 发布。
 
@@ -314,6 +315,6 @@ python3 "$CG" --theme cinematic --background ./bg.png --lines "文案" --account
 ### references/
 - `references/error-handling.md` — 完整退出码表、全部错误码清单、step 名对照、常见故障判断（登录失效 / 上传超时 / 封面未生效 / 提交未确认）。**按需加载**：只在脚本返回非零退出码、或排查历史运行时读；正常运行无需加载
 - `references/flow-internals.md` — 8 个流程步骤的选择器、JS 片段、CDP 坐标与踩坑成因，外加「注意事项」里技术细节型条目的完整版。**按需加载**：只在改选择器、改版维护、排查 DOM 结构时读；日常发布不需要
-- `references/card-generator-usage.md` — 卡片生成器的完整 29 个主题表、20 个参数说明、图文布局规则、批量出图工作流。**按需加载**：只在要做图时读
+- `references/card-generator-usage.md` — 卡片生成器的完整 29 个主题表、常用参数说明、图文布局规则、批量出图工作流（全量参数用 `--help` 看，31 个）。**按需加载**：只在要做图时读
 - `references/photo-background.md` — 照片背景卡片的图层栈原理、4 种氛围主题参数、CLI 全示例、批量工作流。**按需加载**：只在要做「照片压字」氛围卡片时读
 - `references/publish-method.md` — 完整方法文档，含 `_onPublish`/`_onSave` 两种收尾方案的失败方案对比表、技术原理与「暂存离开」坑点详解。**按需加载**：当需要了解发布/存草稿按钮各失败方案的完整对比、或需要排查发布/存草稿相关问题时阅读此文件；正常流程无需提前加载

@@ -7,7 +7,9 @@
 模型只有 qwen-audio-3.0-tts-plus 可用，3.1 系列在该端点返回 404。
 
 用法:
-  python3 tts.py --script voice_script.json --preset female --out-dir audio/female
+  python3 tts.py --script voice_script.json --preset female --out-dir voice
+
+注：输出目录用 voice/（rebuild.sh 硬要求这个名字），不要写成 audio/female。
 
 关键经验（血泪）:
   rate < 1.0 再叠加 instruction 里写"语速偏慢"，时长会膨胀 25% 以上。

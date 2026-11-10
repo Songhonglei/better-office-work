@@ -101,7 +101,7 @@ if [ -z "$BGM" ]; then
     BGM="$DEFAULT_BGM"
   else
     echo "✗ 未指定 BGM 且默认曲目不存在（${DEFAULT_BGM}）。"
-    echo "  先跑 assets/music/download.sh 下载曲库到 ${MUSIC_DIR}，或用 BGM=/path/to.mp3 指定。"
+    echo "  先跑 bash \"$SKILL_DIR/assets/music/download.sh\" 下载曲库到 ${MUSIC_DIR}，或用 BGM=/path/to.mp3 指定。"
     exit 11
   fi
 fi

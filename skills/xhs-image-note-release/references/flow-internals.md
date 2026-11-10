@@ -21,19 +21,6 @@
 → 校验结果 → 清理 task space(失败时保留现场)
 ```
 
-```
-[sh] 判断媒体类型(按扩展名) + 全部参数校验
-→ [mjs] open-publish-page  创建 task space + 打开创作平台 + 等 SPA
-→ auth                     登录态检查
-→ ensure-upload-tab        切到对应上传 tab(自动兼容 tab/下拉)
-→ upload-media             上传素材(图文=uploadFile 循环；视频=单文件+转码轮询)
-→ set-cover                自定义封面(仅视频且传了 COVER_IMAGE，可选)
-→ fill-title / fill-body   填标题、正文(带回读校验)
-→ add-topics               逐个话题从下拉列表选择(失败重试一次)
-→ submit                   调用 _onPublish() / _onSave()（由 MODE 决定）
-→ 校验结果 → 清理 task space(失败时保留现场)
-```
-
 **收尾模式（MODE）**：
 - `publish`（默认）：调用 `_onPublish()` 直接发布，等待跳转 `note-manage` 确认。
 - `draft`：调用 `_onSave()` 存草稿箱，校验左侧「草稿箱(N)」计数 +1（草稿箱按钮文本是「暂存离开」，不是「存草稿」）。
@@ -172,7 +159,7 @@ for (let attempt = 0; attempt < 40; attempt++) {   // 最多约 2 分钟
 
 > 实测：10MB / 22.8s 的 mp4，第 0 次轮询（上传后 8 秒）就已 `readyState: 4` 且「重新上传」出现，基本不需要等。
 >
-> 封面默认截取视频第一帧，**不需要额外操作**。要换封面需在页面上手动操作（「智能推荐封面」「PK封面」都在设置封面区），脚本不处理。
+> 封面默认截取视频第一帧，**不传 `COVER_IMAGE` 就完全不碰**。传了图就走下面 §3c 的四步替换链路。
 >
 > 注意 `video` 元素在页面上可能有 4 个（预览、封面候选等），不要用 `videoCount === 1` 做判定。
 
@@ -231,7 +218,7 @@ await wait(4)
 - **PK 封面引导气泡会遮挡**：`.pk-cover-guide-tooltip` / `.pk-cover-guide` 首屏可能自动弹出，先 `display: none` 掉（纯视觉层，不影响提交数据）。
 - **不要用「智能推荐封面/一键生成」**：那是 AI 生成封面，会消耗 HeyGen 类额度且不可控，本技能只做「上传自己的图」。
 - **校验信号**：完成回到编辑页后，页面出现「✅ 封面效果评估通过，未发现封面质量问题」即封面已被服务端接受。
-- **失败即中止**：任一环节失败（悬停没出按钮 / 编辑器没开 / 找不到完成按钮 / 弹窗没关）脚本会 `exit 1`，不会带着错误封面继续发。
+- **失败即中止**：任一环节失败（悬停没出按钮 / 编辑器没开 / 找不到完成按钮 / 弹窗没关）脚本会 `exit 60`（`EXIT.COVER`），不会带着错误封面继续发。
 
 ## 4. 填写标题
 
@@ -375,7 +362,7 @@ await completeTaskSpace(task.id, { keep: false })
 12. **发布后的事后验证（2026-09-09 踩坑）**：发布脚本结束时 `completeTaskSpace({ keep: false })` 会销毁 space 连同小红书登录态 cookie。**之后新建的 task space 不继承登录态**（打开 creator.xiaohongshu.com / www.xiaohongshu.com 都会跳登录墙，公开搜索页未登录也全被拦截）。因此**事后独立远程验证不可行**——如需登录态验证（如查「已发布」列表），必须在发布脚本同一 space 内、`completeTaskSpace` 之前完成。发布成功本身以业务级证据为准：图片 CDN 落盘（`cdnImages`≥N、`editCount`=N）+ 话题全部 `clicked:true` + URL 跳转含 `published=true`（发布端点真实处理后的跳转，非 HTTP 200 假成功）。最终视觉确认建议用户在 App 内查看。
 
 13. **登录检测必须用 URL 判定，不能只扫页面文字（2026-10-09 踩坑）**：小红书登录态过期时，创作平台会 302 到 `creator.xiaohongshu.com/login?source=&redirectReason=401&lastUrl=...`。**登录页导航里同样含「发布」「上传图文」等字样**，早期版本用 `text.includes('登录') && !text.includes('发布')` 判断，会把 401 误判成「已登录」，然后在 `uploadFile()` 阶段抛 `ElementResolutionError: input[type="file"][accept*=".png"] not found`——真实原因被掩盖，排查绕远路。
-    正确判定（已内置于 `publish_note.sh`）：
+    正确判定（已内置于 `publish_note.mjs` 的 auth 步骤）：
     ```js
     const href = location.href || ''
     if (href.includes('/login')) return { loggedIn: false, reason: 'redirected_to_login', url: href }

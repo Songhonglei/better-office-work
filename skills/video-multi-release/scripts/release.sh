@@ -115,6 +115,7 @@ if [ -n "$COVER" ]; then
   [ -f "$COVER" ] || usage_fail "E_COVER_NOT_FOUND" "封面图不存在: $COVER" \
     "COVER 是可选参数，不传就用平台默认首帧（首帧通常就是 card_01）" \
     "小红书/视频号/抖音都会尝试设置；抖音失败只告警"
+fi
 
 # ── 运行时默认配置（数据目录，升级 skill 不会清掉） ──────────────
 CONFIG="${WB_SKILLS_DATA:-$HOME/space/skills-data}/video-multi-release/config.json"
@@ -155,9 +156,15 @@ if [ "${MAX_VIDEO_MB:-40}" != "0" ] && [ "$VIDEO_MB" -gt "$MAX_VIDEO_MB" ] 2>/de
   # 否则「存在即复用」会把上一次的压缩版当成这次的内容发出去（实测可复现）。
   if [ ! -f "$WEB_VIDEO" ] || [ "$VIDEO" -nt "$WEB_VIDEO" ]; then
     echo "  视频 ${VIDEO_MB}MB 超过 ${MAX_VIDEO_MB}MB，正在转码压缩版…"
-    ffmpeg -y -hide_banner -loglevel error -i "$VIDEO" \
+    # 转码失败不能靠 set -e 静默退出（那样退出码是 1，表里查不到）：
+    # 明确落到 exit 10 族，FAILED 块才给得出 what_now。
+    if ! ffmpeg -y -hide_banner -loglevel error -i "$VIDEO" \
       -c:v libx264 -preset medium -crf 24 -maxrate 2600k -bufsize 5200k \
-      -pix_fmt yuv420p -c:a aac -b:a 160k -movflags +faststart "$WEB_VIDEO"
+      -pix_fmt yuv420p -c:a aac -b:a 160k -movflags +faststart "$WEB_VIDEO"; then
+      usage_fail "E_TRANSCODE_FAILED" "视频转码失败，原始文件仍在: $VIDEO" \
+        "手动转一次看报错：ffmpeg -i \"$VIDEO\" -c:v libx264 -crf 24 out.mp4" \
+        "或用 MAX_VIDEO_MB=0 跳过转码直接发原件（体积大，视频号可能超时）"
+    fi
   else
     echo "  视频 ${VIDEO_MB}MB 超过 ${MAX_VIDEO_MB}MB，复用同源码的压缩版"
   fi
@@ -210,7 +217,7 @@ print(json.dumps([{'word': w.strip(), 'hot': 0, 'score': 0} for w in sys.argv[1]
   echo "  热点话题: $HOT_JSON"
 fi
 
-# ── 横屏封面自动探测：video 同目录的 card_01_h.png（gen_cards.py --ratio horizontal 产物）──
+# ── 横屏封面自动探测：video 同目录的 card_01_h.png（gen_cards.py --cover-h 产物）──
 COVER_H="$COVER_HORIZONTAL"
 if [ -z "$COVER_H" ] && [ -n "$VIDEO" ]; then
   CAND="$(dirname "$VIDEO")/../assets/card_01_h.png"

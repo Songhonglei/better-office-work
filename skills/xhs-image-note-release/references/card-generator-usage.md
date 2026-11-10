@@ -21,9 +21,10 @@ python3 ~/.workbuddy/skills/xhs-image-note-release/references/card-generator/car
   -o ./card.png
 
 # 图文卡片：顶部简笔画 + 窄列居中文字 + 底部署名
+# 图文卡片：--illustration 需自备（技能不附示例文件）
 python3 ~/.workbuddy/skills/xhs-image-note-release/references/card-generator/card_generator.py \
   --layout image-text \
-  --illustration ./my-illust.svg \   # 自备插画，技能不附示例文件
+  --illustration ./my-illust.svg \
   --theme warm_illust \
   --lines "周五了。\\n把工牌摘下来，" \
   --account "@雨夜心灯" \

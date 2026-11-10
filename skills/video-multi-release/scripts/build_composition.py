@@ -189,6 +189,9 @@ def build(script_path, voice_dir, out_path,
         imgs='\n'.join(img_lines),
         timeline='\n'.join(tl_lines),
     )
+    out_dir = os.path.dirname(os.path.abspath(out_path))
+    if out_dir and not os.path.isdir(out_dir):
+        os.makedirs(out_dir, exist_ok=True)
     try:
         with open(out_path, 'w', encoding='utf-8') as f:
             f.write(html)
@@ -211,11 +214,15 @@ def build(script_path, voice_dir, out_path,
             for c in clips
         ],
     }
+    # 落点是 CWD 而非 --out 所在目录；不打印的话，在错误目录执行会静默写错地方，
+    # 而 mix_audio.py 读的正是 ./timeline.json（同一个隐式 CWD）。
+    tl_path = os.path.abspath('timeline.json')
     try:
         with open('timeline.json', 'w', encoding='utf-8') as f:
             json.dump(timeline, f, ensure_ascii=False, indent=2)
     except OSError as e:
         sys.exit('写入 timeline.json 失败: %s' % e)
+    print('时间轴: %s' % tl_path)
 
     print('总时长 %.2fs（%d 张卡片）' % (total, n))
     for c in clips:

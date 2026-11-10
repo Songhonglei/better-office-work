@@ -3,6 +3,49 @@
 本文件存放变更记录与专项复盘细节，
 供追溯用；**不影响执行**的规则已提炼回 SKILL.md。
 
+## v1.3.2 (2026-11-10)
+
+第二轮 UGLIC 审计（U/G/L/I/C 五维 + 两个独立审计员交叉复核 + 实测验证）。
+
+**P0（本轮最严重，是 v1.3.1 修复时引入的回归）**
+
+- `release.sh` 的 `if [ -n "$COVER" ]` 缺 `fi`，**整个发布入口无法解析**。`bash -n` 报
+  `line 327: syntax error: unexpected end of file`；参数齐全时 `exit 2`，一次都发不出去。
+  更隐蔽的是：缺 VIDEO 时会先走到 `usage_fail`，冒烟测试看起来「正常退出」，掩盖了问题。
+  已补 `fi`，并重跑 `bash -n` + 三条真实冒烟（E_VIDEO_NOT_FOUND / E_COVER_NOT_FOUND / 完整 stage）。
+
+**其它修复**
+
+| 项 | 问题 | 修法 |
+|---|---|---|
+| 退出码 | `E_PUBLISH_BTN_DISABLED` 在抖音走 `EXIT.FORM`(40)，文档把 disabled 归到 70 | 表内注明「抖音 disabled 走 40」，补 code↔exit 对照 |
+| 转码失败 | ffmpeg 在 `set -e` 下静默退出（退出码 1，表里查不到） | 加 `|| usage_fail E_TRANSCODE_FAILED`，给 what_now 与降级选项 |
+| 死路 | `rebuild.sh` exit 11 让用户跑 `assets/music/download.sh`，但已 `cd` 到项目目录 | 改用 `$SKILL_DIR/assets/music/download.sh` |
+| 示例跑不通 | step 4 的 BGM 示例写 `music/bgm.mp3`，曲库里没有这个文件 | 改成 `Frost Waltz.mp3`（默认曲目） |
+| 默认值打架 | 2a 示例用 `0.5/0.4/1.2`，2b 与 rebuild.sh 是 `0.6/0.45/1.5`，分步跑与一键跑时长不同 | 2a 对齐 0.6/0.45/1.5，并注明「改这三个值要同步改 2b」 |
+| 落点说法矛盾 | 一处说 timeline.json「与 index.html 同目录」，另一处说「落在 CWD」 | 统一为 CWD，并让 `build_composition.py` 打印实际绝对路径 |
+| 静默覆盖 | `--out` 父目录不存在时直接报错退出（虽不静默，但很常见） | 自动 `makedirs` |
+| 判据矛盾 | 「上传完成不能看 video.duration」与「判据只认按钮可用 + duration>0」互相打架 | 统一为「主判据是按钮可用，duration 只作辅助，代码是双条件」 |
+| 文档拆分断口 | 「抖音补话题别用退格」「CC-BY 署名」只在 CHANGELOG，主文档没有 | 两条都回写正文（exit 50 的指引正是让人去手动补话题） |
+| 目录树过期 | 漏 `onboard.sh`、`replace-published-video.md`、`assets/music/` | 补齐 |
+| 幽灵参数 | `release.sh:214` 仍写 `--ratio horizontal`（同文件 35 行刚说不是） | 改 `--cover-h` |
+| docstring 过期 | `tts.py` 头部示例还是 `--out-dir audio/female` | 改 `voice`，并注明 rebuild.sh 硬要求这个名字 |
+| 标题层级 | `replace-published-video.md` 一级标题后直接跳 `###` | 三个降为 `##` |
+| schema 缺键 | `segments[].quote` 代码会读，输入表没写 | 补一行 |
+| 密钥进 history | `onboard.sh --key` 会在 shell history / `ps` 留痕，文档没提示 | 补「优先交互输入」 |
+
+**结构瘦身**：SKILL.md 683 → 591 行。日期化章节重组为功能性标题（`## 2026-11-09 新增能力` →
+`## 历史题材：卡片与字体`，删去与「快速开始」重复的「一条龙」命令）；「必须知道的坑」138 → 86 行，
+按平台分组（渲染 / 视频号 / 抖音 / 小红书 / ego 通用），26 条全部保留、只压缩叙述；
+「发布链路加固」表移入本文件；「全检铁律」与「已知限制」合并为一节。
+16 个关键技术判据（`SUB_TIMELINE_SCRIPT_FAILURE`、`y=1268`、`qrconnect`、`E_WUJIE_MISSING`、
+`weui-desktop-btn_disabled`、`geolocation=2` 等）逐一比对，0 丢失。
+
+**判定为误报、未改**：frontmatter 的 version/slug/displayName/bins/metadata（本机 24 个已安装
+skill 多数如此，含用户自己的 invoice-auto-forward；且 `metadata` 声明的 `DASHSCOPE_API_KEY`
+在 `tts.py:71/89/98` 确实被读取）；目录里有 CHANGELOG.md（glic-check 自己也带）；
+`scripts/__pycache__/`（`.gitignore` 已覆盖）。
+
 ## v1.3.1 (2026-11-10)
 
 UGLIC 审计修复（以可用性维度为主）。
@@ -22,6 +65,26 @@ UGLIC 审计修复（以可用性维度为主）。
 - **Add**：frontmatter 补 `slug` / `displayName`，`bins` 补 `ego-browser`。
 - **Chore**：SKILL.md 784 → 662 行。纯记录（19 项修复表、全检复盘细节）移入本文件，低频操作移到
   `references/replace-published-video.md`，主文档只留规则与索引。
+
+
+### 发布链路行为清单（原 SKILL.md 表格）
+
+从主文档移出，属功能说明而非执行步骤。
+
+
+| 项 | 行为 |
+|---|---|
+| 体积 | `release.sh` 检测视频超过 `MAX_VIDEO_MB`（默认 40），自动转 `final_web.mp4`（crf24/2600k）再发；`MAX_VIDEO_MB=0` 关闭。**源文件比压缩版新就重转**，避免换片后复用旧压缩版 |
+| 抖音上传 | 轮询到 `上传中 / 正在上传 / 取消上传 / xx%` 全部消失、且至少过了 4 轮才允许点发布；出现「上传失败」立即报错；等不到报 `E_UPLOAD_NOT_FINISHED` |
+| 抖音发布后 | 回作品列表确认标题出现 + 读作品数，查不到报 `E_PUBLISH_UNCONFIRMED`（**不再只看 URL 跳转**） |
+| 视频号发布后 | 回列表 shadowRoot 查标题，查不到只告警（列表不一定显示短标题），OK 块输出 `verified: yes/manual`；45 秒没跳转**不再兜底重复点发表** |
+| 三平台话题 | 挂不上的都只告警、继续发布，输出 `topics_missing`；抖音话题循环幂等且 `RESUME` 时只核对不重插 |
+| 现场复用 | `SPACE_ID=…` 或 `RESUME=1` 时跳过 `Page.reload`，且已在编辑页就跳过上传和重复填表；**`MODE=publish` 会强制忽略 `SPACE_ID`**，防止拿旧现场重发造成双发 |
+| draft | 抖音无可靠草稿箱接口，`MODE=draft` 退化为 stage（只准备不提交）；小红书/视频号走各自草稿 |
+| 汇总 | 每个平台显示 `published/stage`、URL、`verified`、缺失话题。**必须有 `=== OK (...) ===` 块才算成功**；`CONTINUE_ON_FAIL=1` 时退出码保留第一个失败平台的码 |
+| BGM | 比成片短时自动 `-stream_loop -1`（`Frost Waltz` 135.5s 曾让 158s 片尾静音） |
+| 配置 | 默认值在数据目录 `config.json`：`account` / `tag` / `topics` / `hot_topics` / `bgm` / `canvas_*` |
+
 
 ## v1.3.0 (2026-11-10)
 
