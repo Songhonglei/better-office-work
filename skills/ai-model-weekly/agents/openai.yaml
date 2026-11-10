@@ -1,0 +1,4 @@
+interface:
+  display_name: "全球 AI 模型发布周报"
+  short_description: "核实全球 AI 与 LLM 模型发布，生成图文并茂、可离线阅读的中文单文件周报"
+  default_prompt: "使用 $ai-model-weekly 研究指定日期内的全球 AI 模型发布，核实官方日期与可用性，制作图文中文 HTML 单文件周报。"

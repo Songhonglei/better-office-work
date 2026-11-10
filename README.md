@@ -20,6 +20,7 @@
 
 | Skill | Description |
 |---|---|
+| [ai-model-weekly](./skills/ai-model-weekly/) | 全球 AI / LLM 模型发布周报：核实官方日期、规格、访问与权重状态，生成配图内嵌的中文 HTML 单文件；支持区间调整、图片替换、折叠与回退（v1.0.0） |
 | [local-music-creation](./skills/local-music-creation/) | Apple Silicon 本地音乐创作：YuE2 MLX 歌词生成、ABC 制谱/渲染、8bit/BF16 对照、转写与 cover；配置驱动迁移、冻结依赖与结果校验；仅通过 GitHub 提供 |
 | [sms-agent-mail](./skills/sms-agent-mail/) | 手机短信邮件读取：原生邮箱工具或 Agently CLI，支持一键读信与同进程浏览器登录；核对服务、SIM/尾号和有效期，保留外置配置与授权（v1.4.0） |
 | [qq-mail-manage](./skills/qq-mail-manage/) | QQ 邮箱管理：Python HTTP 直连无需 Codex，兼容 Codex OAuth；支持现代无初始化 MCP、账号与权限隔离、附件 CLI、发送及确认后移至垃圾箱；可审计核验兼容及中断恢复（v1.5.1） |
