@@ -2,7 +2,9 @@
 
 一套依赖 ego-browser 的知乎养号（account-nurturing）全流程 skill：**垂直领域收敛 + 三班节奏（早/午/晚）+ 深度版回答 + 想法发布 + 创作影响力规范**，内嵌 7/27 风控事故后总结的红线与陷阱。可在任意装了 ego-browser 的机器上独立运行，不依赖任何工作区记忆。
 
-## 功能总览（v1.5.0）
+## 功能总览（v1.5.1）
+
+- **文案三条硬要求**（v1.5.1，用户明确要求）：观点先行（首句给能被反驳的判断）、干净利落（砍短句、删垫句、无连续空行）、有深度和判断（不流于表面和情绪，硬料可核查 + 机制讲透 + 给可迁移判断）。完整判据与自检四问见 SKILL.md「创作分提升套件」第 6 节。
 
 - **发布前去 AI 味硬门禁**（v1.5.0，用户明确要求）：正文先过 `text-humanize`（中文模式）改写，再跑 `scripts/humanize_gate.py` 写入与正文 sha256 绑定的凭证；`run_shift.js` 不验凭证就跳过发布（`ANSWER_SKIPPED: HUMANIZE_GATE_FAIL`）。自检清单不算通过，**必须有凭证**。
 - **配图方式每次问用户**（v1.5.0）：`AskUserQuestion` 三选一「网络图 / 用 batch-image-gen 生成 / 不配图」，不得替用户决定；配图执行（Commons 授权查证、批量生图要点、新版 `setInputFiles` 插图、dry run 校验、发布前最终确认）见 `references/illustrations.md`。
@@ -64,11 +66,11 @@ ego-browser nodejs < scripts/post_moment.js
 
 ## 目录结构
 
-- `SKILL.md` — 主流程、触发条件、创作分提升套件（含去指纹化写作规范）、发布前两道硬门禁
+- `SKILL.md` — 主流程、触发条件、创作分提升套件（含去指纹化写作规范 + 文案三条硬要求）、发布前两道硬门禁
 - `config.json` / `config.example.json` — 账号、垂直领域、话题池、班次、深度版/想法/影响力配置、`publish_gates`
 - `references/risk-control.md` — 风控红线（必读）
 - `references/selectors.md` — DOM 选择器 + ego-browser API 速查（含插图）
-- `references/topic-strategy.md` — 垂直收敛、话题池轮转、深度版与影响力写作规范
+- `references/topic-strategy.md` — 垂直收敛、话题池轮转、深度版与影响力写作规范（含文案三条硬要求指针）
 - `references/workflow.md` — 配置说明、脚本调用、参数文件 schema、门禁用法
 - `references/illustrations.md` — 配图决策与插图执行（v1.5.0）
 - `scripts/` — run_shift.js（三班编排 + 去 AI 味门禁）/ humanize_gate.py（发布前门禁凭证）/ fold_audit.js（折叠巡检，基线 `~/space/skills-data/zhihu-yanghao/fold-baseline.json` 不分发）/ browse_only.js（禁言期只读浏览）/ post_moment.js（发想法）/ like_top5.js / write_answer.js / verify_via_cli.js（辅助验证）/ pick_question.js / edit_answer.js

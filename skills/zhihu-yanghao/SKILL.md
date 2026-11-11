@@ -1,10 +1,16 @@
 ---
 name: zhihu-yanghao
-description: Full Zhihu account-nurturing (养号) workflow via ego-browser — configurable topic pool with vertical focus, three-shift (morning/noon/evening) schedule where each shift writes+publishes+verifies one answer and runs like engagement, weekly deep-dive answers, moments/想法 posting, content-influence requirements (hook + actionable + CTA + comment reply), plus optional collect/follow/comment interactions driven by config. Every publish is gated by a mandatory text-humanize (Chinese mode) de-AI pass with a hash-bound credential, and by an explicit user choice on illustrations (web images / batch-image-gen / none). Every run must end by reporting links and raw ids of published content. Use when the user asks to 知乎养号 / 养知乎号 / 发知乎回答 / 知乎点赞互动 / 知乎浏览 / 三班养号 / 写深度版 / 发想法 / 提升创作分, or wants a portable, risk-controlled, topic-configurable Zhihu growth routine on any machine with ego-browser.
+description: Full Zhihu account-nurturing (养号) workflow via ego-browser — configurable topic pool with vertical focus, three-shift (morning/noon/evening) schedule where each shift writes+publishes+verifies one answer and runs like engagement, weekly deep-dive answers, moments/想法 posting, content-influence requirements (hook + actionable + CTA + comment reply), a mandatory writing style (contestable judgment in the opening sentence, terse prose, evidence-backed analysis instead of surface sentiment), plus optional collect/follow/comment interactions driven by config. Every publish is gated by a mandatory text-humanize (Chinese mode) de-AI pass with a hash-bound credential, and by an explicit user choice on illustrations (web images / batch-image-gen / none). Every run must end by reporting links and raw ids of published content. Use when the user asks to 知乎养号 / 养知乎号 / 发知乎回答 / 知乎点赞互动 / 知乎浏览 / 三班养号 / 写深度版 / 发想法 / 提升创作分, or wants a portable, risk-controlled, topic-configurable Zhihu growth routine on any machine with ego-browser.
 agent_created: true
 ---
 
-# 知乎养号（zhihu-yanghao）v1.5.0
+# 知乎养号（zhihu-yanghao）v1.5.1
+
+> ## ⛔ 文案三条硬要求（v1.5.1，用户明确要求，动笔前必读）
+> 1. **观点先行**：首句或首段直接给一个能被反驳的判断，不要背景铺垫、共情、寒暄、「这个问题其实挺复杂」。
+> 2. **干净利落**：句子砍短，删净缓冲垫句、重复转述与元叙述，不磨叽、不堆层级。
+> 3. **有深度和判断**：不流于表面和情绪；硬料可核查、机制讲透、给可迁移的判断，不站队、不共情、不和稀泥。
+> 与第 5 节不冲突：禁的是「先说个反直觉判断」这类**元话语开场白**，不是不让亮观点；hook 仍放中段，开头句式池照旧轮换。完整判据与自检四问见「创作分提升套件」第 6 节。
 
 > ## 📮 每次执行完必须交付链接（v1.4.0，用户明确要求）
 > 收尾回复里**必须逐条列出本次新增内容的可点击链接**，不是「已发布」三个字带过：
@@ -24,7 +30,7 @@ agent_created: true
 > 1. **去 AI 味**：加载 `text-humanize` skill（中文模式）改写正文 → 跑 `python3 scripts/humanize_gate.py <正文文件>` 拿到 `HUMANIZE_GATE_OK` → `run_shift.js` 校验凭证（正文 sha256 绑定、6h 有效、preflight fail=0），不过即 `ANSWER_SKIPPED: HUMANIZE_GATE_FAIL` 跳过发布。**只做「自检清单」不算通过，必须有凭证文件。**
 > 2. **配图方式问用户**：用 `AskUserQuestion` 让用户三选一 **「网络图 / 用 batch-image-gen 生成 / 不配图」**，不得替用户决定、不得沿用上次选择；选了配图还要在发布前把编辑器截图 + 原图 + 定稿全文给用户做最终确认。
 >
-> 固定顺序：选题 → 写正文 → text-humanize 改写 → 门禁凭证 → 问配图 → 填编辑器（dry run 校验）→ 用户最终确认 → 发布 → CLI 验证。详见「发布前强制流程」与 references/illustrations.md。
+> 固定顺序：选题 → 写正文（含文案三条硬要求自检）→ text-humanize 改写 → 门禁凭证 → 问配图 → 填编辑器（dry run 校验）→ 用户最终确认 → 发布 → CLI 验证。详见「发布前强制流程」、第 6 节与 references/illustrations.md。
 
 > ## ⛔ 跑之前先确认账号状态
 > 若账号处于限流 / 禁言（`config.account_status.silenced=true`），**只做只读浏览**：
@@ -41,6 +47,7 @@ agent_created: true
 - **深度版**：每周 1 篇 800–1200 字深度回答（用户邀请 or 自动随机），冲内容优质分。
 - **想法**：每周若干条短动态，冲关注者亲密度。
 - **影响力规范**：每篇回答必须带反直觉 hook + 可操作清单 + 引导互动，并在 24h 内回评论。
+- **文案三条硬要求（v1.5.1）**：观点先行 / 干净利落 / 有深度和判断，动笔前必读，详见创作分提升套件第 6 节。
 - **点赞互动**：前 10 个回答里随机选 3–5 个点赞（自然化：位置随机，不固定点前 N 个），三班各自独立会话。
 - **可选互动**：收藏 / 关注问题 / 评论，按 `config.json` 每班 `interactions` 用户自定义。
 - **发布前去 AI 味硬门禁（v1.5.0）**：`text-humanize`（中文模式）改写 + preflight 检查器 FAIL 归零 + `humanize_gate.py` 写入与正文 sha256 绑定的凭证，`run_shift.js` 不验凭证就不发布。
@@ -85,8 +92,9 @@ agent_created: true
 
 ## 🔒 发布前强制流程（v1.5.0，两道硬门禁）
 
-**顺序不可调换**：选题 → 写正文 → text-humanize 改写 → 门禁凭证 → 问配图 → 填编辑器（dry run 校验）→ 用户最终确认 → 发布 → CLI 验证。
+**顺序不可调换**：选题 → 写正文（过文案三条硬要求自检）→ text-humanize 改写 → 门禁凭证 → 问配图 → 填编辑器（dry run 校验）→ 用户最终确认 → 发布 → CLI 验证。
 适用于所有发布路径：`run_shift.js` / `write_answer.js` / 手工 heredoc（插图必须走手工路径）。
+写作阶段自检是门禁 1 的前置条件：正文没亮观点、堆了情绪铺垫，先改稿再跑 `humanize_gate.py`（凭证绑定正文 sha256，改字即失效，别反过来）。
 
 ### 门禁 1：text-humanize 去 AI 味（程序化拦截，不可跳过）
 
@@ -168,7 +176,7 @@ EOF
 
 > 📌 **本机保留修正（勿在下次 GitHub 更新时回退）**：① 点赞选择器用 `button[aria-label*=赞同]`（新版知乎 `VoteButton` 已失效）；② 写回答用 `ClipboardEvent` 粘贴注入（Draft.js 不认 `fillInput`）；③ 上方 heredoc 注入 env + `.then` 接管 Promise（覆盖 `CONFIG=...` 写法与裸 `eval` 写法）；④ 关注问题按钮按 `FollowButton` class 匹配（页面文案是「关注」/「已关注」，**从不存在**「关注问题」四个字，旧写法永远返回 `no_button`）。前三条是本机 8/11–8/16 实测结论，第 ④ 条为 9/5 实测。脚本内部已含「已答过跳过 + 已赞跳过 + 随机选赞（前10随机3-5） + 发布卡死即停 + is_collapsed 验证带 retry(3-5次/10-15s)」。详细 env 与配置见 references/workflow.md。
 
-## 创作分提升套件（v1.3.0 四件套，v1.3.7 增第 5 节去指纹化规范）
+## 创作分提升套件（v1.3.0 四件套，v1.3.7 增第 5 节去指纹化规范，v1.5.1 增第 6 节文案三条硬要求）
 针对知乎创作分六维体系（创作活跃度 / 创作垂直度 / 内容优质分 / 创作影响力 / 关注者亲密度 / 社区成就分）的定向优化，全部由 `config.json` 驱动：
 
 ### 1. 垂直度收敛（`vertical_focus`）
@@ -230,6 +238,41 @@ EOF
 
 > **配置分工（重要，勿误解）**：`vertical_focus` / `deep_answer` / `influence` 三个配置块是**给 agent 的写作规范**——`vertical_focus`/`influence` 不被脚本读取；`deep_answer.min_words/max_words` 在参数文件写 `"deep": true` 时被 `run_shift.js` 用于字数护栏；各班 `shifts.*.interactions` 被 `run_shift.js` 读取执行。
 > **字数护栏（v1.3.3）**：`run_shift.js` 发布前校验 contentFile 字符数——标准区间 `answer_style.min/max_words`（250–800）、深度版（参数 `"deep": true`）区间 `deep_answer.min/max_words`（800–1200）。**超区间输出 `ANSWER_SKIPPED: WORD_COUNT_EXCEEDED` 并跳过发布**（点赞/互动照常收尾），压缩或扩写正文后重跑即可（已赞自动跳过）。
+
+### 6. 文案三条硬要求（2026-11-11，用户明确要求；动笔前必读）
+
+三条原话：**要有明确观点且观点先行 / 不要磨磨唧唧，要干净利落 / 不要流于表面和情绪，要有深度和判断**。适用于全部回答（标准版 / 深度版）；想法（50–150 字）只按 ①② 收紧——首句给判断、句子短、不铺垫，③ 不要求硬料与对比结构（第 3 节明确「想法不需要深度」），但仍得有一个明确判断、不靠情绪词撑着。与第 5 节去指纹化、第 2 节深度版硬料、门禁 1 去 AI 味同时生效。
+
+**① 观点先行**
+- 首句或首段直接给一个**能被反驳的判断句**（有主谓、有立场），不是背景、共情、寒暄、复述问题、「这个问题其实挺复杂」。
+- 判断要具体到能被反驳：写「改名解决的是户口本，不是教室」「最不顶用的动作是赶紧去改名」，不写「值得深思」「要理性看待」这类零信息量表态。
+- 正例即 2026-11-11 晚班定稿首句「改名解决的是户口本，不是教室」——一句定立场，后面所有硬料都给它作证。
+- ⚠️ **与第 5 节不冲突**：第 5 节禁的是「先说个反直觉判断 / 先泼冷水 / 反直觉的是」这类**元话语开场白**（先宣告「我要抛观点了」再说观点），不是不让亮观点。观点先行＝直接说判断本身；元话语仍禁。反直觉 hook 依旧放中段，不占首句。
+- 开头句式池 10 种照旧轮换，但**无论用哪种句式，首段内必须落判断**（场景切入 / 材料先行也要在首段末尾给判断，不许拖到中段）。
+- `influence.actionable` 的判断框架不能代替立场：清单是工具，观点是取舍，两样都要有。
+
+**② 干净利落**
+- 一句一个意思，长句拆短；删净缓冲垫句：「其实」「说实话」「不得不说」「在一定程度上」「我们可以看到」「值得注意的是」「说到这里」「先共情一下」「我理解…但是」。
+- 不写共情铺垫、不写两段以上元叙述（「前排讲得很透我就不重复了」最多一句过渡）；不靠「背景→原因→影响→总结」的通用科普骨架撑字数。
+- 每段只有一个功能：亮判断 → 给硬料 → 做对比 → 给判断框架 → 收束。回头数段：某段删掉不影响判断链，就删。
+- 分层拆解仍受第 5 节「每周 ≤1 篇」限额，别用层级制造「看起来有结构」。
+- 段落间不留连续空行（用户 2026-11-07 明确批评）：正文文件用单换行分段，编辑器 dry run 的 `doubleBlank` / `extraBlank` 必须都为 false（块内 `\n\n` 会在 Draft.js 生成空段落，2026-11-11 实测）。
+
+**③ 有深度和判断**
+- 不流于表面和情绪：不站队、不评判新闻当事人、不靠「太让人心疼了」「细思极恐」推进，不把前排高赞的共情 / 介入路线换个说法重讲。
+- 深度＝至少 1 处**可核查硬料**（史料原文 / 法条 / 数据 / 真实案例）＋ 1 组**对比结构**（旧制 vs 今制、法律层 vs 生活层、名字归谁管 vs 谁在喊）＋ 把**机制**讲出来（为什么这动作解决不了问题、梗会迁移到哪个新载体）。前两项是深度版硬性要求（第 2 节）；标准版至少把机制讲透、给判断，不写空泛感慨。
+- 判断＝给可迁移的原则或取舍，不是留白式感慨。11/11 稿落点「一个字段一天被调用几十次，出了问题先想改字段，其实该查的是调用它的那几个环节」即从个案抽到可复用框架。
+- 反例：资料整理型通稿（第 5 节已禁）、「各有各的道理」式和稀泥、结尾抛问号把判断交还读者（cta 已禁）、情绪升华式收尾。
+- 结尾用判断收束（「改名字是父母能办的事，不再被这样喊不是。」），不用情绪。
+
+**自检四问（写完后、跑门禁前）**
+1. 首句是不是一个能被反驳的判断？把第一段删掉，观点还在不在？
+2. 有没有整句能删掉而不影响判断链？有就删。
+3. 深度版的硬料能不能查到出处？有没有讲「为什么」，而不只是「是什么」？
+4. 最后一段是判断 / 场景，还是情绪 / 问号 / 和稀泥？
+任一不过先改稿，再跑 `humanize_gate.py`——凭证绑定正文 sha256，改一个字就要重跑，别反过来先跑门禁再改。
+
+> **优先级**：三条与第 5 节、深度版三项硬料、门禁 1 同时生效。冲突时以「观点先行 + 不模板化」为准：不能拿「避免模板」当理由把判断藏到中段，也不能为了观点先行复用「先说个反直觉判断」系开头。
 
 ### 辅助脚本（含 v1.5.0 门禁）
 - `scripts/humanize_gate.py`（**v1.5.0 发布前必跑**）：调 `text-humanize` 的 preflight，FAIL 归零才写 `/tmp/zhihu_humanize_pass.json`（绑定正文 sha256）；`--tier long` 默认、`--strict` 让 WARN 也拦、`--preflight` 指定检查器路径。输出 `HUMANIZE_GATE_OK` / `HUMANIZE_GATE_FAIL`。
@@ -295,11 +338,16 @@ DOM 选择器、按钮点击要点见 references/selectors.md。
 ## 参考资料
 - references/risk-control.md — 风控红线与全局原则（必读）
 - references/selectors.md — DOM 选择器 + ego-browser API 速查
-- references/topic-strategy.md — 全局话题池、心智定位、三班轮转
+- references/topic-strategy.md — 全局话题池、心智定位、三班轮转、写作规范（含文案三条硬要求指针）
 - references/workflow.md — config.json 配置、脚本调用方式、env 变量、示例命令
 - references/illustrations.md — 配图决策（网络图 / batch-image-gen / 不配图）+ 插图执行与 dry run 校验（v1.5.0）
 
 ## 版本变更
+- **v1.5.1（2026-11-11）**：文案三条硬要求（用户明确要求，写作规范修订，脚本无改动）：
+  1. **观点先行**：首句 / 首段给能被反驳的判断，禁铺垫、共情、寒暄；明确与第 5 节的边界——禁的是「先说个反直觉判断」系**元话语开场白**，不是不让亮观点，hook 仍放中段，开头句式池照旧轮换但首段内必须落判断。
+  2. **干净利落**：句子砍短、删净缓冲垫句与元叙述、每段单功能；段落间不留连续空行（正文文件单换行分段，dry run 的 `doubleBlank` / `extraBlank` 必须为 false——2026-11-11 实测块内 `\n\n` 会生成空段落）。
+  3. **有深度和判断**：不流于表面和情绪，硬料可核查 + 对比结构 + 机制讲透 + 可迁移判断，不站队、不和稀泥、不用情绪收尾。
+  4. 新增「创作分提升套件」第 6 节（判据 / 正例 / 反例 / 自检四问）+ 顶部硬约束块；发布流程加「文案三条硬要求自检」前置；`answer_style.writing_rules` 配置块（脚本不读取）；统一 `influence.hook` 与第 5 节的冲突表述为「中段 hook、开头直接给判断」；README / topic-strategy / workflow 同步。正例取自 2026-11-11 晚班定稿（未折叠）。
 - **v1.5.0（2026-11-06）**：发布前两道硬门禁（用户明确要求）——去 AI 味 + 配图询问：
   1. **text-humanize 从「自检清单」升级为程序化硬门禁**：新增 `scripts/humanize_gate.py`（调 `~/.workbuddy/skills/text-humanize/scripts/preflight-check.py`，参数 `--tier long --lang zh --json`，FAIL 归零才写凭证；凭证绑定正文 sha256 + contentFile + 6h 时效）；`run_shift.js` 在字数护栏后、打开编辑器前校验，不过输出 `ANSWER_SKIPPED: HUMANIZE_GATE_FAIL` 并跳过发布（点赞/互动照常收尾）。失败时删除旧凭证，杜绝「检查 A 稿发 B 稿」。`config.publish_gates.humanize.enabled` 默认 true；`false` 仅限无 text-humanize 的机器并输出 WARN。
   2. **配图方式必须问用户**：每次发布回答前用 `AskUserQuestion` 三选一「网络图 / 用 batch-image-gen 生成 / 不配图」，不得替用户决定或沿用上次；新增 `references/illustrations.md`（Commons 授权查证、`imagegen-batch` 生成要点、新版 `taskSpace()/page()/setInputFiles` 插图流程、dry run 校验、发布前最终确认、坑清单）。

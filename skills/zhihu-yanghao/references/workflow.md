@@ -1,4 +1,4 @@
-# 工作流与脚本调用（zhihu-yanghao v1.5.0）
+# 工作流与脚本调用（zhihu-yanghao v1.5.1）
 
 ## 运行环境要求
 - 命令前缀：`ego-browser nodejs`（Bash 工具必须加 `dangerouslyDisableSandbox: true`，且 WorkBuddy 安全中心「沙箱安全」开关临时关闭）。否则 ego-browser 连不上（报 `Failed to connect to ego_cli bootstrap`）。
@@ -17,7 +17,7 @@
    - `account`：知乎账号 ID（如 `your-account-id`），用于日报/主页验证。
    - **`vertical_focus`**（v1.3.0）：垂直度收敛配置。`primary` = 只养的 2 个领域（当前「趣味历史」+「人文心理」）；`keyword_hints` = 各领域关键词，写作时自然融入 2–3 个帮算法打标签。**🚫 不在 `primary` 之外的话题下写回答**，否则垂直度永远点不亮。
    - `topic_pool`：全局话题池（数组）。三班按「日序号 + 班次偏移」轮转取关键词。历史类与人文类**交替排列**，保证每班取到的 3 个词横跨两个垂直领域。
-   - `answer_style`：标准回答字数区间与视角提示（LLM 写回答时参考）。
+   - `answer_style`：标准回答字数区间与视角提示（LLM 写回答时参考）。**v1.5.1 新增 `writing_rules`**：观点先行 / 干净利落 / 有深度和判断三条硬要求（脚本不读取，仅给 agent 写作时使用，判据见 SKILL.md 第 6 节）。
    - **`deep_answer`**（v1.3.0）：深度版配置。`frequency: "weekly"`；`mode` = `auto`（用户邀请优先 + 每周随机兜底）/ `invite`（仅用户邀请）/ `random`（仅自动随机）；`min_words`/`max_words` = 800–1200；`requirements` = 硬料 + 对比结构 + 可操作结论三项。
    - **`influence`**（v1.3.0）：创作影响力规范。`hook`（反直觉观点拉评论）、`actionable`（清单/框架拉收藏）、`cta`（结尾禁止机械问号收尾，用观点/留白收束；2026-09-09 修订）、`comment_reply`（发布后 24h 内回评论）。**v1.5.0 起去 AI 味是硬门禁，不是自检**——见下方「发布前两道硬门禁」。
    - **`publish_gates`**（v1.5.0）：发布门禁。`humanize.enabled`（默认 true）/ `tier` / `gate_file` / `max_age_hours` / `require_no_fail`；`illustration.ask_user`（默认 true）/ `options`（网络图 / batch-image-gen 生成 / 不配图）/ `max_images`（默认 2）/ `require_user_confirm_before_publish`。**改 `enabled=false` 会跳过门禁并输出 WARN，仅限未安装 text-humanize 的机器。**
@@ -30,6 +30,7 @@
 3. 改完保存即可，run_shift.js 下次运行自动读最新配置。
 
 ## 发布前两道硬门禁（v1.5.0，任何发布路径都适用）
+> 前置：正文先过「文案三条硬要求」自检（观点先行 / 干净利落 / 有深度和判断，见 SKILL.md 第 6 节）。没亮观点、堆了情绪铺垫就先改稿，别急着跑门禁——凭证绑定正文 sha256，改字要重跑。
 
 ### ① 去 AI 味（text-humanize，程序化拦截）
 
