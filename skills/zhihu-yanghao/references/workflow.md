@@ -13,6 +13,7 @@
    ```
    换根目录用 `WB_SKILLS_DATA=<root>`。脚本查找顺序：参数文件 `configPath` → `$WB_SKILLS_DATA/zhihu-yanghao/config.json`
    → `/tmp/zhihu_config.json` → 工作目录 `config.json` → 旧 skill 目录（数据外置前的兼容回退）。
+   ⚠️ 回退到 `config.example.json`（或 `account` 是占位符）时脚本**不直接退出**：输出 `CONFIG_EXAMPLE_WARNING` + `CONFIG_EXAMPLE_CONFIRM_REQUIRED`（含一次性 token），默认等 300s。agent 必须用 `AskUserQuestion` 问用户，同意后把 token 写入 `/tmp/zhihu_example_confirm.flag`；预先书面同意写参数 `allowExampleConfig: true`（由用户明确给出，agent 不得自行写），等待时长用 `exampleConfirmTimeoutSec` 调。未确认 / 超时 → `SHIFT_SKIPPED`，零写动作。
 2. 关键字段：
    - `account`：知乎账号 ID（如 `your-account-id`），用于日报/主页验证。
    - **`vertical_focus`**（v1.3.0）：垂直度收敛配置。`primary` = 只养的 2 个领域（当前「趣味历史」+「人文心理」）；`keyword_hints` = 各领域关键词，写作时自然融入 2–3 个帮算法打标签。**🚫 不在 `primary` 之外的话题下写回答**，否则垂直度永远点不亮。

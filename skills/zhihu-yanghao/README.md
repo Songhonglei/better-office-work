@@ -44,6 +44,7 @@
 mkdir -p ~/space/skills-data/zhihu-yanghao
 cp config.example.json ~/space/skills-data/zhihu-yanghao/config.json
 #    按你的账号/话题/班次改这份；不传 configPath 时脚本自动读它
+#    若 CONFIG_LOADED 落到 config.example.json，脚本会警告并等用户确认（详见 SKILL.md 前置依赖）
 
 # 2) 写参数文件（ego-browser 不透传 shell env，参数文件是可靠路径；configPath 可省）
 cat > /tmp/zhihu_shift_params.json <<'EOF'

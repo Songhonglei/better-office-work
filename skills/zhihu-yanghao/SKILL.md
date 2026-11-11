@@ -66,7 +66,7 @@ agent_created: true
    - Bash 工具加 `dangerouslyDisableSandbox: true`；
    - 并在 WorkBuddy 安全中心临时关闭「沙箱安全」顶部开关（用完开回），否则报 `Failed to connect to ego_cli bootstrap`。
 3. **配置话题与班次**（用户自定义）：`mkdir -p ~/space/skills-data/zhihu-yanghao && cp config.example.json ~/space/skills-data/zhihu-yanghao/config.json`，按你的账号/话题/互动修改。**配置放数据目录（skill 目录外）**，升级或整目录镜像覆盖都不会丢，多个 agent 共用同一份（详见 references/workflow.md 的「配置 config.json」）。
-   - ⚠️ **配置已不在 skill 目录内**：包里只有 `config.example.json`。每班看 `CONFIG_LOADED` 输出，正常应指向 `~/space/skills-data/zhihu-yanghao/config.json`；若指向 `config.example.json` 立即停手——模板 `shifts` 三班 `answer` 全 `true`，会突破 1 回答/天红线。
+   - ⚠️ **配置已不在 skill 目录内**：包里只有 `config.example.json`。每班看 `CONFIG_LOADED` 输出，正常应指向 `~/space/skills-data/zhihu-yanghao/config.json`；若指向 `config.example.json`（或 `account` 是占位符），脚本**不直接退出**，而是输出 `CONFIG_EXAMPLE_WARNING` + `CONFIG_EXAMPLE_CONFIRM_REQUIRED`，保持进程等用户明确确认（默认 300s）：agent 必须用 `AskUserQuestion` 问用户，同意后把一次性 token 写入 `/tmp/zhihu_example_confirm.flag`；预先书面同意可在参数文件写 `allowExampleConfig: true`（**同样必须由用户明确给出，agent 不得自行写入**）。未确认 / 超时输出 `SHIFT_SKIPPED`，零写动作。模板 `shifts` 三班 `answer` 全 `true`，有 1 回答/天红线风险，别默认放行。
 4. **`text-humanize` skill（v1.5.0 起发布必需）**：`~/.workbuddy/skills/text-humanize/scripts/preflight-check.py`。`humanize_gate.py` 会自动定位它；装在别处用 `--preflight` 或环境变量 `TEXT_HUMANIZE_PREFLIGHT` 指定。缺了它，门禁会拦下发布（fail-safe）。
 5. **配图按需依赖**：选「网络图」→ 能访问 Wikimedia Commons 并下载图片；选「用 batch-image-gen 生成」→ 批量生图 skill（本机名为 `imagegen-batch`）+ ImageGen 能力；选「不配图」→ 无额外依赖。
 
@@ -304,6 +304,7 @@ DOM 选择器、按钮点击要点见 references/selectors.md。
 ## 关键陷阱（务必先看）
 - 🚨 **折叠 / AI 标签是账号级信号，不是单篇问题**（2026-09 实测）：完整前兆链条＝公开「内容疑似 AI 生成」标签 → 按时间窗批次折叠历史回答 → 账号限流 / 禁言。**结论：一旦出现 AI 标签或成批折叠，立刻当全账号事件处理**——停写整改（切受限期模式）、复盘写作规范，而不是继续试探。
 - 🚨 **临时配置副本可能绕过禁言护栏**（2026-09-15 实测；配置外置后优先级已变）：`run_shift.js` 的 config 查找顺序是 参数文件 `configPath` → `CONFIG` env → `$WB_SKILLS_DATA/zhihu-yanghao/config.json`（默认 `~/space/skills-data`）→ `/tmp/zhihu_config.json` → 工作目录 `config.json` / `config.example.json` → 旧 skill 目录 `config.json` / `config.example.json`（兼容回退）。**配置数据外置后，正式配置排在 `/tmp/zhihu_config.json` 之前**，遗留的临时副本不再能悄悄顶替它；但显式传 `configPath` 或设 `CONFIG` env 仍排最前，一次性改字数用的副本若缺 `account_status`，护栏照样失效。防护：脚本选中 `/tmp/` 路径时输出 `WARN: 正在使用 /tmp 影子配置`；别用临时副本，改数据目录里的配置更稳，用完务必删。
+- ⚠️ **模板配置回退不再一刀切退出**（2026-11-11，用户明确要求）：配置外置后包里只剩 `config.example.json`，数据目录的 `config.json` 丢失时回退链末端就会落到模板。`run_shift.js` 现在输出 `CONFIG_EXAMPLE_WARNING` 与带一次性 token 的 `CONFIG_EXAMPLE_CONFIRM_REQUIRED`，保持进程等待（默认 300s，`exampleConfirmTimeoutSec` 可调）。**agent 不得自行写确认文件、也不得自行写 `allowExampleConfig`**，必须用 `AskUserQuestion` 拿到用户明确同意；无确认则本班零写动作。
 - ⚠️ **发布按钮零宽字符导致静默不发布**（2026-09-15 修复）：原 `innerText.trim() === "发布回答"` 匹配——`trim()` **不去 `\u200b`**，按钮带零宽字符时静默 `publish-clicked: false`（正文已填、URL 不跳转、不报错）。已改为 `[\u200b\s]+` 清洗 + 主候选 `["发布回答","提交回答"]` + 回退「发布」（仅编辑器存在时）+ 跳过 disabled，并在未发布时输出 `SHIFT_PARTIAL_FAIL: publish`。
 - ⚠️ **单问题重复操作密度**（2026-09-15 实测教训）：同一问题页 15 分钟内连续开编辑器 / 补发 3 次后，点「写回答」**不再挂载编辑器**（`.public-DraftEditor-content` 数=0，且非登录态问题——消息/私信仍在），属密度风控信号。规则：同页发布失败最多重试 1 次；再失败即停，等 1–2 小时或换班次重试；禁止在同一问题上连环试。
 - ⚠️ **知乎「隐藏机制」批量折叠（2026-09 发现）**：平台按时间窗分批折叠历史回答（实测 87 篇中 51 篇被折，宽松期 / 收紧期交替 = 分批处理特征）。CLI Summary 验证对新机制**失明**（被折叠回答 Summary 仍非空），折叠的唯一权威信号是创作者中心列表的「被折叠」标签 → **每班开跑先跑 `scripts/fold_audit.js` 与基线比对**。另注意：新回答未被折 ≠ 安全，可能只是审核批次还没推进到，不能当作写作规范没问题的证据。
@@ -345,6 +346,7 @@ DOM 选择器、按钮点击要点见 references/selectors.md。
 - references/illustrations.md — 配图决策（网络图 / batch-image-gen / 不配图）+ 插图执行与 dry run 校验（v1.5.0）
 
 ## 版本变更
+- **2026-11-11 修订（配置外置收尾后）**：`run_shift.js` 对选中模板配置改为「醒目警告 + 用户明确确认」（用户明确要求**不用退出**）：新增 `CONFIG_EXAMPLE_*` 日志族、一次性 token 确认文件、`allowExampleConfig` / `exampleConfirmTimeoutSec` 参数、等待期进程保活；确认后照常继续，未确认 / 超时才 `SHIFT_SKIPPED` 零写动作。SKILL.md 前置依赖 / 关键陷阱、workflow.md、README 同步；`config.example.json` 与其余脚本不变。
 - **v1.5.1（2026-11-11）**：文案三条硬要求（用户明确要求，写作规范修订，脚本无改动）：
   1. **观点先行**：首句 / 首段给能被反驳的判断，禁铺垫、共情、寒暄；明确与第 5 节的边界——禁的是「先说个反直觉判断」系**元话语开场白**，不是不让亮观点，hook 仍放中段，开头句式池照旧轮换但首段内必须落判断。
   2. **干净利落**：句子砍短、删净缓冲垫句与元叙述、每段单功能；段落间不留连续空行（正文文件单换行分段，dry run 的 `doubleBlank` / `extraBlank` 必须为 false——2026-11-11 实测块内 `\n\n` 会生成空段落）。

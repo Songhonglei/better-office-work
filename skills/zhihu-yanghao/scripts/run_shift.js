@@ -10,8 +10,9 @@
 //        → 按 interactions 做可选收藏/关注/评论
 // v1.5.0: 发布前必须已跑 scripts/humanize_gate.py，凭证与正文 sha256 绑定；不过则跳过发布。
 //
-// 参数优先级：env（SHIFT/CONFIG/QID/CONTENT/CONTENT_FILE/KW/LIMIT/COMMENT_TEXT）> /tmp/zhihu_shift_params.json
+// 参数优先级：env（SHIFT/CONFIG/QID/CONTENT/CONTENT_FILE/KW/LIMIT/COMMENT_TEXT/ALLOW_EXAMPLE_CONFIG）> /tmp/zhihu_shift_params.json
 // 注：部分 ego-browser 构建不向 nodejs 运行时透传 shell env，故参数文件为可靠路径。
+// 2026-11-11：回退到 config.example.json 时不直接退出，改为输出警告 + 等用户明确确认（见 1.1 节）。
 
 (async () => {
   const fs = require('fs')
@@ -28,6 +29,7 @@
     if (process.env.KW) p.kw = process.env.KW
     if (process.env.LIMIT) p.limit = process.env.LIMIT
     if (process.env.COMMENT_TEXT) p.commentText = process.env.COMMENT_TEXT
+    if (process.env.ALLOW_EXAMPLE_CONFIG) p.allowExampleConfig = process.env.ALLOW_EXAMPLE_CONFIG
     const file = '/tmp/zhihu_shift_params.json'
     if (!p.shift) {
       try {
@@ -40,6 +42,12 @@
         cliLog('PARAMS_FILE_MISSING: ' + file + ' (' + e.message + ')')
       }
     }
+    // 模板确认参数独立于 shift 读取：env 粘滞时参数文件的 shift 会被跳过，这两个字段不能一起丢
+    try {
+      const cf = JSON.parse(fs.readFileSync(file, 'utf8'))
+      if (cf.allowExampleConfig != null && p.allowExampleConfig == null) p.allowExampleConfig = cf.allowExampleConfig
+      if (cf.exampleConfirmTimeoutSec != null && p.exampleConfirmTimeoutSec == null) p.exampleConfirmTimeoutSec = cf.exampleConfirmTimeoutSec
+    } catch (e) {}
     return p
   }
   const P = loadParams()
@@ -74,6 +82,58 @@
   cliLog('CONFIG_LOADED: ' + cfg.path)
   if (cfg.path.indexOf('/tmp/') === 0) {
     cliLog('WARN: 正在使用 /tmp 影子配置（' + cfg.path + '）——临时副本会顶替数据目录的正式配置，且可能缺少 account_status 禁言护栏。确认是刻意临时覆盖，否则删除该文件。')
+  }
+
+  // ---------- 1.1 模板配置保护：醒目警告 + 用户明确确认（不直接退出） ----------
+  // 配置外置后包里只剩模板，数据目录 config.json 丢失时回退链末端就会落到它。
+  // 用户明确要求：不做一刀切 fail-safe 退出，给警告、给人确认机会，确认后照常继续。
+  const isExample = /config\.example\.json$/.test(cfg.path) || cfg.data.account === '你的知乎账号ID'
+  if (isExample) {
+    cliLog('⚠️ CONFIG_EXAMPLE_WARNING: 本次选中了模板配置 ' + cfg.path)
+    cliLog('⚠️ 风险 1：account=' + (cfg.data.account || '?') + ' 是占位符，account_status 没有真实的禁言/恢复历史')
+    cliLog('⚠️ 风险 2：模板 shifts 三班 answer 全为 true —— 三班连跑会突破 1 回答/天红线')
+    cliLog('⚠️ 风险 3：话题池 / 垂直领域 / 发布门禁都是示例值，不代表你账号的策略')
+    cliLog('⚠️ 建议：先 cp config.example.json ' + path.join(DATA_DIR, 'config.json') + ' 改成自己的配置再跑')
+    const preApproved = P.allowExampleConfig === true ||
+      ['1', 'true', 'yes'].indexOf(String(P.allowExampleConfig).toLowerCase()) >= 0
+    if (preApproved) {
+      cliLog('CONFIG_EXAMPLE_CONFIRMED: 已显式 allowExampleConfig（书面同意），继续按模板配置执行，其余门禁照常生效')
+    } else {
+      const confirmToken = require('crypto').randomBytes(6).toString('hex')
+      const confirmFile = '/tmp/zhihu_example_confirm.flag'
+      const requestFile = '/tmp/zhihu_example_confirm_request.json'
+      try { fs.unlinkSync(confirmFile) } catch (e) {}
+      try {
+        fs.writeFileSync(requestFile, JSON.stringify({
+          token: confirmToken, confirmFile: confirmFile, config: cfg.path, reason: 'CONFIG_EXAMPLE'
+        }, null, 1))
+      } catch (e) {}
+      const timeoutSec = Number(P.exampleConfirmTimeoutSec) > 0 ? Number(P.exampleConfirmTimeoutSec) : 300
+      const rounds = Math.ceil(timeoutSec / 5)
+      cliLog('CONFIG_EXAMPLE_CONFIRM_REQUIRED: 需要用户明确确认才能继续（等待 ' + timeoutSec + 's）')
+      cliLog('CONFIG_EXAMPLE_CONFIRM_HINT: agent 必须用 AskUserQuestion 问用户；同意后把 token=' + confirmToken +
+        ' 写入 ' + confirmFile + '（或 JSON {"allow":true,"token":"..."}）；不得自行写入')
+      // ego-browser nodejs 长等待需保活，否则进程可能被回收
+      const keep = setInterval(function () {}, 1000)
+      let confirmed = false
+      for (let i = 0; i < rounds; i++) {
+        await new Promise(function (r) { setTimeout(r, 5000) })
+        try {
+          const v = fs.readFileSync(confirmFile, 'utf8').trim()
+          let ok = (v === confirmToken)
+          try { const j = JSON.parse(v); if (j.allow === true && j.token === confirmToken) ok = true } catch (e) {}
+          if (ok) { confirmed = true; break }
+        } catch (e) {}
+        if (i % 6 === 5) cliLog('CONFIG_EXAMPLE_WAITING: 已等 ' + ((i + 1) * 5) + 's / ' + timeoutSec + 's，仍未获确认')
+      }
+      clearInterval(keep)
+      if (!confirmed) {
+        cliLog('SHIFT_SKIPPED: ' + (P.shift || '?') + ' (example config not confirmed) — no answer / no like / no collect / no follow / no comment')
+        cliLog('SHIFT_DONE: ' + (P.shift || '?') + ' qid=none aid=NONE (example config not confirmed)')
+        return
+      }
+      cliLog('CONFIG_EXAMPLE_CONFIRMED: 用户已明确同意，继续按模板配置执行（风险自负，其余门禁照常生效）')
+    }
   }
 
   // ---------- 0. 账号受限期护栏（fail-safe，优先于一切动作） ----------
