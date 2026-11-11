@@ -73,7 +73,7 @@
   if (!cfg) { cliLog('ERROR: no config.json found'); return }
   cliLog('CONFIG_LOADED: ' + cfg.path)
   if (cfg.path.indexOf('/tmp/') === 0) {
-    cliLog('WARN: 正在使用 /tmp 影子配置（' + cfg.path + '）——它会覆盖正式 config，且可能缺少 account_status 禁言护栏。确认是刻意临时覆盖，否则删除该文件。')
+    cliLog('WARN: 正在使用 /tmp 影子配置（' + cfg.path + '）——临时副本会顶替数据目录的正式配置，且可能缺少 account_status 禁言护栏。确认是刻意临时覆盖，否则删除该文件。')
   }
 
   // ---------- 0. 账号受限期护栏（fail-safe，优先于一切动作） ----------

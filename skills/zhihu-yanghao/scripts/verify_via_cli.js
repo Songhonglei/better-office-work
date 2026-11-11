@@ -9,6 +9,7 @@
 (async () => {
   const fs = require('fs')
   const cp = require('child_process')
+  const path = require('path')
 
   let aid = process.env.AID || ''
   let type = process.env.TYPE || 'answer'
@@ -24,7 +25,7 @@
   // 定位 zhihu-cli：PATH 优先，回退 macOS 默认安装路径
   let cli = 'zhihu-cli'
   try { cp.execSync('command -v zhihu-cli', { stdio: 'ignore' }) } catch (e) {
-    const fallback = '/Users/songhonglei/Library/Application Support/zhihu-cli/current/zhihu-cli'
+    const fallback = path.join(process.env.HOME || '', 'Library', 'Application Support', 'zhihu-cli', 'current', 'zhihu-cli')
     if (fs.existsSync(fallback)) cli = fallback
     else { cliLog('ERROR: zhihu-cli not found in PATH nor at ' + fallback); return }
   }

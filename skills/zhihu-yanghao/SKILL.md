@@ -1,6 +1,6 @@
 ---
 name: zhihu-yanghao
-description: Full Zhihu account-nurturing (养号) workflow via ego-browser — configurable topic pool with vertical focus, three-shift (morning/noon/evening) schedule where each shift writes+publishes+verifies one answer and runs like engagement, weekly deep-dive answers, moments/想法 posting, content-influence requirements (hook + actionable + CTA + comment reply), a mandatory writing style (contestable judgment in the opening sentence, terse prose, evidence-backed analysis instead of surface sentiment), plus optional collect/follow/comment interactions driven by config. Every publish is gated by a mandatory text-humanize (Chinese mode) de-AI pass with a hash-bound credential, and by an explicit user choice on illustrations (web images / batch-image-gen / none). Every run must end by reporting links and raw ids of published content. Use when the user asks to 知乎养号 / 养知乎号 / 发知乎回答 / 知乎点赞互动 / 知乎浏览 / 三班养号 / 写深度版 / 发想法 / 提升创作分, or wants a portable, risk-controlled, topic-configurable Zhihu growth routine on any machine with ego-browser.
+description: Full Zhihu account-nurturing workflow via ego-browser — three daily shifts (each writes, publishes and verifies one answer with like engagement), weekly deep-dives, moments/想法, content-influence rules, and optional collect/follow/comment. Vertical topic pool and schedule are user-configurable. Publishing requires a text-humanize (Chinese) de-AI pass with a hash-bound credential and an explicit illustration choice (web / batch-image-gen / none). Writing must open with a contestable judgment, stay terse, and use evidence-backed analysis over surface sentiment. Every run reports published links and raw ids. Use when the user asks to 知乎养号 / 养知乎号 / 发知乎回答 / 知乎点赞互动 / 知乎浏览 / 三班养号 / 写深度版 / 发想法 / 提升创作分, or wants a portable, risk-controlled Zhihu growth routine.
 agent_created: true
 ---
 
@@ -66,6 +66,7 @@ agent_created: true
    - Bash 工具加 `dangerouslyDisableSandbox: true`；
    - 并在 WorkBuddy 安全中心临时关闭「沙箱安全」顶部开关（用完开回），否则报 `Failed to connect to ego_cli bootstrap`。
 3. **配置话题与班次**（用户自定义）：`mkdir -p ~/space/skills-data/zhihu-yanghao && cp config.example.json ~/space/skills-data/zhihu-yanghao/config.json`，按你的账号/话题/互动修改。**配置放数据目录（skill 目录外）**，升级或整目录镜像覆盖都不会丢，多个 agent 共用同一份（详见 references/workflow.md 的「配置 config.json」）。
+   - ⚠️ **配置已不在 skill 目录内**：包里只有 `config.example.json`。每班看 `CONFIG_LOADED` 输出，正常应指向 `~/space/skills-data/zhihu-yanghao/config.json`；若指向 `config.example.json` 立即停手——模板 `shifts` 三班 `answer` 全 `true`，会突破 1 回答/天红线。
 4. **`text-humanize` skill（v1.5.0 起发布必需）**：`~/.workbuddy/skills/text-humanize/scripts/preflight-check.py`。`humanize_gate.py` 会自动定位它；装在别处用 `--preflight` 或环境变量 `TEXT_HUMANIZE_PREFLIGHT` 指定。缺了它，门禁会拦下发布（fail-safe）。
 5. **配图按需依赖**：选「网络图」→ 能访问 Wikimedia Commons 并下载图片；选「用 batch-image-gen 生成」→ 批量生图 skill（本机名为 `imagegen-batch`）+ ImageGen 能力；选「不配图」→ 无额外依赖。
 
@@ -147,6 +148,7 @@ python3 scripts/humanize_gate.py /abs/answer.txt
 ```bash
 ego-browser nodejs <<'EOF'
 const fs = require('fs');
+const path = require('path');
 // ⚠️ 驻留进程 env 粘滞（2026-09-12 本机实测）：ego-browser nodejs 的 process.env 跨调用残留，
 // 上次设过的 SHIFT/QID/CONTENT_FILE 会一直活着，导致 loadParams 判 p.shift 为真、跳过参数文件，
 // deep 等仅存在于参数文件的字段永远读不到。启动器必须显式 delete。
@@ -154,10 +156,10 @@ delete process.env.SHIFT;
 delete process.env.QID;
 delete process.env.CONTENT_FILE;
 delete process.env.CONTENT;
-process.env.CONFIG = '/Users/songhonglei/.workbuddy/skills/zhihu-yanghao/config.json';
+delete process.env.CONFIG;   // 配置已外置，缺省读 ~/space/skills-data/zhihu-yanghao/config.json；同样防 env 粘滞
 process.env.SHIFT = 'morning';
 const keep = setInterval(function () {}, 1000);
-const src = fs.readFileSync('/Users/songhonglei/.workbuddy/skills/zhihu-yanghao/scripts/run_shift.js', 'utf8');
+const src = fs.readFileSync(path.join(process.env.HOME, '.workbuddy', 'skills', 'zhihu-yanghao', 'scripts', 'run_shift.js'), 'utf8');
 Promise.resolve(eval(src)).then(
   function () { clearInterval(keep); cliLog('=== SHIFT_DONE_OK ==='); },
   function (e) { clearInterval(keep); cliLog('=== SHIFT_ERROR: ' + (e && e.message) + ' ==='); }
@@ -301,7 +303,7 @@ DOM 选择器、按钮点击要点见 references/selectors.md。
 
 ## 关键陷阱（务必先看）
 - 🚨 **折叠 / AI 标签是账号级信号，不是单篇问题**（2026-09 实测）：完整前兆链条＝公开「内容疑似 AI 生成」标签 → 按时间窗批次折叠历史回答 → 账号限流 / 禁言。**结论：一旦出现 AI 标签或成批折叠，立刻当全账号事件处理**——停写整改（切受限期模式）、复盘写作规范，而不是继续试探。
-- 🚨 **/tmp 影子配置会绕过禁言护栏**（2026-09-15 实测）：`run_shift.js` 的 config 搜索顺序里 `/tmp/zhihu_config.json` **优先于正式 config**——遗留的临时副本（如一次性改字数的副本）会把 `account_status` 一起吞掉，护栏失效仍去点赞。防护：脚本在选中 `/tmp/` 路径时输出 `WARN: 正在使用 /tmp 影子配置`；用完临时副本请立即删除。
+- 🚨 **临时配置副本可能绕过禁言护栏**（2026-09-15 实测；配置外置后优先级已变）：`run_shift.js` 的 config 查找顺序是 参数文件 `configPath` → `CONFIG` env → `$WB_SKILLS_DATA/zhihu-yanghao/config.json`（默认 `~/space/skills-data`）→ `/tmp/zhihu_config.json` → 工作目录 `config.json` / `config.example.json` → 旧 skill 目录 `config.json` / `config.example.json`（兼容回退）。**配置数据外置后，正式配置排在 `/tmp/zhihu_config.json` 之前**，遗留的临时副本不再能悄悄顶替它；但显式传 `configPath` 或设 `CONFIG` env 仍排最前，一次性改字数用的副本若缺 `account_status`，护栏照样失效。防护：脚本选中 `/tmp/` 路径时输出 `WARN: 正在使用 /tmp 影子配置`；别用临时副本，改数据目录里的配置更稳，用完务必删。
 - ⚠️ **发布按钮零宽字符导致静默不发布**（2026-09-15 修复）：原 `innerText.trim() === "发布回答"` 匹配——`trim()` **不去 `\u200b`**，按钮带零宽字符时静默 `publish-clicked: false`（正文已填、URL 不跳转、不报错）。已改为 `[\u200b\s]+` 清洗 + 主候选 `["发布回答","提交回答"]` + 回退「发布」（仅编辑器存在时）+ 跳过 disabled，并在未发布时输出 `SHIFT_PARTIAL_FAIL: publish`。
 - ⚠️ **单问题重复操作密度**（2026-09-15 实测教训）：同一问题页 15 分钟内连续开编辑器 / 补发 3 次后，点「写回答」**不再挂载编辑器**（`.public-DraftEditor-content` 数=0，且非登录态问题——消息/私信仍在），属密度风控信号。规则：同页发布失败最多重试 1 次；再失败即停，等 1–2 小时或换班次重试；禁止在同一问题上连环试。
 - ⚠️ **知乎「隐藏机制」批量折叠（2026-09 发现）**：平台按时间窗分批折叠历史回答（实测 87 篇中 51 篇被折，宽松期 / 收紧期交替 = 分批处理特征）。CLI Summary 验证对新机制**失明**（被折叠回答 Summary 仍非空），折叠的唯一权威信号是创作者中心列表的「被折叠」标签 → **每班开跑先跑 `scripts/fold_audit.js` 与基线比对**。另注意：新回答未被折 ≠ 安全，可能只是审核批次还没推进到，不能当作写作规范没问题的证据。
@@ -361,7 +363,7 @@ DOM 选择器、按钮点击要点见 references/selectors.md。
 - **v1.3.8（2026-09-15）**：账号受限期（限流 / 禁言）降级能力与写作整改：
   1. **禁言期模式**：`config.account_status.silenced` 开关 + `run_shift.js` 配置加载后立即退出的硬护栏（`SILENCED_MODE`/`SHIFT_SKIPPED`）；三班 `answer=false`、`interactions.like.min/max=0` 双击保险。
   2. **新增 `scripts/browse_only.js`**：只读浏览（热榜 → 垂直领域问题 → 滚动停留 → 首页流），零点击互动，用于禁言期维持活跃度。
-  3. **新增影子配置告警**：`/tmp/zhihu_config.json` 会覆盖正式 config 并绕过 `account_status` 护栏 → 选中 `/tmp/` 路径时输出 WARN（实测 9/15 曾因此绕过护栏）。
+  3. **新增影子配置告警**：`/tmp/zhihu_config.json` 会覆盖正式 config 并绕过 `account_status` 护栏 → 选中 `/tmp/` 路径时输出 WARN（实测 9/15 曾因此绕过护栏）。〔配置数据外置后已订正：正式配置优先于 `/tmp`，现行顺序见「关键陷阱」；本条保留为 v1.3.8 当时实现的历史记录。〕
   4. **陷阱新增账号级风险链路**：AI 标签 → 批次折叠 → 账号限流/禁言；折叠与 AI 标签一律按账号级事件处理，不再当单篇问题。
   5. 新增「受限期该做什么 / 解除后恢复节奏」：解除后先只开 morning 1 答/天跑两周；写作侧要求每篇至少 1 处第一人称真实经历，避免资料整理型通稿。
   6. 本机 `config.json` 的 `account_status` 记录真实处罚窗口；**开源文档只描述通用机制，不含具体账号的处罚细节**。
