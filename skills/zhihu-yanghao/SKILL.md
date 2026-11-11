@@ -4,7 +4,7 @@ description: Full Zhihu account-nurturing workflow via ego-browser — three dai
 agent_created: true
 ---
 
-# 知乎养号（zhihu-yanghao）v1.5.1
+# 知乎养号（zhihu-yanghao）v1.5.2
 
 > ## ⛔ 文案三条硬要求（v1.5.1，用户明确要求，动笔前必读）
 > 1. **观点先行**：首句或首段直接给一个能被反驳的判断，不要背景铺垫、共情、寒暄、「这个问题其实挺复杂」。
@@ -42,7 +42,7 @@ agent_created: true
 一套依赖 ego-browser 的知乎养号全流程，支持 **垂直领域收敛 + 用户可配置话题池 + 早/中/晚三班节奏 + 深度版回答 + 想法发布 + 影响力规范**：
 
 - **垂直收敛**：账号只养 2 个领域（当前「趣味历史」+「人文心理」），刻意埋关键词帮算法点亮创作垂直度。
-- **选题**：全局 `topic_pool`，三班按「日序号 + 班次偏移」自动轮转取关键词（见 references/topic-strategy.md）。
+- **选题**：全局 `topic_pool`，三班按「日序号 + 班次偏移」自动轮转取关键词；轮转词只是种子，实际挑题优先按 `topic_selection` 的「热榜前列 + 新题答案池薄」规则（v1.5.2，脚本不读取该块，由 agent 人工裁决最终题目，见 references/topic-strategy.md）。
 - **每日每班 1 回答**：写 / 发布 / 折叠验证（你已选择三班各写 1 回答 = 3 回答/天，属自定义高风险，见下方⚠️）。
 - **深度版**：每周 1 篇 800–1200 字深度回答（用户邀请 or 自动随机），冲内容优质分。
 - **想法**：每周若干条短动态，冲关注者亲密度。
@@ -341,11 +341,15 @@ DOM 选择器、按钮点击要点见 references/selectors.md。
 ## 参考资料
 - references/risk-control.md — 风控红线与全局原则（必读）
 - references/selectors.md — DOM 选择器 + ego-browser API 速查
-- references/topic-strategy.md — 全局话题池、心智定位、三班轮转、写作规范（含文案三条硬要求指针）
+- references/topic-strategy.md — 全局话题池、选题优先级（v1.5.2 热榜前列 + 新题答案池薄）、心智定位、三班轮转、写作规范（含文案三条硬要求指针）
 - references/workflow.md — config.json 配置、脚本调用方式、env 变量、示例命令
 - references/illustrations.md — 配图决策（网络图 / batch-image-gen / 不配图）+ 插图执行与 dry run 校验（v1.5.0）
 
 ## 版本变更
+- **v1.5.2（2026-11-11）**：选题策略与模板同步（写作 / 配置规范修订，脚本无改动）：
+  1. 新增 `topic_selection` 配置块：热榜前列 + 新题答案池薄优先、避开高赞固化老题与短期连续同质题材、域内机制辨析例外、差异化切口、CLI `hot` 配额耗尽改浏览器读 `.HotItem`；`topic_pool` 轮转词降级为选题种子。
+  2. 新增 `answer_style.formatting`：单 `\n` 分段、禁 Markdown 标记、dry run 的 `extraBlank` / `doubleBlank` 必须同时为 false。
+  3. 清除 `config.example.json` / `references/topic-strategy.md` / `references/workflow.md` 里的西游记题材示例（改为「民俗」/「制度」等非同质话题）；README / SKILL.md / workflow 版本号与说明同步。模板 `shifts` 三班 `answer` 全 true 的示例值、example 门禁警告文案均保持不变。
 - **2026-11-11 修订（配置外置收尾后）**：`run_shift.js` 对选中模板配置改为「醒目警告 + 用户明确确认」（用户明确要求**不用退出**）：新增 `CONFIG_EXAMPLE_*` 日志族、一次性 token 确认文件、`allowExampleConfig` / `exampleConfirmTimeoutSec` 参数、等待期进程保活；确认后照常继续，未确认 / 超时才 `SHIFT_SKIPPED` 零写动作。SKILL.md 前置依赖 / 关键陷阱、workflow.md、README 同步；`config.example.json` 与其余脚本不变。
 - **v1.5.1（2026-11-11）**：文案三条硬要求（用户明确要求，写作规范修订，脚本无改动）：
   1. **观点先行**：首句 / 首段给能被反驳的判断，禁铺垫、共情、寒暄；明确与第 5 节的边界——禁的是「先说个反直觉判断」系**元话语开场白**，不是不让亮观点，hook 仍放中段，开头句式池照旧轮换但首段内必须落判断。
@@ -381,7 +385,7 @@ DOM 选择器、按钮点击要点见 references/selectors.md。
 - **v1.3.5（2026-09-09）**：内容去 AI 味与选题错峰（写作规范修订，脚本无改动）：
   1. **cta 禁止机械问号收尾**：「你觉得…？」「你遇到过类似情况吗？」这类结尾是典型 AI 味收尾（读者已免疫），改为观点/判断/留白收束，互动引导靠观点本身的争议性。同步修订 config `influence.cta`、topic-strategy、workflow。
   2. **发布前去 AI 味自检（必做，接 text-humanize skill 中文模式）**：结尾无问号互动收尾；编号列表尽量融进叙述；破折号「——」≤1；语气词 1–2 个（吧/嘛/说白了/讲真/还挺）；节奏参差；可留 1 处「的/地/得」类小瑕疵。
-  3. **轮转重叠顺延**：本班轮转词与当日已答班次题材同域同主方向时（如午班刚写西游记、晚班轮转又给神话），agent 选题顺延到 pool 下一词，优先保证跨班领域交替，防单一人设指纹。
+  3. **轮转重叠顺延**：本班轮转词与当日已答班次题材同域同主方向时（如午班刚写三国、晚班轮转又给朝代/人物评价），agent 选题顺延到 pool 下一词，优先保证跨班领域交替，防单一人设指纹。
 - **v1.3.4（2026-09-05）**：补齐两个「写了但从未真正生效」的实测修复（均经同一页面对照实证验证）：
   1. **关注问题按钮选择器**（`run_shift.js`）：旧写法按 innerText 匹配 `"关注问题"`，但知乎页面上该控件文案只有「关注」/「已关注」（class `FollowButton`），字符串 `"关注问题"` 从未出现过，故永远返回 `no_button`。改为**先按 `FollowButton` class 匹配、回退按文案精确匹配**；命中「已关注」判为 `already`，避免误点成取消关注。实证：同一页面旧写法 `no_button` → 新写法 `already`。
   2. **启动器必须接管 Promise**（`SKILL.md` 运行模式）：原示例 `(function(){ eval(src); })()` 中，`(async () => {...})()` 返回的 Promise 无人接管，运行时判定同步代码已跑完即结束会话，异步流程被整体丢弃——症状是「跑了三四分钟、零输出、什么都没做」。改为 `Promise.resolve(eval(src)).then(ok, err)` + `setInterval` 保活，并固化三条硬约束：heredoc 内禁用顶层 await（`require` 与顶层 await 并存会触发 node 模块格式自动探测冲突，报 `Cannot determine intended module format`，**非本机特例，所有机器同理**）、Promise 必须有人接管、保活定时器。另补充 `cliLog` 走 stderr 且延迟到进程结束才 flush 的提示（避免后台运行时误判卡死）。

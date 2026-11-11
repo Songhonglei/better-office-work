@@ -1,4 +1,4 @@
-# 工作流与脚本调用（zhihu-yanghao v1.5.1）
+# 工作流与脚本调用（zhihu-yanghao v1.5.2）
 
 ## 运行环境要求
 - 命令前缀：`ego-browser nodejs`（Bash 工具必须加 `dangerouslyDisableSandbox: true`，且 WorkBuddy 安全中心「沙箱安全」开关临时关闭）。否则 ego-browser 连不上（报 `Failed to connect to ego_cli bootstrap`）。
@@ -18,7 +18,8 @@
    - `account`：知乎账号 ID（如 `your-account-id`），用于日报/主页验证。
    - **`vertical_focus`**（v1.3.0）：垂直度收敛配置。`primary` = 只养的 2 个领域（当前「趣味历史」+「人文心理」）；`keyword_hints` = 各领域关键词，写作时自然融入 2–3 个帮算法打标签。**🚫 不在 `primary` 之外的话题下写回答**，否则垂直度永远点不亮。
    - `topic_pool`：全局话题池（数组）。三班按「日序号 + 班次偏移」轮转取关键词。历史类与人文类**交替排列**，保证每班取到的 3 个词横跨两个垂直领域。
-   - `answer_style`：标准回答字数区间与视角提示（LLM 写回答时参考）。**v1.5.1 新增 `writing_rules`**：观点先行 / 干净利落 / 有深度和判断三条硬要求（脚本不读取，仅给 agent 写作时使用，判据见 SKILL.md 第 6 节）。
+   - `answer_style`：标准回答字数区间与视角提示（LLM 写回答时参考）。**v1.5.1 新增 `writing_rules`**：观点先行 / 干净利落 / 有深度和判断三条硬要求（脚本不读取，仅给 agent 写作时使用，判据见 SKILL.md 第 6 节）。**v1.5.2 新增 `formatting`**：单 `\n` 分段、禁 Markdown、dry run 的 `extraBlank` / `doubleBlank` 双校验。
+   - `topic_selection`（v1.5.2）：选题优先级规则，脚本不读取、仅给 agent 用；热榜前列 + 新题答案池薄优先、避开老题与短期连续同质题材。`topic_pool` 轮转词降级为选题种子。
    - **`deep_answer`**（v1.3.0）：深度版配置。`frequency: "weekly"`；`mode` = `auto`（用户邀请优先 + 每周随机兜底）/ `invite`（仅用户邀请）/ `random`（仅自动随机）；`min_words`/`max_words` = 800–1200；`requirements` = 硬料 + 对比结构 + 可操作结论三项。
    - **`influence`**（v1.3.0）：创作影响力规范。`hook`（反直觉观点拉评论）、`actionable`（清单/框架拉收藏）、`cta`（结尾禁止机械问号收尾，用观点/留白收束；2026-09-09 修订）、`comment_reply`（发布后 24h 内回评论）。**v1.5.0 起去 AI 味是硬门禁，不是自检**——见下方「发布前两道硬门禁」。
    - **`publish_gates`**（v1.5.0）：发布门禁。`humanize.enabled`（默认 true）/ `tier` / `gate_file` / `max_age_hours` / `require_no_fail`；`illustration.ask_user`（默认 true）/ `options`（网络图 / batch-image-gen 生成 / 不配图）/ `max_images`（默认 2）/ `require_user_confirm_before_publish`。**改 `enabled=false` 会跳过门禁并输出 WARN，仅限未安装 text-humanize 的机器。**
@@ -222,7 +223,7 @@ ego-browser nodejs < scripts/browse_only.js
 ## 模式 A：每日养号完整一轮（旧版单脚本，仍可用）
 1. 闲逛热榜找选题：
 ```
-KW='历史,神话,唐僧,西游记' ego-browser nodejs < scripts/pick_question.js
+KW='历史,制度,典故' ego-browser nodejs < scripts/pick_question.js
 ```
    从 KEYWORD_HITS / ALL_TITLES 选一个中热度、未答过的问题，记下 qid。
 2. 验证未答过并点赞（前10随机选3-5，脚本内含「已答过跳过 + 已赞跳过 + 随机选赞」）：
