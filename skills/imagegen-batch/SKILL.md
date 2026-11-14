@@ -6,11 +6,11 @@ description: >
   核心规则：提示词开头加唯一前缀防覆盖、量水印优先 --auto-crop 自动量测、生成后 mv 重命名并写 manifest、交付前数量核对+裁水印。
   留白相框属**可选项**，默认不做，仅当用户明确要求「留白边 / 相框感」时才加；
   人物给足标识包防塌脸、批量默认顺序发、失败按 5/15/45s 退避重发、单张重出默认最多 4 版（用户可指定）。
-version: 1.5.0
+version: 1.5.1
 python: [PIL]
 ---
 
-- **Version**: 1.5.0
+- **Version**: 1.5.1
 - **License**: MIT
 - **Author**: Evan Song · [github.com/Songhonglei](https://github.com/Songhonglei)
 - **Repository**: https://github.com/Songhonglei/better-office-work/tree/main/skills/imagegen-batch
@@ -251,8 +251,10 @@ python3 "$S" in.png out.png --crop-bottom 70 --ratio 2.35 --frame --line 0  # �
 | 白纸速写 | `paper-sketch` | 小说 / 纪实 / 年代：白底黑线钢笔速写，四根支柱（线 / 笔 / 调 + 可选框），配五维人物标识包 |
 | 水墨文艺风 | `ink-wash` | 历史 / 文化 / 人文：淡墨宣纸、留白多、左下角一枚朱砂印 |
 | 白描水墨 | `baimiao-ink` | 人物白描 + 环境水墨，三色；含「线描主导」「漫画夸张」两个变体 |
+| 都市淡水彩 | `city-watercolor` | 现代都市 / 志怪心理向 / 回忆：写实淡水彩，冷灰蓝打底、白纸留得多、色表先定；与 `paper-sketch` 是同一篇的两套皮 |
 
 - 用户说「**简笔水墨画**」→ `baimiao-ink` 的**线描主导**变体（佛像类必守「只画侧脸轮廓、不做正面近景」）。
 - 用户说「**简笔水墨 + 幽默／夸张／小冒犯**」→ `baimiao-ink` 的**漫画夸张**变体（夸张只落在比例与姿态，面部照旧不刻五官，冲突靠道具刻薄）。
+- `city-watercolor` 三条要点：**写「水彩」必配满负面清单**（否则塌成儿童绘本／扁平矢量／动漫）；**颜色先定色表再写 prompt**（否则好看的颜色被平均撒满全组）；**一个明确光源**。详见风格库同节。
 - 新增风格：先往库里补一份命名档案，再回这张表加一行。
 
