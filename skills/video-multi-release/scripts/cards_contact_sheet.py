@@ -76,10 +76,10 @@ def stack(paths, out, cols, rows, w, h):
     parts, labels = [], []
     for r in range(rows):
         ins = ''.join('[%d:v]' % (r * cols + j) for j in range(cols))
-        parts.append(ins + 'hstack=inputs=%d[r%d]' % (cols, r))
+        parts.append(ins + ('hstack=inputs=%d[r%d]' % (cols, r) if cols > 1 else 'null[r%d]' % r))
         labels.append('[r%d]' % r)
-    cmd += ['-filter_complex', ';'.join(parts) + ';' +
-            ''.join(labels) + 'vstack=inputs=%d[out]' % rows,
+    stack_filter = ''.join(labels) + 'vstack=inputs=%d[out]' % rows if rows > 1 else '[r0]null[out]'
+    cmd += ['-filter_complex', ';'.join(parts) + ';' + stack_filter,
             '-map', '[out]', out]
     run(cmd)
 

@@ -31,6 +31,7 @@ import os
 import subprocess
 import sys
 import time
+from production_common import digest, file_hash, read_json, segments, write_json
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from find_safe_area import analyze_image  # noqa: E402  自动留白检测（同目录）
@@ -212,6 +213,7 @@ def main():
     ap.add_argument('--cover-h-size', default='1920x1080',
                     help='横屏封面尺寸，默认 1920x1080')
     ap.add_argument('--dry-run', action='store_true', help='只打印将执行的命令，不实际生成')
+    ap.add_argument('--cache', action='store_true', help='复用输入、生成器和输出哈希均匹配的卡片')
     a = ap.parse_args()
 
     if not os.path.exists(a.generator):
@@ -223,9 +225,20 @@ def main():
             data = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError) as e:
         sys.exit('文案 JSON 读取失败: %s' % e)
-    segs = data.get('segments') or []
-    if not segs:
-        sys.exit('文案里没有 segments')
+    all_segs = segments(data)
+    indexed = [(i, dict(s)) for i, s in enumerate(all_segs, 1)
+               if s.get('visual', {}).get('type', 'card') == 'card']
+    if not indexed:
+        print('没有卡片场景，跳过卡片生成')
+        return
+    segs = [s for _, s in indexed]
+    manifest = read_json('asset_manifest.json', {'assets': {}})
+    for seg in segs:
+        visual = seg.get('visual', {})
+        generated = manifest.get('assets', {}).get(seg['id'], {}).get('path')
+        background = visual.get('source') or (generated if visual.get('generate') else None)
+        if background:
+            seg['image'] = background
 
     cfg = load_config()
     # 历史题材默认走古风字体主题；--theme 显式指定始终最高
@@ -237,7 +250,7 @@ def main():
     low_conf = []          # 自动留白检测低置信度的段落，末尾汇总提醒人工复核
 
     paths = resolve_images(segs, a)
-    n = len(segs)
+    n = len(all_segs)
 
     os.makedirs(a.out_dir, exist_ok=True)
 
@@ -287,7 +300,9 @@ def main():
           % (n, len(paths), theme, ('开/' + a.safe_axis) if auto_on else '关', a.out_dir))
 
     failures = 0
-    for i, (seg, img) in enumerate(zip(segs, paths), 1):
+    card_cache_path = os.path.join(a.out_dir, '.cards-cache.json')
+    card_cache = read_json(card_cache_path, {})
+    for (i, seg), img in zip(indexed, paths):
         if not seg.get('lines'):
             msg = ('段 %s 未写 lines，将按第一个逗号自动拆行；'
                    '建议显式写两行保证金句分行可控' % seg['id'])
@@ -325,6 +340,12 @@ def main():
         if a.dry_run:
             print('    (dry-run) %s' % ' '.join(cmd))
             continue
+        cache_key = digest({'command': cmd, 'background': file_hash(img),
+                            'generator': file_hash(a.generator), 'wrapper': file_hash(__file__)})
+        old = card_cache.get(seg['id'], {})
+        if a.cache and old.get('key') == cache_key and os.path.isfile(out) and old.get('sha256') == file_hash(out):
+            print('    CACHE ' + seg['id'])
+            continue
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         except (OSError, subprocess.TimeoutExpired) as e:
@@ -335,6 +356,8 @@ def main():
             failures += 1
             print('    ✗ 生成失败:\n%s\n%s' % (r.stdout[-400:], r.stderr[-400:]))
         else:
+            card_cache[seg['id']] = {'key': cache_key, 'sha256': file_hash(out)}
+            write_json(card_cache_path, card_cache)
             time.sleep(0.2)
 
     if a.dry_run:
@@ -374,8 +397,8 @@ def main():
         for sid, band, gap in low_conf:
             print('    %-6s %s  差值 %.1f' % (sid, band, gap))
 
-    print('已生成 %d 张卡片到 %s/。下一步：跑 build_composition.py 重建时间轴后渲染。'
-          % (n, a.out_dir))
+    print('已准备 %d 张卡片到 %s/（总场景 %d）。下一步：重建时间轴后渲染。'
+          % (len(segs), a.out_dir, n))
 
 
 if __name__ == '__main__':

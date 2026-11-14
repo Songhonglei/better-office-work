@@ -210,6 +210,7 @@ def build(script_path, voice_dir, out_path,
                 'start': c['start'],
                 'visible': c['visible'],
                 'text': c['seg']['text'],
+                **({'subtitles': c['seg']['subtitles']} if 'subtitles' in c['seg'] else {}),
             }
             for c in clips
         ],

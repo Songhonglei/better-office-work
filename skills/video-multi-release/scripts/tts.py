@@ -24,6 +24,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from production_common import digest, file_hash, read_json, segments, write_json
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -164,6 +165,8 @@ def main():
                     help='允许单段超过 8 秒不报错')
     ap.add_argument('--target', type=float, default=None,
                     help='目标成片时长（秒），用于 TTS 之前打印预估')
+    ap.add_argument('--force', action='store_true', help='重新合成所有段落，忽略内容缓存')
+    ap.add_argument('--segment-id', help='只处理指定段落；其余段落文件不变')
     a = ap.parse_args()
 
     try:
@@ -173,9 +176,11 @@ def main():
         sys.exit('文案文件不存在: %s' % a.script)
     except json.JSONDecodeError as e:
         sys.exit('文案 JSON 解析失败: %s' % e)
-    segs = data.get('segments') or []
-    if not segs:
-        sys.exit('文案里没有 segments')
+    segs = segments(data)
+    if a.segment_id:
+        segs = [s for s in segs if s['id'] == a.segment_id]
+        if not segs:
+            sys.exit('未知 segment-id')
 
     # TTS 之前先估一次，避免配完音才发现超时（只能砍字，调 rate 救不了）
     try:
@@ -193,18 +198,35 @@ def main():
     preset = PRESETS[a.preset]
     voice = a.voice or preset['voice']
     instruction = preset['instruction']
-    key = find_key()
+    key = None  # Fully cached runs do not require or read a credential.
 
     os.makedirs(a.out_dir, exist_ok=True)
+    cache_path = os.path.join(a.out_dir, '.tts-cache.json')
+    cache = read_json(cache_path, {})
     print('音色: %s' % preset['label'])
     print('模型: %s  rate=%.2f' % (MODEL, a.rate))
 
     total = 0.0
     rows = []
     for seg in segs:
-        url = synth(key, seg['text'], voice, instruction, a.rate)
         out = os.path.join(a.out_dir, seg['id'] + '.mp3')
-        urllib.request.urlretrieve(url, out)
+        fingerprint = digest({'endpoint': ENDPOINT, 'model': MODEL, 'text': seg['text'],
+                              'voice': voice, 'instruction': instruction, 'rate': a.rate,
+                              'format': 'mp3', 'sample_rate': 48000})
+        previous = cache.get(seg['id'], {})
+        cached = (not a.force and previous.get('key') == fingerprint and os.path.isfile(out)
+                  and previous.get('sha256') == file_hash(out))
+        if cached:
+            print('  CACHE ' + seg['id'])
+        else:
+            key = key or find_key()
+            url = synth(key, seg['text'], voice, instruction, a.rate)
+            temp = out + '.part.mp3'
+            urllib.request.urlretrieve(url, temp)
+            probe_duration(temp)
+            os.replace(temp, out)
+            cache[seg['id']] = {'key': fingerprint, 'sha256': file_hash(out)}
+            write_json(cache_path, cache)
 
         dur = probe_duration(out)
         total += dur

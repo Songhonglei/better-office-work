@@ -61,7 +61,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--timeline', default='timeline.json')
     ap.add_argument('--silent', required=True, help='无声画面 mp4')
-    ap.add_argument('--bgm', required=True)
+    ap.add_argument('--bgm', help='可选背景音乐；留空只混人声')
     ap.add_argument('--out', required=True)
     ap.add_argument('--bgm-offset', type=float, default=14.0,
                     help='BGM 相对人声压低多少 dB（默认 -14）')
@@ -96,28 +96,30 @@ def main():
                    % (''.join(voice_labels), len(voice_labels)))
 
     bgm_idx = len(clips) + 1
-    bgm_dur = probe_duration(a.bgm)
-    if bgm_dur is not None and bgm_dur + 0.5 < total:
+    bgm_dur = probe_duration(a.bgm) if a.bgm else None
+    if a.bgm and bgm_dur is not None and bgm_dur + 0.5 < total:
         # BGM 比成片短，不循环的话末尾会静音（曲库里 Frost Waltz 只有 135.5s）
         inputs += ['-stream_loop', '-1', '-i', a.bgm]
         print('BGM %.1fs 短于成片 %.1fs，已开启循环' % (bgm_dur, total))
-    else:
+    elif a.bgm:
         inputs += ['-i', a.bgm]
-    filters.append(
+    if a.bgm:
+        filters.append(
         '[%d:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,'
         'atrim=0:%.3f,volume=%.1fdB,'
         'afade=t=in:st=0:d=2,afade=t=out:st=%.3f:d=2.5[bgm]'
         % (bgm_idx, total, -a.bgm_offset, max(total - 2.5, 0))
     )
 
-    filters.append('[voice][bgm]amix=inputs=2:normalize=0:dropout_transition=0,'
+    prefix = '[voice][bgm]amix=inputs=2:normalize=0:dropout_transition=0,' if a.bgm else '[voice]'
+    filters.append(prefix + 'apad,atrim=0:%.6f,' % total +
                    'alimiter=limit=0.95,loudnorm=I=-16:TP=-1.5:LRA=11[aout]')
 
     cmd = ['ffmpeg', '-y', '-hide_banner'] + inputs + [
         '-filter_complex', ';'.join(filters),
         '-map', '0:v', '-map', '[aout]',
         '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
-        '-movflags', '+faststart', a.out,
+        '-t', '%.6f' % total, '-movflags', '+faststart', a.out,
     ]
     run(cmd)
 

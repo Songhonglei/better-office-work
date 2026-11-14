@@ -38,6 +38,11 @@
 
 ### 通用（三个平台都有）
 
+发布入口 `release.sh` 还可能先返回 `E_QUALITY_GATE`（exit 10，validate-params）：
+新 production 项目质量报告缺失、检查失败，或视频／时间轴／脚本已改动。
+查看 `out/quality_report.json` 的 blockers，修复后重新跑检查；此时尚未打开浏览器。
+独立旧视频仍保持原有使用方式；也可用 `QUALITY_REPORT` 显式要求质量报告。
+
 | code | exit | step | 成因 / 处置 |
 |---|---|---|---|
 | `E_SPACE_ID_INVALID` | 10 | task-space | `SPACE_ID` 不是一个存在的空间号。核对后重跑，别硬猜 |

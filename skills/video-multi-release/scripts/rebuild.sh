@@ -30,6 +30,22 @@ SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 cd "$PROJECT_DIR"
 
+# Explicit mixed scenes / generated assets use the new cached renderer. The
+# original pure-card HyperFrames path below remains available and unchanged.
+if [ "${RENDER_MODE:-}" = "mixed" ] || python3 - <<'PY'
+import json, sys
+with open('voice_script.json', encoding='utf-8') as f:
+    rows = json.load(f).get('segments', [])
+sys.exit(0 if any(s.get('visual', {}).get('type') in ('image', 'video') or
+                   s.get('visual', {}).get('generate') for s in rows) else 1)
+PY
+then
+  ARGS=(--project "$PWD" --use-existing-voice --pre "${PRE:-0.6}" --gap "${GAP:-0.45}" --tail "${TAIL:-1.5}")
+  [ -z "${BGM:-}" ] || ARGS+=(--bgm "$BGM")
+  [ -z "${CANVAS_BG:-}" ] || ARGS+=(--canvas "$CANVAS_BG")
+  exec python3 "$SKILL_DIR/scripts/produce.py" "${ARGS[@]}"
+fi
+
 # ── 前置检查 ─────────────────────────────────────────────
 # index.html 是第 1 步生成的产物，不属于输入，所以这里不检查它。
 for f in voice_script.json; do
@@ -112,6 +128,11 @@ fi
 # 立即退出、不会打印「✓ 成片完成」；成功时 ffmpeg -y 会直接覆盖旧成片。
 python3 "$SKILL_DIR/scripts/mix_audio.py" \
   --silent out/silent.mp4 --bgm "$BGM" --out out/final.mp4 2>&1 | tail -3
+
+# Full narration subtitles and objective delivery checks also cover the legacy
+# card renderer. VERIFY=0 skips only the old contact sheet, never these gates.
+python3 "$SKILL_DIR/scripts/subtitle_track.py" burn --video out/final.mp4 --timeline timeline.json
+python3 "$SKILL_DIR/scripts/quality_check.py" --video out/final.mp4 --timeline timeline.json --report out/quality_report.json
 
 # ── 收尾：音画同步联系表 + 清理无声中间文件 ──────────────
 if [ "${VERIFY:-1}" = "1" ]; then

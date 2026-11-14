@@ -1,15 +1,16 @@
 ---
 name: video-multi-release
 description: >
-  口播视频的制作与多平台发布工具。用 Qwen TTS 生成有情感的中文配音（成熟女声/男声，
-  支持语气指令），按配音时长自动生成卡片视频（音频驱动时间轴），混入背景音乐，
-  然后发布到小红书、视频号、抖音三个渠道。支持 stage（只准备不提交）、draft（存草稿）、
-  publish（直接发）三种模式。当用户要做口播视频、给卡片视频配音、把视频发到小红书/视频号/抖音时使用。
+  中文口播视频制作与小红书、视频号、抖音发布。支持本地 ComfyUI 自动生成素材、
+  卡片和动态视频混剪、Qwen 分段配音、内容缓存、任务恢复、中文字幕及成片质量检查。
+  发布保留 stage（只准备）、draft（草稿）和 publish 三种模式。
+  当用户要做卡片口播或混剪视频、给视频配音，或发布到上述平台时使用。
   前置依赖：ego-browser 已安装且目标平台已登录；ffmpeg；ffprobe。
-version: 1.3.4
+version: 1.4.0
 slug: video-multi-release
 displayName: 口播视频制作与多平台发布
 bins: [ffmpeg, ffprobe, python3, node, npm, npx, ego-browser]
+python_optional: [PIL]
 metadata:
   openclaw:
     requires:
@@ -20,10 +21,44 @@ metadata:
 
 # video-multi-release
 
-把「一组卡片 + 一段文案」变成「带配音的竖屏视频」，再发到视频号和抖音。
+把分段文案与图片／视频素材制成中文配音视频，完成质量检查后交给原有三平台发布流程。
+
+## 自动素材与混剪入口（v1.4）
+
+需要 ComfyUI 生图、动态视频混剪、逐段缓存或任务恢复时，读取
+[references/mixed-production.md](references/mixed-production.md)。唯一输入仍是 `voice_script.json`，
+旧字段保留；新增 `segments[].visual` 描述卡片、图片或视频及生成配方。
+
+```bash
+python3 scripts/produce.py --project /path/to/project --preset male-narrative
+python3 scripts/produce.py --project /path/to/project --status
+```
+
+- ComfyUI 节点、模型、API 工作流必须以本机盘点为准。没有视频模型时可以生图并混入已有视频；
+  不把图片运动称为 AI 生成动态镜头，不自动下载模型、更新运行时、切换服务或调用云端 Partner Nodes。
+- `produce.py` 只制作和检查，发布继续用 `release.sh`；现有三平台的登录、人工验证与发布授权边界保留。
+- 新制作默认烧录完整旁白字幕。自动时序按字数分配，也支持人工提供相对时间；不声称是逐字强制对齐。
+- `out/quality_report.json` 必须通过：时长／目标时长、黑帧、静音、字幕文字与时间覆盖，
+  并抽样核对每条字幕是否真正叠加到成片。报告不代替视觉审美或语义复核。
+- `VERIFY=0` 仅跳过旧音画联系表，不关闭质量检查。生成检查图不等于人工已审阅。
+- 本机路径与工作流参数写在数据目录 `local-comfy.json`；密钥仍只走既有 `.env`／环境变量。
 
 跟 `xhs-image-note-release` 的关系：那个管**单条**小红书图文/视频笔记，这个管**多平台同发**（视频号 + 抖音，也含小红书）。
 两者共用卡片生成器，但发布流程完全不同，不要互相塞；只有一条小红书笔记时走那个，别为了发一条笔记拉起三平台编排。
+
+### 生产链路脚本清单（v1.4）
+
+`produce.py` 只做编排，每个阶段的实际工作在下面这些脚本里；单独跑某个阶段排障时直接调它们。
+
+| 脚本 | 职责 |
+|---|---|
+| `produce.py` | 阶段编排入口：生成素材／配音／卡片／混剪／混音／字幕／质检，写项目状态与缓存回执 |
+| `production_common.py` | 阶段间共用件：项目路径解析、JSON 读写、文件指纹、子进程调用封装 |
+| `comfy_assets.py` | ComfyUI 模型与工作流盘点、节点参数绑定、图片／视频结果接收、参考图上传 |
+| `render_mixed.py` | 卡片／图片／视频混剪：循环、冻结末帧、长度不足报错、cover／contain |
+| `subtitle_track.py` | 中文旁白字幕：Pillow 光栅化 + FFmpeg 叠加烧录，无需 libass |
+| `quality_check.py` | 成片质检：时长／黑帧／静音／字幕文字与时间覆盖，产出 `out/quality_report.json` |
+| `release_receipt.py` | 发布前的持久化回执：记录已完成阶段与产物指纹，支持中断后从阶段继续 |
 
 ## 不适用场景
 
@@ -76,7 +111,7 @@ Key 在阿里云百炼控制台 → API-KEY 管理创建。读取优先级：
 
 ## 快速开始
 
-**唯一输入是 `voice_script.json`**，先有它再谈后面：
+**核心输入是 `voice_script.json`**，先有它再谈后面。以下是兼容的纯卡片流程；混剪读取上面的 reference：
 
 ```json
 {
@@ -123,7 +158,7 @@ python3 $SKILL/scripts/build_composition.py \
   --voice-dir voice \
   --pre 0.6 --gap 0.45 --tail 1.5
 
-# 2b) 一键重建：时间轴 + 内联 gsap + 渲染 + 混 BGM → out/final.mp4
+# 2b) 一键重建：时间轴 + 渲染 + 混音 + 完整字幕 + 质量检查 → out/final.mp4
 #    （等于下面 3)(4) 两步；改了卡片或配音后重跑它即可，时间轴自动重算）
 bash $SKILL/scripts/rebuild.sh /path/to/project
 #    可选：BGM=/path/to.mp3 PRE=0.6 GAP=0.45 TAIL=1.5 bash rebuild.sh ...
@@ -498,7 +533,8 @@ assets/music/
 - `ego-browser`（浏览器自动化，两个平台需已登录）
 - `ffmpeg` / `ffprobe`（混音、探时长）
 - `hyperframes`（渲染卡片视频，仅做视频时需要）
-- Python 3（标准库即可，无第三方依赖）
+- Python 3；核心编排使用标准库。烧录中文字幕另需一个可用 Pillow 环境，
+  用 `VIDEO_RASTER_PYTHON` 或数据目录 `local-comfy.json` 的 `raster_python` 指定；不自动安装依赖。
 - 卡片生成（gen_cards.py）：依赖 `xhs-image-note-release` skill 的 `references/card-generator/card_generator.py` 与 Google Chrome headless；缺失时启动即报错，可用 `--generator` 指定其他路径
 
 ## 卡片生成约定

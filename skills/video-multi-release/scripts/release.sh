@@ -87,6 +87,14 @@ case "$VIDEO" in
        "两平台都建议 mp4（H.264）" "用 ffmpeg 转一次: ffmpeg -i in.mov -c:v libx264 -c:a aac out.mp4" ;;
 esac
 
+# New productions must pass QA before any browser work. Existing standalone
+# videos still work; QUALITY_REPORT can require a receipt at an explicit path.
+QA_ARGS=(validate --video "$VIDEO")
+[ -z "${QUALITY_REPORT:-}" ] || QA_ARGS+=(--report "$QUALITY_REPORT")
+python3 "$SCRIPTS_DIR/release_receipt.py" "${QA_ARGS[@]}" \
+  || usage_fail "E_QUALITY_GATE" "成片检查未通过、报告缺失或文件已更改" \
+       "先运行 quality_check.py，检查 out/quality_report.json"
+
 [ -n "$TITLE" ] || usage_fail "E_PARAM_TITLE" "缺少 TITLE" \
   "视频号短标题最多 16 字，抖音标题最多 30 字" \
   "脚本会按平台自动截断并提示"
@@ -307,6 +315,11 @@ print(json.dumps({
     echo "  ⚠ 未见 === OK (...) === 块，判定为未确认（退出码 90）"
     EXIT_CODE=90
   fi
+
+  python3 "$SCRIPTS_DIR/release_receipt.py" record --video "$VIDEO" \
+    --platform "$platform" --mode "$MODE" --state "${P_STATE:-failed}" \
+    --exit "$EXIT_CODE" --url "${P_URL:-}" \
+    || echo "  ⚠ 发布结果写入失败，请保留本次日志 $LOG"
 
   if [ "$EXIT_CODE" -eq 0 ]; then
     SUMMARY="$SUMMARY\n  $platform  ✅ ${P_STATE:-已确认}"

@@ -81,9 +81,9 @@ def main():
     parts = []
     for r in range(rows):
         ins = ''.join('[%d:v]' % (r * cols + j) for j in range(cols))
-        parts.append(ins + 'hstack=inputs=%d[r%d]' % (cols, r))
-    cmd += ['-filter_complex', ';'.join(parts) + ';' +
-            ''.join(labels) + 'vstack=inputs=%d[out]' % rows,
+        parts.append(ins + ('hstack=inputs=%d[r%d]' % (cols, r) if cols > 1 else 'null[r%d]' % r))
+    stack = (''.join(labels) + 'vstack=inputs=%d[out]' % rows if rows > 1 else '[r0]null[out]')
+    cmd += ['-filter_complex', ';'.join(parts) + ';' + stack,
             '-map', '[out]', os.path.join(a.out_dir, 'contact_sheet.png')]
     run(cmd)
 
