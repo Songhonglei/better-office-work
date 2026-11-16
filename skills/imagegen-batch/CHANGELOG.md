@@ -31,6 +31,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versions
   - `references/style-library.md` 顶部新增规则：新风格首次落地必须验样，**确认过的后缀原文再做回填**，
     没验过样就写进库等于把赌注当经验。
   - frontmatter description、README Features 与触发示例同步这条规则。
+- **元数据**：frontmatter 补 `slug` / `displayName`，适配 skillhub.cn 发布要求（此前只在本仓库维护，发布到 hub 会被预检拒绝）。
 - **对 `city-watercolor` 的影响**：该风格 2026-11-10 首次落地时是 7/7 一次过（相当于已经验过样），
   按新规则不必再验；但**换题材、换尺寸、或从插图档切到封面档**时仍要重验 1 张。
 - 脚本零改动。

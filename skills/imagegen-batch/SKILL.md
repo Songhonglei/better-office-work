@@ -7,6 +7,8 @@ description: >
   核心规则：提示词开头加唯一前缀防覆盖、量水印优先 --auto-crop 自动量测、生成后 mv 重命名并写 manifest、交付前数量核对+裁水印。
   留白相框属**可选项**，默认不做，仅当用户明确要求「留白边 / 相框感」时才加；
   人物给足标识包防塌脸、批量默认顺序发、失败按 5/15/45s 退避重发、单张重出默认最多 4 版（用户可指定）。
+slug: imagegen-batch
+displayName: ImageGen Batch — 批量生图先验样（防覆盖 / 避水印 / 归档）
 version: 1.6.0
 python: [PIL]
 ---
