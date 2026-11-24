@@ -2,7 +2,7 @@
 
 > AI 驱动的办公提效仓库 —— **Skills** 让你的 Agent 会干活，**Tools** 让你自己用得爽，**Small Joys** 给工作添点小乐趣。
 >
-> 覆盖发票处理、Token 用量分析、小红书发布、文本润色等高频办公场景，也收集皮肤、虚拟宠物、放松小游戏和趣味插件。
+> 覆盖发票处理、Token 用量分析、小红书发布、新媒体写作、文本润色等高频办公场景，也收集皮肤、虚拟宠物、放松小游戏和趣味插件。
 
 ## Small Joys · 工作小乐趣
 
@@ -34,6 +34,7 @@
 | [zhihu-yanghao](./skills/zhihu-yanghao/) | 知乎养号：三线选题模型 + 每日1回答（写→发布→折叠验证）+ 点赞互动（计数差值自校正防误 toggle），依赖 ego-browser |
 | [imagegen-batch](./skills/imagegen-batch/) | 批量生图：防同名覆盖 + 量水印而非猜 + 相框感后期加白边 + 人物「标识包」防塌脸；附 `白纸速写`/`水墨文艺风` 两套命名风格配方 |
 | [mp-article-to-xhs](./skills/mp-article-to-xhs/) | 公众号长文转小红书图文：三条选题路径（URL/标题/热度候选）+ 配图滚动懒加载硬校验一张不漏 + 水印自动裁 + 8 套字体方案 + 默认只推草稿箱，发过的自动跳过（v1.3.0） |
+| [doubao-newmedia-writing](./skills/doubao-newmedia-writing/) | 中文新媒体写作：先定创作类型（小红书图文 / 公众号文章 / 3 分钟短视频分镜 / 复合方案），再交付可编辑的本地 Markdown + HTML，含配图落位与发布前检查 |
 
 ## Quick Start
 

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — doubao-newmedia-writing（2026-11-24）
+
+新增 skill：中文新媒体写作，覆盖小红书图文笔记、微信公众号文章、3 分钟以内短视频分镜脚本，以及上述类型的复合创作方案。
+
+- **先定类型再动手**：明确命中创作类型后，创建输出目录与 Markdown 文件是第一执行动作，不做无文件的纯文本回复。
+- **本地文件是唯一交付通道**：交付 Markdown 源文件 + HTML 排版页，写入当前工作区 `output/`，不污染工作区根目录。
+- **按类型挂参考**：`references/` 下分包存放公众号写作风格（叙事非虚构 / 新闻热点 / 专业解读 / 认知观点 / 情感治愈）、小红书提案、短视频分镜与配图规范。
+
 ### Fixed — oss-pages-sync v2.0.1（2026-11-10，UGLIC 复核后修复）
 
 - `--json` 失败时 stdout 恒为一个 JSON 对象（`ok=false` + `error` + `log`），不再只剩退出码与空输出；所有提示性文字改走 stderr，`die()` 与 `ci_sync.py` 退出码非 0 两条失败路径都覆盖。
@@ -91,7 +99,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - 新增 `smalljoys/` 工作小乐趣栏目，涵盖皮肤、虚拟宠物、放松小游戏和趣味插件。
 - 首批收录自制宠物素材，附动画预览、完整 v2 精灵图、配置、独立 ZIP 和使用说明。
-
 ### Changed — xhs-image-note-release v1.7.2（2026-10-27）
 
 - **发布铁律**：卡片图片、标题、正文、话题里严禁出现「微信搜索」「公众号」「加微信」「扫码」等引流文案，也不得放二维码——小红书对此判得最重，已有笔记被删。只允许 `@账号名` 软性署名，靠内容和评论区自然导流。
