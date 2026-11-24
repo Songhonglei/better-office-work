@@ -10,11 +10,11 @@ description: >
   每批固定交付 `$RUN/配图说明.md`（哪张图用在哪一节），过程版本一律进 `_drafts/`，run 根目录只留定稿。
 slug: imagegen-batch
 displayName: ImageGen Batch — 批量生图先验样（防覆盖 / 避水印 / 归档）
-version: 1.7.0
+version: 1.7.1
 python: [PIL]
 ---
 
-- **Version**: 1.7.0
+- **Version**: 1.7.1
 - **License**: MIT
 - **Author**: Evan Song · [github.com/Songhonglei](https://github.com/Songhonglei)
 - **Repository**: https://github.com/Songhonglei/better-office-work/tree/main/skills/imagegen-batch
@@ -361,9 +361,19 @@ python3 "$S" in.png out.png --crop-bottom 70 --ratio 2.35 --frame --line 0  # �
 | 水墨文艺风 | `ink-wash` | 历史 / 文化 / 人文：淡墨宣纸、留白多、左下角一枚朱砂印 |
 | 白描水墨 | `baimiao-ink` | 人物白描 + 环境水墨，三色；含「线描主导」「漫画夸张」两个变体 |
 | 都市淡水彩 | `city-watercolor` | 现代都市 / 志怪心理向 / 回忆：写实淡水彩，冷灰蓝打底、白纸留得多、色表先定；与 `paper-sketch` 是同一篇的两套皮 |
+| 水墨淡彩 | `ink-oil-wash` | 历史 / 器物 / 文化：水墨写实打底 + 半透明油彩薄罩，比 `ink-wash` 实、比 `baimiao-ink` 有颜色 |
+| 简笔淡彩 | `simple-line-wash` | 历史 / 文化随笔温情向：轻细线 + 极淡水彩薄罩，色表极窄、八成留白、远景小而清晰的人影 |
+| 温暖简笔哲思风 | `warm-line-allegory` | 哲思 / 随笔 / 非历史题材的默认档：黑白手绘线稿 + 大量留白，仅淡黄橙琥珀点缀，一幅一个隐喻 |
+| 水墨历史写实 | `ink-history-realism` | 公众号历史文默认：造型写实 + 水墨晕染 + 宣纸底纹，暖橙天光为唯一暖色锚点；含「淡墨清墨」变体 |
+| 淡色写实水彩 | `realist-light-watercolor` | 用户说「淡色水彩＋写实主义」时：透明薄涂 + 冷压纸纹 + 冷暖两束光造张力 |
+| 白纸速写·淡釉 | `sketch-oil-glaze` | 用户说「白纸速写 + 历史油画感」时：线稿是主角，油彩只作极淡透明罩染 |
 
+- **默认档**：用户没指定风格时，非历史题材用 `warm-line-allegory`，公众号历史文用 `ink-history-realism`；用户明确点名别的风格时以用户为准（如「淡色水彩＋写实主义」覆盖默认）。
+- **标注「首次用需验样」的档**（`warm-line-allegory`／`realist-light-watercolor`：口径已确认、后缀未逐字固化）仍按第一步先出 1 张封面；其余已验档命中「可跳过」条件时可直接批量。别把「已命名」自动当成「已验过」。
 - 用户说「**简笔水墨画**」→ `baimiao-ink` 的**线描主导**变体（佛像类必守「只画侧脸轮廓、不做正面近景」）。
 - 用户说「**简笔水墨 + 幽默／夸张／小冒犯**」→ `baimiao-ink` 的**漫画夸张**变体（夸张只落在比例与姿态，面部照旧不刻五官，冲突靠道具刻薄）。
+- 用户说「**白纸素描**」→ `paper-sketch`，注意可能是**密排线写实变体**（见风格库该节「变体记录」），不是库里默认的稀疏排线。
+- 用户说「**淡色水彩＋写实主义**」→ `realist-light-watercolor`；「**白纸速写 + 历史油画感**」→ `sketch-oil-glaze`。两者都别和 `ink-oil-wash` 混：后者是水墨打底。
 - `city-watercolor` 三条要点：**写「水彩」必配满负面清单**（否则塌成儿童绘本／扁平矢量／动漫）；**颜色先定色表再写 prompt**（否则好看的颜色被平均撒满全组）；**一个明确光源**。详见风格库同节。
 - 新增风格：先往库里补一份命名档案，再回这张表加一行。
 
