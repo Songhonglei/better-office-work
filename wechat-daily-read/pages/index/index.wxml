@@ -1,0 +1,199 @@
+<view class="container">
+  <!-- 日期和标题 -->
+  <view class="header">
+    <view class="date">{{ currentDate }}</view>
+    <view class="title">
+      今日公众号汇总
+      <text wx:if="{{ testMode }}" class="test-mode-badge" bind:tap="switchTestScenario">
+        演示数据 · {{ currentScenario }}
+      </text>
+    </view>
+  </view>
+
+  <!-- AI汇总卡片 -->
+  <view class="summary-card {{ pageReady ? 'card-animated' : '' }}">
+    <view class="card-header">
+      <text class="card-title">AI 智能汇总</text>
+      <van-button
+        size="mini"
+        type="primary"
+        bind:click="generateSummary"
+        loading="{{ isLoading }}"
+      >
+        刷新汇总
+      </van-button>
+    </view>
+    <view class="summary-content">
+      <text class="summary-text">{{ summaryText || '点击刷新汇总生成今日摘要...' }}</text>
+    </view>
+
+    <!-- 语音控制栏 -->
+    <view class="audio-controls">
+      <van-button
+        icon="{{ audioState === 'playing' ? 'pause' : (audioState === 'paused' ? 'play' : 'volume-o') }}"
+        type="info"
+        size="small"
+        bind:click="playAudio"
+      >
+        {{ audioState === 'playing' ? '暂停' : (audioState === 'paused' ? '继续' : '播报') }}
+      </van-button>
+      <van-button
+        wx:if="{{ audioState !== 'idle' }}"
+        icon="cross"
+        type="default"
+        size="small"
+        bind:click="stopAudio"
+      >
+        停止
+      </van-button>
+    </view>
+  </view>
+
+  <!-- 统计卡片 -->
+  <view class="stats-card {{ pageReady ? 'card-animated' : '' }}">
+    <view
+      class="stats-item"
+      bind:tap="onFilterChange"
+      data-type="all"
+      style="{{ filterType === 'all' ? 'opacity: 1' : 'opacity: 0.6' }}"
+    >
+      <text class="stats-number">{{ todayArticles.length }}</text>
+      <text class="stats-label">文章总数</text>
+    </view>
+    <view
+      class="stats-item"
+      bind:tap="onFilterChange"
+      data-type="read"
+      style="{{ filterType === 'read' ? 'opacity: 1' : 'opacity: 0.6' }}"
+    >
+      <text class="stats-number">{{ readCount }}</text>
+      <text class="stats-label">已读</text>
+    </view>
+    <view
+      class="stats-item"
+      bind:tap="onFilterChange"
+      data-type="unread"
+      style="{{ filterType === 'unread' ? 'opacity: 1' : 'opacity: 0.6' }}"
+    >
+      <text class="stats-number">{{ unreadCount }}</text>
+      <text class="stats-label">未读</text>
+    </view>
+  </view>
+
+  <!-- 文章列表 -->
+  <view class="articles-section {{ pageReady ? 'card-animated' : '' }}">
+    <view class="section-header">
+      <text class="section-title">今日文章</text>
+      <view class="filter-controls">
+        <van-button
+          size="mini"
+          type="{{ sortBy === 'time' ? 'primary' : 'default' }}"
+          bind:tap="onSortChange"
+          data-sort="time"
+        >
+          最新
+        </van-button>
+        <van-button
+          size="mini"
+          type="{{ sortBy === 'readCount' ? 'primary' : 'default' }}"
+          bind:tap="onSortChange"
+          data-sort="readCount"
+        >
+          热度
+        </van-button>
+      </view>
+    </view>
+
+    <view class="articles-list">
+      <!-- 骨架屏加载状态 -->
+      <view wx:if="{{ isLoading }}" class="skeleton-wrapper">
+        <view class="skeleton-article-item" wx:for="{{ [1,2,3,4] }}" wx:key="*this">
+          <view class="skeleton-article-content">
+            <view class="skeleton skeleton-line long"></view>
+            <view class="skeleton skeleton-line medium"></view>
+            <view class="skeleton skeleton-text short"></view>
+          </view>
+          <view class="skeleton skeleton-rect" style="width: 120rpx; height: 90rpx;"></view>
+        </view>
+      </view>
+
+      <block wx:elif="{{ displayArticles.length > 0 }}">
+        <van-swipe-cell
+          wx:for="{{ displayArticles }}"
+          wx:key="id"
+          right-width="{{ 65 }}"
+        >
+          <view class="article-item" bind:tap="viewArticle" data-article="{{ item }}">
+            <view class="article-info">
+              <view class="article-title">{{ item.title }}</view>
+              <view class="article-meta">
+                <text class="account-name">{{ item.accountName }}</text>
+                <text class="publish-time">{{ item.publishTime }}</text>
+                <text wx:if="{{ sortBy === 'readCount' }}" class="read-count">{{ item.readCount }}阅</text>
+              </view>
+            </view>
+            <view class="article-thumb" wx:if="{{ item.thumbUrl }}">
+              <image src="{{ item.thumbUrl }}" mode="aspectFill" />
+            </view>
+          </view>
+          <view slot="right" class="swipe-right">
+            <van-button
+              square
+              type="danger"
+              size="small"
+              custom-class="delete-btn"
+            >
+              标记已读
+            </van-button>
+          </view>
+        </van-swipe-cell>
+      </block>
+
+      <view wx:else class="custom-empty">
+        <view class="empty-icon">📰</view>
+        <view class="empty-title">{{ todayArticles.length === 0 ? '还没有文章' : '没有匹配的文章' }}</view>
+        <view class="empty-desc">{{ todayArticles.length === 0 ? '去添加公众号，开始每日精彩汇总' : '尝试调整筛选条件' }}</view>
+        <van-button
+          wx:if="{{ todayArticles.length === 0 }}"
+          type="primary"
+          size="normal"
+          round
+          bind:tap="goToManage"
+          custom-class="empty-btn"
+        >
+          添加公众号
+        </van-button>
+      </view>
+    </view>
+
+    <!-- 分页和查看全部 -->
+    <view wx:if="{{ displayArticles.length > 0 }}" class="pagination-section">
+      <view class="page-info">
+        第 {{ currentPage }} / {{ totalPages }} 页（共 {{ filteredTotal }} 篇）
+      </view>
+      <van-button
+        wx:if="{{ currentPage < totalPages }}"
+        type="default"
+        size="small"
+        bind:tap="viewAllArticles"
+        custom-class="view-all-btn"
+      >
+        查看全部 →
+      </van-button>
+      <van-button
+        wx:if="{{ currentPage >= totalPages && todayArticles.length > pageSize }}"
+        type="default"
+        size="small"
+        disabled
+        custom-class="view-all-btn"
+      >
+        已显示全部
+      </van-button>
+    </view>
+  </view>
+
+  <!-- 回到顶部按钮 -->
+  <view wx:if="{{ showBackTop }}" class="back-to-top btn-interactive" bindtap="scrollToTop">
+    <van-icon name="arrow-up" size="40rpx" color="#fff" />
+  </view>
+</view>

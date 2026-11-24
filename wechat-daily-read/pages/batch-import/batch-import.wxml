@@ -1,0 +1,98 @@
+<view class="container">
+  <!-- 输入区域 -->
+  <view class="input-section">
+    <view class="section-title">批量导入公众号</view>
+    <view class="section-desc">
+      粘贴多个公众号文章链接，系统会自动识别并批量添加
+    </view>
+
+    <textarea
+      class="url-input"
+      placeholder="请粘贴公众号文章链接，每行一个或直接粘贴多个链接..."
+      value="{{ inputText }}"
+      bindinput="onInput"
+      auto-height
+      maxlength="10000"
+    />
+
+    <view class="input-actions">
+      <van-button
+        type="info"
+        size="small"
+        bind:click="parseUrls"
+        disabled="{{ isImporting }}"
+      >
+        解析链接
+      </van-button>
+      <van-button
+        type="default"
+        size="small"
+        bind:click="clearInput"
+        disabled="{{ isImporting }}"
+      >
+        清空
+      </van-button>
+    </view>
+  </view>
+
+  <!-- 结果列表 -->
+  <view class="results-section" wx:if="{{ importResults.length > 0 }}">
+    <view class="section-title">
+      导入结果 ({{ importResults.length }} 个)
+    </view>
+
+    <view class="results-list">
+      <view
+        wx:for="{{ importResults }}"
+        wx:key="url"
+        class="result-item {{ item.success ? (item.isNew ? 'success' : 'skip') : 'fail' }}"
+      >
+        <view class="result-status">
+          <van-icon
+            name="{{ item.success ? (item.isNew ? 'success' : 'info' ) : 'cross' }}"
+            color="{{ item.success ? (item.isNew ? '#07c160' : '#1989fa') : '#ee0a24' }}"
+          />
+        </view>
+        <view class="result-info">
+          <view class="result-name">{{ item.accountName }}</view>
+          <view class="result-url">{{ item.url }}</view>
+          <view class="result-message">{{ item.message }}</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 导入历史 -->
+  <view class="history-section" wx:if="{{ history.length > 0 }}">
+    <view class="section-title">导入历史</view>
+
+    <van-cell-group>
+      <van-cell
+        wx:for="{{ history }}"
+        wx:key="id"
+        title="{{ history.item.date }}"
+        label="成功导入 {{ history.item.count }} 个公众号"
+        is-link
+      />
+    </van-cell-group>
+  </view>
+
+  <!-- 使用技巧 -->
+  <view class="tips-section">
+    <view class="section-title">💡 使用技巧</view>
+    <view class="tips-list">
+      <text>• 从微信聊天记录复制多个文章链接</text>
+      <text>• 从收藏夹导出公众号文章链接</text>
+      <text>• 支持识别各种格式的链接</text>
+      <text>• 重复的公众号会自动跳过</text>
+    </view>
+  </view>
+
+  <!-- 加载状态 -->
+  <view class="loading-overlay" wx:if="{{ isImporting }}">
+    <view class="loading-content">
+      <van-loading size="50px" />
+      <text>正在批量导入，请稍候...</text>
+    </view>
+  </view>
+</view>

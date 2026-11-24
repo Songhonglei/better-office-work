@@ -1,0 +1,83 @@
+<view class="container">
+  <!-- 阅读进度条 -->
+  <view class="progress-bar" style="width: {{ readProgress }}%; opacity: {{ readProgress > 0 ? 1 : 0 }};">
+  </view>
+
+  <!-- 骨架屏加载状态 -->
+  <view wx:if="{{ loading }}" class="skeleton-wrapper">
+    <view class="skeleton-header">
+      <view class="skeleton skeleton-title"></view>
+      <view class="skeleton skeleton-text short"></view>
+    </view>
+    <view class="skeleton-body">
+      <view class="skeleton skeleton-line long" wx:for="{{ [1,2,3,4,5,6] }}" wx:key="*this"></view>
+    </view>
+  </view>
+
+  <view wx:elif="{{ article }}" class="article-content">
+    <view class="article-header">
+      <view class="article-title">{{ article.title }}</view>
+      <view class="article-meta">
+        <text class="account">{{ article.accountName }}</text>
+        <text class="time">{{ article.publishTime }}</text>
+      </view>
+    </view>
+
+    <view class="article-body" bindscroll="onArticleScroll">
+      <rich-text nodes="{{ richTextNodes }}" />
+      <view class="article-images">
+        <image
+          wx:for="{{ articleImages }}"
+          wx:key="src"
+          src="{{ item.src }}"
+          mode="widthFix"
+          class="article-image"
+          lazy-load="{{ true }}"
+          bindload="onImageLoad"
+          binderror="onImageError"
+          bindtap="previewImage"
+          data-src="{{ item.src }}"
+        />
+      </view>
+    </view>
+
+    <view class="article-footer">
+      <van-button
+        type="default"
+        size="small"
+        block
+        bindtap="toggleCollect"
+        custom-class="btn-collect btn-interactive {{ isCollected ? 'collected' : '' }}"
+      >
+        {{ isCollected ? '✓ 已收藏' : '收藏' }}
+      </van-button>
+      <van-button
+        type="default"
+        size="small"
+        block
+        bindtap="copyLink"
+        custom-class="btn-copy btn-interactive"
+      >
+        复制链接
+      </van-button>
+      <van-button
+        type="info"
+        size="small"
+        block
+        open-type="share"
+        custom-class="btn-share btn-interactive"
+      >
+        分享
+      </van-button>
+    </view>
+  </view>
+
+  <view wx:else class="empty">
+    <van-empty image="error" description="文章不存在" />
+  </view>
+
+  <!-- 回到顶部按钮 -->
+  <view wx:if="{{ showBackTop }}" class="back-to-top btn-interactive" bindtap="scrollToTop">
+    <van-icon name="arrow-up" size="40rpx" color="#fff" />
+  </view>
+</view>

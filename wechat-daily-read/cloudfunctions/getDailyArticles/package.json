@@ -1,0 +1,12 @@
+{
+  "name": "getDailyArticles",
+  "version": "1.0.0",
+  "description": "获取每日公众号文章",
+  "main": "index.js",
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "wx-server-sdk": "4.0.2"
+  },
+  "private": true
+}

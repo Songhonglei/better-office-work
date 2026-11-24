@@ -1,0 +1,60 @@
+<view class="container">
+  <view wx:if="{{ loading }}" class="loading">
+    <van-loading type="spinner" size="24px" />
+    <text>生成报告中...</text>
+  </view>
+
+  <view wx:elif="{{ reportData }}" class="report-content">
+    <!-- 报告头部 -->
+    <view class="report-header">
+      <view class="report-title">{{ currentDate }} 汇总报告</view>
+      <view class="report-summary">
+        共收录 {{ reportData.total }} 篇文章
+      </view>
+    </view>
+
+    <!-- 分类统计 -->
+    <view class="section">
+      <view class="section-title">分类统计</view>
+      <view wx:for="{{ reportData.categories }}" wx:key="category" wx:for-item="cat" class="category-item">
+        <view class="category-header">
+          <text class="category-name">{{ category }}</text>
+          <van-tag type="primary" size="small">{{ cat.count }}篇</van-tag>
+        </view>
+        <view class="category-meta">
+          总阅读量: {{ cat.totalRead }}
+        </view>
+      </view>
+    </view>
+
+    <!-- 热门文章 -->
+    <view class="section" wx:if="{{ reportData.topArticles.length > 0 }}">
+      <view class="section-title">热门文章 TOP10</view>
+      <view wx:for="{{ reportData.topArticles }}" wx:key="id" class="article-item">
+        <view class="article-rank">{{ index + 1 }}</view>
+        <view class="article-info">
+          <view class="article-title">{{ item.title }}</view>
+          <view class="article-meta">
+            {{ item.accountName }} · 阅读 {{ item.readCount || 0 }}
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 分享按钮 -->
+    <view class="share-section">
+      <van-button type="info" size="large" block open-type="share">
+        分享报告
+      </van-button>
+    </view>
+  </view>
+
+  <view wx:else class="empty">
+    <van-empty image="search" description="暂无报告数据" />
+  </view>
+
+  <!-- 回到顶部按钮 -->
+  <view wx:if="{{ showBackTop }}" class="back-to-top btn-interactive" bindtap="scrollToTop">
+    <van-icon name="arrow-up" size="40rpx" color="#fff" />
+  </view>
+</view>

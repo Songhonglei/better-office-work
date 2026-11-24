@@ -1,0 +1,10 @@
+{
+  "name": "textToSpeech",
+  "version": "1.0.0",
+  "description": "文字转语音云函数",
+  "main": "index.js",
+  "author": "",
+  "license": "ISC",
+  "dependencies": {},
+  "private": true
+}

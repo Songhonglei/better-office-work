@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Evan Diary</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- marked.js CDN -->
+  <script src="vendor/marked.min.js"></script>
+  <script src="vendor/dompurify.min.js"></script>
+</head>
+<body>
+  <div id="app">
+
+    <!-- ── Toolbar ── -->
+    <header id="toolbar">
+      <span id="logo">📓 Evan Diary</span>
+
+      <button class="btn btn-primary" id="btn-new" title="新建今日日记 (Ctrl+N)">
+        <span class="btn-icon">✦</span> 新建
+      </button>
+      <button class="btn" id="btn-open-dir" title="选择日记目录">
+        <span class="btn-icon">◈</span> 选择目录
+      </button>
+      <button class="btn" id="btn-save" title="保存 (Ctrl+S)">
+        <span class="btn-icon">⊡</span> 保存
+      </button>
+      <button class="btn btn-ai" id="btn-format" title="AI 自动排版 (Ctrl+Shift+F)">
+        <span class="btn-icon">✨</span> 排版
+      </button>
+
+      <span class="separator"></span>
+
+      <button class="btn btn-sync" id="btn-sync" title="同步到云端">
+        <span class="btn-icon">⟳</span> 同步
+      </button>
+    </header>
+
+    <!-- ── Main Three-Column Layout ── -->
+    <div id="main">
+
+      <!-- Left: Sidebar -->
+      <aside id="sidebar">
+        <div id="sidebar-header">
+          <div class="search-wrapper">
+            <span class="search-icon">⌕</span>
+            <input
+              type="text"
+              id="search-box"
+              placeholder="搜索日记..."
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+        </div>
+        <div id="diary-list">
+          <div class="diary-empty">
+            <span>📂</span>
+            尚未选择目录<br />
+            点击「选择目录」开始
+          </div>
+        </div>
+      </aside>
+
+      <!-- Center: Editor Pane -->
+      <section id="editor-pane">
+        <div id="editor-header">
+          <span class="btn-icon" style="color:var(--muted); font-size:13px;">✏</span>
+          <span id="editor-filename">未打开文件</span>
+        </div>
+        <textarea
+          id="editor"
+          placeholder="# 今天
+
+开始写点什么吧...
+
+支持 Markdown 语法，粘贴或拖拽图片自动存储。"
+          spellcheck="false"
+          autocomplete="off"
+        ></textarea>
+      </section>
+
+      <!-- Right: Preview Pane -->
+      <section id="preview-pane">
+        <div id="preview-header">
+          <span class="btn-icon" style="color:var(--muted); font-size:13px;">◉</span>
+          <span id="preview-header-label">预览</span>
+        </div>
+        <div id="preview">
+          <div style="color:var(--muted); font-size:13px; padding: 20px 0; font-family: var(--font-mono);">
+            开始编写后，Markdown 预览将在此处实时显示...
+          </div>
+        </div>
+      </section>
+
+    </div><!-- /#main -->
+
+    <!-- ── Status Bar ── -->
+    <footer id="statusbar">
+      <div class="status-item">
+        <span id="status-dot" class="status-dot"></span>
+        <span id="status-save">就绪</span>
+      </div>
+      <span class="separator"></span>
+      <div class="status-item">
+        <span style="color:var(--muted)">字数</span>
+        <span id="status-words" style="color:var(--blue)">0</span>
+      </div>
+      <span class="separator"></span>
+      <div class="status-item">
+        <span id="status-file" style="color:var(--muted)">—</span>
+      </div>
+      <div id="status-message"></div>
+    </footer>
+
+  </div><!-- /#app -->
+
+  <!-- Drop overlay for drag-and-drop images -->
+  <div id="drop-overlay">拖拽图片到此处插入</div>
+
+  <!-- Sync Dialog (hidden by default, created dynamically in sync.js) -->
+
+  <script src="diary.js"></script>
+  <script src="sync.js"></script>
+</body>
+</html>

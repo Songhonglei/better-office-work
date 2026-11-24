@@ -1,0 +1,89 @@
+<view class="container">
+  <!-- 测试模式状态 -->
+  <view class="status-card">
+    <view class="status-header">
+      <text class="status-title">测试模式</text>
+      <van-tag type="{{ testMode ? 'success' : 'danger' }}" size="large">
+        {{ testMode ? '开启' : '关闭' }}
+      </van-tag>
+    </view>
+    <view class="current-scenario">
+      当前场景: {{ currentScenario }}
+    </view>
+  </view>
+
+  <!-- 场景切换 -->
+  <view class="section-card">
+    <view class="section-title">测试场景</view>
+    <view class="scenario-buttons">
+      <van-button
+        wx:for="{{ ['normal', 'slow', 'error', 'empty'] }}"
+        wx:key="*this"
+        type="{{ currentScenario === item ? 'primary' : 'default' }}"
+        size="small"
+        bind:click="switchScenario"
+        data-scenario="{{ item }}"
+      >
+        {{ item }}
+      </van-button>
+    </view>
+  </view>
+
+  <!-- 功能测试 -->
+  <view class="section-card">
+    <view class="section-title">功能测试</view>
+    <view class="test-buttons">
+      <van-button type="info" size="small" bind:click="testGetArticles">
+        测试获取文章
+      </van-button>
+      <van-button type="info" size="small" bind:click="testAddAccount">
+        测试添加公众号
+      </van-button>
+      <van-button type="info" size="small" bind:click="testTextToSpeech">
+        测试语音合成
+      </van-button>
+      <van-button type="info" size="small" bind:click="testGenerateSummary">
+        测试生成摘要
+      </van-button>
+    </view>
+  </view>
+
+  <!-- 特殊场景 -->
+  <view class="section-card">
+    <view class="section-title">特殊场景</view>
+    <view class="special-buttons">
+      <van-button type="warning" size="small" bind:click="simulateNetworkIssue">
+        模拟网络问题
+      </van-button>
+      <van-button type="success" size="small" bind:click="restoreNormal">
+        恢复正常
+      </van-button>
+    </view>
+  </view>
+
+  <!-- 测试结果 -->
+  <view class="section-card" wx:if="{{ testResults.length > 0 }}">
+    <view class="section-title">测试结果 ({{ testResults.length }})</view>
+    <view class="result-item" wx:for="{{ testResults }}" wx:key="id" wx:for-item="article">
+      <text class="result-title">{{ article.title }}</text>
+      <text class="result-account">{{ article.accountName }}</text>
+    </view>
+  </view>
+
+  <!-- 操作日志 -->
+  <view class="section-card">
+    <view class="section-title">
+      操作日志
+      <van-button type="default" size="mini" bind:click="clearLogs">清空</van-button>
+      <van-button type="default" size="mini" bind:click="exportReport">导出</van-button>
+    </view>
+    <scroll-view class="log-container" scroll-y="true">
+      <view class="log-item" wx:for="{{ logs }}" wx:key="time">
+        <text class="log-time">{{ item.time }}</text>
+        <text class="log-action">{{ item.action }}</text>
+        <text class="log-result">{{ item.result }}</text>
+      </view>
+      <view wx:if="{{ logs.length === 0 }}" class="empty-log">暂无日志</view>
+    </scroll-view>
+  </view>
+</view>

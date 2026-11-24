@@ -1,0 +1,170 @@
+.container {
+  padding: 20rpx;
+  background-color: #f5f5f5;
+  min-height: 100vh;
+}
+
+.section-title {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 15rpx;
+}
+
+.section-desc {
+  font-size: 26rpx;
+  color: #666;
+  margin-bottom: 20rpx;
+  line-height: 1.5;
+}
+
+/* 输入区域 */
+.input-section {
+  background: white;
+  border-radius: 20rpx;
+  padding: 30rpx;
+  margin-bottom: 20rpx;
+  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.1);
+}
+
+.url-input {
+  width: 100%;
+  min-height: 300rpx;
+  padding: 20rpx;
+  border: 1rpx solid #ddd;
+  border-radius: 10rpx;
+  font-size: 28rpx;
+  background: #f9f9f9;
+  box-sizing: border-box;
+  margin-bottom: 20rpx;
+}
+
+.input-actions {
+  display: flex;
+  gap: 20rpx;
+}
+
+/* 结果列表 */
+.results-section {
+  background: white;
+  border-radius: 20rpx;
+  padding: 30rpx;
+  margin-bottom: 20rpx;
+  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.1);
+}
+
+.results-list {
+  margin-top: 20rpx;
+}
+
+.result-item {
+  display: flex;
+  align-items: flex-start;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #eee;
+}
+
+.result-item:last-child {
+  border-bottom: none;
+}
+
+.result-item.success {
+  background: rgba(7, 193, 96, 0.05);
+}
+
+.result-item.skip {
+  background: rgba(25, 137, 250, 0.05);
+}
+
+.result-item.fail {
+  background: rgba(238, 10, 36, 0.05);
+}
+
+.result-status {
+  margin-right: 20rpx;
+  padding-top: 5rpx;
+}
+
+.result-info {
+  flex: 1;
+}
+
+.result-name {
+  font-size: 30rpx;
+  color: #333;
+  margin-bottom: 10rpx;
+  font-weight: bold;
+}
+
+.result-url {
+  font-size: 24rpx;
+  color: #999;
+  margin-bottom: 8rpx;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.result-message {
+  font-size: 26rpx;
+  color: #666;
+}
+
+/* 历史记录 */
+.history-section {
+  background: white;
+  border-radius: 20rpx;
+  padding: 30rpx;
+  margin-bottom: 20rpx;
+  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.1);
+}
+
+/* 使用技巧 */
+.tips-section {
+  background: white;
+  border-radius: 20rpx;
+  padding: 30rpx;
+  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.1);
+}
+
+.tips-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+}
+
+.tips-list text {
+  font-size: 26rpx;
+  color: #666;
+  line-height: 1.8;
+}
+
+/* 加载遮罩 */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+}
+
+.loading-content {
+  background: white;
+  padding: 50rpx;
+  border-radius: 20rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20rpx;
+}
+
+.loading-content text {
+  font-size: 28rpx;
+  color: #666;
+}

@@ -1,0 +1,156 @@
+.container {
+  padding: 20rpx;
+  background-color: #f5f5f5;
+  min-height: 100vh;
+}
+
+/* 头部卡片 */
+.header-card {
+  background: white;
+  border-radius: 20rpx;
+  padding: 30rpx;
+  margin-bottom: 20rpx;
+  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.1);
+}
+
+.header-title {
+  font-size: 36rpx;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 15rpx;
+}
+
+.header-desc {
+  font-size: 28rpx;
+  color: #666;
+  line-height: 1.6;
+}
+
+/* 账号列表 */
+.accounts-section {
+  background: white;
+  border-radius: 20rpx;
+  padding: 30rpx;
+  margin-bottom: 20rpx;
+  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.1);
+}
+
+.accounts-list {
+  margin-top: 20rpx;
+}
+
+.account-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 25rpx 0;
+  border-bottom: 1rpx solid #eee;
+}
+
+.account-item:last-child {
+  border-bottom: none;
+}
+
+.account-info {
+  flex: 1;
+  margin-right: 20rpx;
+}
+
+.account-name {
+  font-size: 32rpx;
+  color: #333;
+  margin-bottom: 10rpx;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.account-meta {
+  font-size: 24rpx;
+  color: #999;
+}
+
+.biz {
+  margin-right: 20rpx;
+}
+
+/* 空状态 */
+.empty-tips {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: #999;
+  font-size: 26rpx;
+  line-height: 1.8;
+}
+
+/* 同步按钮 */
+.sync-section {
+  margin-bottom: 30rpx;
+}
+
+/* 帮助说明 */
+.help-section {
+  background: white;
+  border-radius: 20rpx;
+  padding: 30rpx;
+  margin-bottom: 20rpx;
+  box-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.1);
+}
+
+.help-title {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 25rpx;
+}
+
+.help-steps {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  position: relative;
+}
+
+.step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  right: -20rpx;
+  top: 20rpx;
+  width: 40rpx;
+  height: 2rpx;
+  background: #ddd;
+}
+
+.step-number {
+  width: 60rpx;
+  height: 60rpx;
+  line-height: 60rpx;
+  text-align: center;
+  background: #1989fa;
+  color: white;
+  border-radius: 50%;
+  font-size: 28rpx;
+  font-weight: bold;
+  margin-bottom: 15rpx;
+}
+
+.step-text {
+  font-size: 24rpx;
+  color: #666;
+  text-align: center;
+  max-width: 120rpx;
+}
+
+/* 分享部分 */
+.share-section {
+  margin-top: 40rpx;
+}

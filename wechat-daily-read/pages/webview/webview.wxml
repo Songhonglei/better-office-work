@@ -1,0 +1,5 @@
+<view class="article-link">
+  <text wx:if="{{url}}">复制链接后，可在微信中打开文章。</text>
+  <text wx:else>没有可打开的文章链接。</text>
+  <button wx:if="{{url}}" bindtap="copyUrl">复制文章链接</button>
+</view>

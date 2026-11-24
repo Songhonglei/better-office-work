@@ -1,0 +1,103 @@
+<view class="container">
+  <!-- 头部说明 -->
+  <view class="header-card">
+    <view class="header-title">📱 同步检测到的公众号</view>
+    <view class="header-desc">
+      以下是通过浏览检测到的公众号，点击"一键同步"即可添加到您的汇总列表
+    </view>
+  </view>
+
+  <!-- 待同步列表 -->
+  <view class="accounts-section">
+    <view wx:if="{{ pendingAccounts.length > 0 }}" class="accounts-list">
+      <view
+        wx:for="{{ pendingAccounts }}"
+        wx:key="biz"
+        class="account-item"
+      >
+        <view class="account-info">
+          <view class="account-name">{{ item.name || item.accountName || '未知公众号' }}</view>
+          <view class="account-meta">
+            <text class="biz">ID: {{ item.biz }}</text>
+            <text class="time" wx:if="{{ item.addTime }}">
+              {{ item.addTime }}
+            </text>
+          </view>
+        </view>
+        <view class="account-actions">
+          <van-button
+            size="mini"
+            type="danger"
+            plain
+            bind:click="removeAccount"
+            data-index="{{ index }}"
+          >
+            移除
+          </van-button>
+        </view>
+      </view>
+    </view>
+
+    <van-empty
+      wx:else
+      image="search"
+      description="暂无待同步的公众号"
+    >
+      <view slot="description" class="empty-tips">
+        <text>使用以下方式自动添加公众号：</text>
+        <text>1. 在公众号文章页面使用书签工具</text>
+        <text>2. 分享文章链接到小程序</text>
+      </view>
+    </van-empty>
+  </view>
+
+  <!-- 同步按钮 -->
+  <view class="sync-section" wx:if="{{ pendingAccounts.length > 0 }}">
+    <van-button
+      type="primary"
+      size="large"
+      block
+      loading="{{ isSyncing }}"
+      bind:click="syncAccounts"
+    >
+      {{ isSyncing ? '同步中...' : '一键同步 ' + pendingAccounts.length + ' 个公众号' }}
+    </van-button>
+  </view>
+
+  <!-- 使用说明 -->
+  <view class="help-section">
+    <view class="help-title">💡 使用说明</view>
+    <view class="help-steps">
+      <view class="step">
+        <text class="step-number">1</text>
+        <text class="step-text">在浏览器添加书签工具</text>
+      </view>
+      <view class="step">
+        <text class="step-number">2</text>
+        <text class="step-text">打开任意公众号文章</text>
+      </view>
+      <view class="step">
+        <text class="step-number">3</text>
+        <text class="step-text">点击书签自动添加</text>
+      </view>
+      <view class="step">
+        <text class="step-number">4</text>
+        <text class="step-text">回到小程序同步</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 分享按钮 -->
+  <view class="share-section">
+    <van-button
+      type="info"
+      size="small"
+      plain
+      block
+      icon="share"
+      bind:click="shareSync"
+    >
+      分享给好友
+    </van-button>
+  </view>
+</view>

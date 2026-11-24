@@ -1,0 +1,68 @@
+<view class="container">
+  <!-- 步骤指示器 -->
+  <view class="step-indicator">
+    <view wx:for="{{ steps }}" wx:key="index" class="step-dot {{ index <= currentStep ? 'active' : '' }}">
+      <text>{{ index + 1 }}</text>
+    </view>
+  </view>
+
+  <!-- 当前步骤内容 -->
+  <view class="step-content">
+    <view class="step-icon">
+      <image src="{{ steps[currentStep].icon }}" mode="aspectFit" />
+    </view>
+    <view class="step-title">{{ steps[currentStep].title }}</view>
+    <view class="step-desc">{{ steps[currentStep].desc }}</view>
+  </view>
+
+  <!-- 演示区域 -->
+  <view class="demo-section" wx:if="{{ currentStep === 0 }}">
+    <van-button
+      type="info"
+      size="large"
+      block
+      bind:click="tryDemo"
+    >
+      复制示例链接试试
+    </van-button>
+    <view wx:if="{{ showClipboard }}" class="clipboard-tip">
+      <text>✅ 已复制到剪贴板，下一步即可看到效果</text>
+    </view>
+  </view>
+
+  <!-- 操作按钮 -->
+  <view class="action-buttons">
+    <van-button
+      wx:if="{{ currentStep > 0 }}"
+      type="default"
+      size="large"
+      bind:click="prevStep"
+    >
+      上一步
+    </van-button>
+
+    <van-button
+      type="primary"
+      size="large"
+      bind:click="nextStep"
+    >
+      {{ currentStep === steps.length - 1 ? '完成' : '下一步' }}
+    </van-button>
+  </view>
+
+  <!-- 跳过按钮 -->
+  <view class="skip-section">
+    <text bind:tap="skipGuide">跳过引导</text>
+  </view>
+
+  <!-- 提示信息 -->
+  <view class="tips-section">
+    <view class="tips-title">💡 使用技巧</view>
+    <view class="tips-list">
+      <text>• 支持识别任意公众号文章链接</text>
+      <text>• 自动提取公众号信息并分类</text>
+      <text>• 重复添加会自动去重</text>
+      <text>• 也可以手动输入链接添加</text>
+    </view>
+  </view>
+</view>

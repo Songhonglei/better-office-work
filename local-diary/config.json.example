@@ -1,0 +1,15 @@
+{
+  "_comment": "复制此文件为 config.json，填入你的配置。config.json 已加入 .gitignore，不会提交到 git。",
+
+  "ai": {
+    "apiUrl": "https://maas.devops.xiaohongshu.com/maas/v1/chat/completions",
+    "apiKey": "YOUR_API_KEY_HERE",
+    "model": "glm-5",
+    "maxTokens": 4096
+  },
+
+  "editor": {
+    "autoSaveIntervalMs": 30000,
+    "language": "zh-CN"
+  }
+}

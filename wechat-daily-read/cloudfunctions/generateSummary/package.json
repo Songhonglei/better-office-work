@@ -1,0 +1,10 @@
+{
+  "name": "generateSummary",
+  "version": "1.0.0",
+  "description": "生成AI文章汇总",
+  "main": "index.js",
+  "author": "",
+  "license": "ISC",
+  "dependencies": {},
+  "private": true
+}

@@ -1,0 +1,235 @@
+<view class="container">
+  <!-- 剪贴板检测浮动卡片 -->
+  <view wx:if="{{ showClipboardTip }}" class="clipboard-float-card {{ clipboardAnimating ? 'slide-in' : 'slide-out' }}">
+    <view class="clipboard-icon">
+      <van-icon name="link-o" size="40rpx" color="#1989fa" />
+    </view>
+    <view class="clipboard-content">
+      <view class="clipboard-title">检测到公众号链接</view>
+      <view class="clipboard-desc">自动识别剪贴板中的公众号链接</view>
+    </view>
+    <view class="clipboard-actions">
+      <van-button size="small" plain bind:click="dismissClipboard">忽略</van-button>
+      <van-button type="primary" size="small" bind:click="acceptClipboard">添加</van-button>
+    </view>
+  </view>
+
+  <!-- 使用提示卡片 -->
+  <view class="tip-card">
+    <van-icon name="info-o" size="36rpx" color="#1989fa" />
+    <text class="tip-text">💡 复制公众号文章链接，打开小程序即可自动识别</text>
+  </view>
+
+  <!-- 账号列表 -->
+  <view class="accounts-list">
+    <!-- 骨架屏加载状态 -->
+    <view wx:if="{{ loading }}" class="skeleton-wrapper">
+      <view class="skeleton-account-item" wx:for="{{ [1,2,3,4,5] }}" wx:key="*this">
+        <view class="skeleton-account-info">
+          <view class="skeleton skeleton-line medium"></view>
+          <view class="skeleton skeleton-text short"></view>
+        </view>
+        <view class="skeleton skeleton-circle" style="width: 50rpx; height: 30rpx;"></view>
+      </view>
+    </view>
+
+    <block wx:elif="{{ accounts.length > 0 }}">
+      <van-swipe-cell
+        wx:for="{{ accounts }}"
+        wx:key="_id"
+        right-width="{{ 65 }}"
+        custom-class="{{ pageReady ? 'list-item-animated' : '' }}"
+      >
+        <view class="account-item">
+          <view class="account-info">
+            <view class="account-name">{{ item.name }}</view>
+            <view class="account-meta">
+              <van-tag type="primary" size="small">{{ item.category }}</van-tag>
+              <text class="create-time">添加于 {{ item.createTime }}</text>
+            </view>
+          </view>
+          <view class="account-switch">
+            <switch
+              checked="{{ item.isActive }}"
+              bind:change="toggleAccount"
+              data-id="{{ item._id }}"
+              data-is-active="{{ item.isActive }}"
+            />
+          </view>
+        </view>
+        <view slot="right" class="swipe-right">
+          <van-button
+            square
+            type="danger"
+            size="small"
+            custom-class="delete-btn"
+            bind:click="deleteAccount"
+            data-id="{{ item._id }}"
+          >
+            删除
+          </van-button>
+        </view>
+      </van-swipe-cell>
+    </block>
+
+    <view wx:else class="custom-empty">
+      <image class="empty-image" src="/images/empty-account.png" mode="aspectFit" />
+      <view class="empty-title">还没有公众号</view>
+      <view class="empty-desc">点击右下角按钮添加你感兴趣的公众号</view>
+      <van-button
+        type="primary"
+        size="normal"
+        round
+        bind:click="showAddMenu"
+        custom-class="empty-btn"
+      >
+        开始添加
+      </van-button>
+    </view>
+  </view>
+
+  <!-- 添加账号弹窗 -->
+  <van-popup
+    show="{{ showAddPopup }}"
+    position="bottom"
+    custom-style="height: 85%; max-height: 90vh;"
+    bind:close="hideAddAccount"
+  >
+    <view class="popup-content">
+      <view class="popup-header">
+        <text class="popup-title">添加公众号</text>
+        <van-icon name="cross" bind:click="hideAddAccount" />
+      </view>
+
+      <view class="form-group">
+        <view class="form-label">公众号名称</view>
+        <input
+          class="form-input"
+          placeholder="请输入公众号名称"
+          value="{{ newAccount.name }}"
+          bindinput="onNameChange"
+        />
+      </view>
+
+      <view class="form-group">
+        <view class="form-label">微信号biz</view>
+        <input
+          class="form-input"
+          placeholder="请输入公众号的biz参数"
+          value="{{ newAccount.biz }}"
+          bindinput="onBizChange"
+        />
+        <view class="form-tip">
+          在公众号文章页面的URL中可以找到biz参数
+        </view>
+      </view>
+
+      <view class="form-group">
+        <view class="form-label">分类</view>
+        <picker
+          bindchange="onCategoryChange"
+          value="0"
+          range="{{ categories }}"
+        >
+          <view class="picker-view">
+            {{ newAccount.category }}
+          </view>
+        </picker>
+      </view>
+
+      <view class="popup-footer">
+        <van-button
+          type="primary"
+          size="large"
+          block
+          bind:click="addAccount"
+        >
+          确定添加
+        </van-button>
+        <van-button
+          type="default"
+          size="large"
+          block
+          bind:click="hideAddAccount"
+          style="margin-top: 12rpx;"
+        >
+          取消
+        </van-button>
+      </view>
+    </view>
+  </van-popup>
+
+  <!-- FAB 悬浮按钮 -->
+  <view class="fab-container btn-interactive" bindtap="showAddMenu">
+    <van-icon name="plus" size="48rpx" color="#fff" />
+  </view>
+
+  <!-- 底部操作菜单 - 自定义菜单 -->
+  <van-popup
+    show="{{ showAddMenu }}"
+    position="bottom"
+    bind:close="onCloseAddMenu"
+    round
+  >
+    <view class="menu-container">
+      <view
+        wx:for="{{ addActions }}"
+        wx:key="name"
+        class="menu-item"
+        bind:tap="handleMenuSelect"
+        data-action="{{ item }}"
+      >
+        <van-icon name="{{ item.icon }}" size="36rpx" color="#1989fa" />
+        <view class="menu-text">
+          <view class="menu-name">{{ item.name }}</view>
+          <view class="menu-subname">{{ item.subname }}</view>
+        </view>
+        <van-icon name="arrow" size="24rpx" color="#999" />
+      </view>
+
+      <view class="menu-divider"></view>
+
+      <view class="menu-cancel" bind:tap="onCloseAddMenu">
+        <text>取消</text>
+      </view>
+    </view>
+  </van-popup>
+
+  <!-- 首次引导浮层 -->
+  <view wx:if="{{ showGuide }}" class="guide-overlay" bindtap="closeGuide">
+    <view class="guide-modal" catchtap="stopPropagation">
+      <view class="guide-header">
+        <text class="guide-title">📖 快速上手指南</text>
+        <van-icon name="cross" bind:click="closeGuide" />
+      </view>
+      <view class="guide-content">
+        <view class="guide-step">
+          <view class="guide-step-number">1</view>
+          <view class="guide-step-content">
+            <view class="guide-step-title">打开公众号文章</view>
+            <view class="guide-step-desc">在微信中打开任意公众号文章</view>
+          </view>
+        </view>
+        <view class="guide-step">
+          <view class="guide-step-number">2</view>
+          <view class="guide-step-content">
+            <view class="guide-step-title">复制文章链接</view>
+            <view class="guide-step-desc">点击右上角"..."，选择"复制链接"</view>
+          </view>
+        </view>
+        <view class="guide-step">
+          <view class="guide-step-number">3</view>
+          <view class="guide-step-content">
+            <view class="guide-step-title">返回小程序</view>
+            <view class="guide-step-desc">返回小程序，自动识别并提示添加</view>
+          </view>
+        </view>
+      </view>
+      <view class="guide-footer">
+        <van-button type="primary" size="large" block bind:click="closeGuide">
+          知道了
+        </van-button>
+      </view>
+    </view>
+  </view>
+</view>
