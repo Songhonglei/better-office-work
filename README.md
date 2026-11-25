@@ -28,6 +28,7 @@
 | [macos-power-control](./skills/macos-power-control/) | macOS 合盖与电源设置：一句话需求解析，设置前确认，区分电池/接电、临时防休眠与持久策略，附验证和恢复流程 |
 | [invoice-auto-forward](./skills/invoice-auto-forward/) | 邮箱发票自动转发：IMAP 扫描 + 发票解析（PDF/OFD/XML）+ SMTP 转发，支持 QQ/163/126 多邮箱、链接型发票下载、抬头白名单与定时无人值守 |
 | [wb-token-analyzer](./skills/wb-token-analyzer/) | WorkBuddy Token/Credit 使用量分析：按天/模型汇总、Top N 消耗任务排名、6 类优化建议、自定义模型支持、Neon Dashboard 可视化报告 |
+| [workbuddy-checkin-daemon](./skills/workbuddy-checkin-daemon/) | WorkBuddy「Buddy 加油站」每日签到 + 派猫猫旅行：走客户端 wbipc 通道由守护进程代发请求，不读不传任何 token，兼容新版加密登录态；纯标准库跨平台，可配每日定时无人值守（v1.0.2） |
 | [xhs-image-note-release](./skills/xhs-image-note-release/) | 小红书笔记自动发布（图文/视频按扩展名自动判断）：ego-browser 驱动全流程，逐文件上传 + 视频转码轮询，穿透 closed Shadow DOM 调用 `_onPublish()` / `_onSave()` |
 | [video-multi-release](./skills/video-multi-release/) | 口播视频制作与三平台发布：Qwen TTS 情感配音 → 音频驱动时间轴 → 混音 → 发小红书/视频号/抖音。抖音卡在短信验证只能半自动，另两平台可全自动 |
 | [text-humanize](./skills/text-humanize/) | 中英文清晰表达与风格润色：改善冗余、结构、语气、节奏与排版，保留事实、引用及必要披露；不判断作者来源或以规避检测为目标（v1.5.0） |
@@ -47,6 +48,7 @@ git clone https://github.com/Songhonglei/better-office-work.git
 # 将需要的 skill 复制到你的 agent skills 目录
 cp -r skills/invoice-auto-forward ~/.workbuddy/skills/
 cp -r skills/wb-token-analyzer ~/.workbuddy/skills/
+cp -r skills/workbuddy-checkin-daemon ~/.workbuddy/skills/
 cp -r skills/xhs-image-note-release ~/.workbuddy/skills/
 cp -r skills/text-humanize ~/.workbuddy/skills/
 cp -r skills/zhihu-yanghao ~/.workbuddy/skills/

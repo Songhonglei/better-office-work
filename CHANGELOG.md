@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — workbuddy-checkin-daemon（2026-11-25）
+
+新增 skill：WorkBuddy「Buddy 加油站」每日签到 + 派猫猫旅行，v1.0.2。
+
+- **零凭据方案**：不读取、不解密、不传输任何 token，改走客户端 wbipc 本地通道（HMAC 挑战-应答握手），由守护进程代为携带登录态发请求；因此兼容新版 `$wbEncrypted` 加密登录态，也天然适合分发给不同用户各自使用。
+- **完整闭环**：查签到状态 → 未签则领取（接口幂等）→ 旅行 `arrived` 自动领积分 → `idle` 自动取 `travel/config` 选地点派遣 `{"location_id": N}`（v1.0.1 修复了空 body 一律 400 的问题）。
+- **跨平台**：Windows 命名管道 / macOS / Linux Unix socket 同一份代码，纯 Python 标准库零依赖（3.8+），无需 pip。
+- **文档对齐实现**：修正 `references/wbipc-protocol.md` 里 `travel/depart` body 写成 `{}` 的错误；地点 id 取消硬编码（实测已新增第 5 个地点），运行期从配置现取。
+- **可分发**：新增三种安装路径与 `wbipc/endpoint.json` 环境自检；明确"每台机器各自运行、凭据不可共享"。
+
 ### Added — doubao-newmedia-writing（2026-11-24）
 
 新增 skill：中文新媒体写作，覆盖小红书图文笔记、微信公众号文章、3 分钟以内短视频分镜脚本，以及上述类型的复合创作方案。
