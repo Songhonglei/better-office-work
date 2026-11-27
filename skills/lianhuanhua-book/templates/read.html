@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__ · __BOOK__</title>
+<meta name="description" content="__SUMMARY__">
+<link rel="stylesheet" href="../../static/style.css?v=__VER__">
+</head>
+<body>
+<header class="bar">
+  <a href="../../index.html">← 书架</a>
+  <span class="loc">__BOOK__ · __TITLE__</span>
+  <span style="display:flex;align-items:center;gap:12px">
+    <span class="count" id="count">__COUNT__</span>
+    <button class="mode" id="mode" type="button">单页翻页</button>
+  </span>
+</header>
+
+<main id="book">
+__SPREADS__
+</main>
+
+<nav class="pager">
+  <button id="prev" type="button">上一页</button>
+  <div class="track" id="track"><div class="fill" id="fill"></div></div>
+  <button id="next" type="button">下一页</button>
+</nav>
+
+<script src="../../static/reader.js?v=__VER__"></script>
+</body>
+</html>
