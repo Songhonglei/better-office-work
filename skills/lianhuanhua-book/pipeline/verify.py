@@ -1,72 +1,57 @@
 #!/usr/bin/env python3
-"""交付前验收：页数、尺寸、体积、缺图。
-
-用法：
-    python3 pipeline/verify.py --slug liaozhai-laoshan-daoshi
-"""
+"""Strict programmatic verification and optional visual-review gate."""
 import argparse
-import json
-import pathlib
-import sys
-
 from PIL import Image
+from common import IMAGES, expected_size, load_story, output_settings, page_file
+from progress import manifest, state
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
-STORIES = ROOT / "stories"
-IMAGES = ROOT / "assets" / "images"
-
-EXPECT = (1536, 944)
-MAX_KB = 450
-
-
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--slug", required=True)
-    args = ap.parse_args()
-
-    story = json.loads((STORIES / f"{args.slug}.json").read_text(encoding="utf-8"))
-    img_dir = IMAGES / args.slug
-    pages = story["pages"]
-
-    problems, warns = [], []
-    for p in pages:
-        f = img_dir / f"{p['no']:03d}.jpg"
-        if not f.exists():
-            problems.append(f"缺图 {f.name}（{p['title']}）")
+def check(story, require_approved=False):
+    img_dir = IMAGES / story["slug"]
+    issues = []
+    data = manifest(story)
+    for page in story["pages"]:
+        f = img_dir / page_file(page)
+        if not f.is_file():
+            issues.append(f"Missing {f.name}")
             continue
-        with Image.open(f) as im:
-            w, h = im.size
-        if (w, h) != EXPECT and not (p["no"] == 0 and (w, h) == (1536, 1024)):
-            warns.append(f"{f.name} 尺寸 {w}x{h}，期望 {EXPECT[0]}x{EXPECT[1]}")
-        kb = f.stat().st_size / 1024
-        if kb > MAX_KB:
-            warns.append(f"{f.name} {kb:.0f} KB，超过 {MAX_KB} KB")
-
-    extra = sorted({f.name for f in img_dir.glob("*.jpg")} - {f"{p['no']:03d}.jpg" for p in pages})
+        try:
+            with Image.open(f) as im:
+                im.load()
+                if im.format != "JPEG":
+                    issues.append(f"{f.name}: not JPEG")
+                if im.size != expected_size(story, page):
+                    issues.append(f"{f.name}: {im.size}, expected {expected_size(story, page)}")
+        except (OSError, ValueError) as e:
+            issues.append(f"{f.name}: unreadable image: {e}")
+            continue
+        if f.stat().st_size > output_settings(story)["max_kb"] * 1024:
+            issues.append(f"{f.name}: size exceeds max_kb")
+        status, _ = state(story, page, data)
+        if status in ("stale", "missing_or_changed", "rejected", "generating"):
+            issues.append(f"{f.name}: {status}")
+        if require_approved and status != "approved":
+            issues.append(f"{f.name}: visual review not approved ({status})")
+    extra = sorted(p.name for p in img_dir.glob("*.jpg") if p.name not in {page_file(p) for p in story["pages"]})
     if extra:
-        warns.append("多余图片：" + "、".join(extra))
+        issues.append("Extra pages: " + ", ".join(extra))
+    return issues
 
-    print(f"《{story['title']}》 应有 {len(pages)} 页")
-    for p in pages:
-        f = img_dir / f"{p['no']:03d}.jpg"
-        if not f.exists():
-            continue
-        with Image.open(f) as im:
-            w, h = im.size
-        print(f"  {f.name}  {p['title']:<4s} {w}x{h}  {f.stat().st_size/1024:>4.0f} KB")
-
-    if warns:
-        print("\n提醒：")
-        for w in warns:
-            print("  · " + w)
-    if problems:
-        print("\n问题：")
-        for p in problems:
-            print("  ✗ " + p)
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--slug", required=True)
+    p.add_argument("--require-approved", action="store_true")
+    args = p.parse_args()
+    try:
+        story = load_story(args.slug)
+        issues = check(story, args.require_approved)
+    except (ValueError, OSError) as e:
+        issues = [str(e)]
+    if issues:
+        print("FAIL:\n" + "\n".join(issues))
         return 1
-    print("\n验收通过：页数、尺寸、体积均在范围内（水印需目视抽检右下角）")
+    print("PASS: page count, dimensions, JPEG integrity, file size and version checks" +
+          ("; visual approvals complete" if args.require_approved else "; visual approval not checked"))
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

@@ -1,85 +1,62 @@
-# 流水线与命令
+# 从项目初始化到交付
 
-## 目录约定
+## 目录
 
+```text
+stories/<slug>.json
+styles/<style>.txt
+assets/images/<slug>/
+  cast/                        人物定妆照
+  _raw/                        旧编号输入（00-封面.png 等）
+  prompts/NN.txt               当前提示词
+  progress.json                 页级状态、细节审核、选中版本、ComfyUI 任务与时间
+  edit-inputs/<job-id>/        局部裁图、蒙版、输入工作流、模型输出
+  versions/NNN/<version-id>/
+    original.image             原始生成文件（原字节）
+    render.jpg                 输出成品
+    prompt.txt                 对应提示词
+  NNN.jpg                      当前选中成品
+pipeline/                      可复用脚本
+templates/                     阅读器
+site/                          仅构建产物
 ```
-<项目根>/
-  stories/<slug>.json          分镜与文案（一本书一个）
-  stories/_series.json         系列配置：title / subtitle / note / footer / planned
-  styles/<style>.txt           风格后缀（唯一真源，勿复制到别处）
-  styles/style-note.md         实测经验
-  assets/images/<slug>/
-    _raw/00-封面.png …         原始出图，文件名「序号-页名.png」，序号两位
-    cast/*.png                 人物定妆照
-    _drafts/                   过程版本（superseded/ 存废弃版）
-    prompts/NN-页名.txt         拼好的 prompt（make_prompts 生成，可以直接喂模型）
-    000.jpg …                  成品（post_process 生成）
-    配图说明.md                 每页画面与来源版本
-  pipeline/                    五个脚本
-  templates/                   index.html / read.html / style.css / reader.js
-  site/                        构建产物，可直接部署
-  serve.sh                     本地预览
-```
 
-`assets/images/<slug>/` 下 `_raw` 的序号决定成品编号：`05-晚课.png` → `005.jpg`。封面固定 `00-封面.png`，构建时不裁底。
-
-## 五个脚本
+## 命令
 
 ```bash
-# 1. 拼 prompt：把 story.json 的 scene + 人物锚点 + 朝代约束 + 负面 + 风格后缀拼成整段
-python3 pipeline/make_prompts.py --slug <slug>          # 全部
-python3 pipeline/make_prompts.py --slug <slug> --page 5 # 单页
-
-# 2. 裁水印 + 转 Web JPEG（封面 00 不裁底，其余裁底部 80px）
-python3 pipeline/post_process.py --slug <slug>
-python3 pipeline/post_process.py --slug <slug> --cut 90 --quality 80
-
-# 3. 校验：页数、尺寸、体积
-python3 pipeline/verify.py --slug <slug>
-
-# 4. 建站：复制图片、生成缩略图、写阅读页与书架
-python3 pipeline/build_site.py
-python3 pipeline/build_site.py --clean
-
-# 5. 本地预览（Cache-Control: no-cache，改完刷新即见）
+python pipeline/make_prompts.py --slug my-book
+python pipeline/make_prompts.py --slug my-book --page 3
+python pipeline/post_process.py --slug my-book
+python pipeline/progress.py --slug my-book import --page 3 --file candidate.png --backend imagegen
+python pipeline/progress.py --slug my-book status
+python pipeline/progress.py --slug my-book checklist --page 3
+python pipeline/progress.py --slug my-book versions --page 3
+python pipeline/progress.py --slug my-book reject --page 3 --note "视线错误"
+python pipeline/progress.py --slug my-book rollback --page 3 --version VERSION
+python pipeline/progress.py --slug my-book approve --page 3 --note "逐项核对通过" --checks-file review-03.json
+python pipeline/verify.py --slug my-book --require-approved
+python pipeline/build_site.py --require-approved
 ./serve.sh 8788
 ```
 
-依赖：`Pillow`。本机解释器：`~/.workbuddy/binaries/python/envs/pillow/bin/python`。
+## 进度恢复
 
-## 出图这一段的实际顺序
+状态：missing、untracked、generating、pending、approved、rejected、stale、missing_or_changed。状态从指纹与选中图片实时判断，脚本退出和重启后保留记录。回退不会删除历史；过时版本仍是 stale。手工导入图片的提示词对应关系由导入者确认，历史输入来源记为 legacy-import。已有成品无版本记录时，重新导入原图、视觉审核后才能交付。原始图片保留，不在原文件上裁剪。
 
-1. `make_prompts.py` 生成 `prompts/`（先看一遍文案与场景，改 `stories/*.json` 后重跑）
-2. **定妆照**：每个主要角色一张白底正面半身，存 `cast/`。配角可选，但同框 ≥2 人时强烈建议
-3. 逐页出图：`image1` = 主角定妆照，`image2` = 配角定妆照或从既有页裁的衣着参考
-4. 出图文件落到 `_raw/`，按「序号-页名.png」改名（序号两位）
-5. `post_process.py` → `verify.py` → `build_site.py`
-6. 每页目视三查：水印、脚/衣摆、同框角色是否撞脸撞衫
+重复相同原始页码会在写入前报错。ComfyUI 每次推理一张图，等待时可以审完工页。用命令行操作进度和版本目录，保持系统写入协调。ComfyUI 超时后按任务 ID 续作，服务器明确不再运行该任务时才使用 `forget-job`。
 
-## 尺寸与体积
+## 验收、预览、发布
 
-| 项 | 值 |
-|---|---|
-| 生成尺寸 | 1536×1024 |
-| 内页成品 | 1536×944（裁底部 80px 去水印） |
-| 封面成品 | 1536×1024（不裁底，水印局部清除） |
-| 压缩 | JPEG q82，单页目标 ≤450KB，超了降 q80 |
+`verify.py` 严格校验分镜、图片尺寸、实际解码、体积、缺图、多余页、状态。省略 --require-approved 仅供程序预览，不能宣称视觉验收通过。建站前完整预检所有作品，并重新生成到独立目录，替换旧站，避免旧资源污染。构建失败保留上次成功站点。CSS/JS/图片 URL 使用内容哈希。
 
-## 本地预览与发布
+把 site/ 目录作为静态站部署，部署前使用 --require-approved，不自动发布。页面使用 0 封面、连续正文、深链接 #p12。网站不复制原图、定妆照、工作流或版本记录。
 
-```bash
-./serve.sh 8788
-# → http://127.0.0.1:8788/
-# → http://127.0.0.1:8788/read/<slug>/
-```
+## 迁移
 
-发布静态站：把 `site/` 目录交给「发布为应用」（`workbuddy_sites_deploy`，`language: "static"`）。
-改图后要重新 `build_site.py` 再发布——`site/assets/` 是复制件，不是软链。
+- 方图画册重制为原生横版时，保留旧项目，在新目录复制分镜及角色参考。把生成与交付设为同宽高比，启用 `output.fit: "strict"`，再跑横版样张和逐页审图。导入会检查旧方图的比例。
 
-## 缓存
-
-- 图片 URL 带指纹 `?v=<mtime>x<size>`，`build_site.py` 自动加
-- CSS/JS 带 `?v=__VER__`（两文件大小之和）
-- `serve.py` 发 `Cache-Control: no-cache`
-
-改了前端却没反应，先怀疑缓存，再看指纹是否变了。
+- v1.0 原始素材与图片目录可保留；重新从 raw 导入建立版本记录。
+- 文件名 NN-页名.txt 改为 NN.txt，避免标题改名导致旧文件误用。
+- --cut/--quality 参数迁移至 story.output，保证处理和验收共享同一规格。
+- 页数含封面，12–20 页；允许分镜尚未完成时拼 prompt 和导入，但验收/建站要求整本完整。
+- 所有生成物放项目目录；预览不用上传，正式发布须取得用户许可。

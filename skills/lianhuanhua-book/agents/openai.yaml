@@ -1,0 +1,4 @@
+interface:
+  display_name: "连环画故事书"
+  short_description: "将故事改编为连环画，支持分镜、角色定妆、逐页插图、审校和建站"
+  default_prompt: "使用 $lianhuanhua-book 将我的故事制作成风格统一、可续作的连环画故事书。"

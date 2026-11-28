@@ -31,6 +31,7 @@
   var cur = 0;
   var lock = false;
   var loaded = {};
+  var userNavigated = false;
 
   function updateUI() {
     if (countEl) countEl.textContent = label(cur) + " / " + label(total - 1);
@@ -52,6 +53,7 @@
   }
 
   function goTo(i, smooth) {
+    userNavigated = true;
     i = Math.max(0, Math.min(total - 1, i));
     cur = i;
     if (single) {
@@ -87,7 +89,7 @@
 
   document.addEventListener("keydown", function (e) {
     var tag = (e.target.tagName || "").toLowerCase();
-    if (tag === "input" || tag === "textarea") return;
+    if (tag === "input" || tag === "textarea" || tag === "button" || tag === "a" || e.target.isContentEditable) return;
     if (e.key === "ArrowRight" || e.key === "PageDown") { e.preventDefault(); next(); }
     else if (e.key === "ArrowLeft" || e.key === "PageUp") { e.preventDefault(); prev(); }
     else if (e.key === " ") { e.preventDefault(); next(); }
@@ -146,6 +148,9 @@
       if (idx !== cur) {
         cur = idx;
         updateUI();
+        if (history.replaceState) {
+          try { history.replaceState(null, "", "#p" + cur); } catch (e) {}
+        }
       }
     });
   }, { passive: true });
@@ -185,7 +190,7 @@
     });
     var doAlign = function () {
       var el = spreads[target];
-      if (!el || userScrolled) return;
+      if (!el || userScrolled || userNavigated) return;
       var html = document.documentElement;
       var prev = html.style.scrollBehavior;
       html.style.scrollBehavior = "auto";

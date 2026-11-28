@@ -10,8 +10,13 @@ import html
 import json
 import pathlib
 import shutil
+import tempfile
+import hashlib
+import uuid
 
 from PIL import Image
+from common import load_story, file_sha
+from verify import check
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 STORIES = ROOT / "stories"
@@ -22,10 +27,10 @@ SITE = ROOT / "site"
 # 系列配置：stories/_series.json（可选）。缺省时用下面的兜底值。
 SERIES_FILE = STORIES / "_series.json"
 SERIES = {
-    "title": "古小说小人书",
+    "title": "故事小人书",
     "subtitle": "一页一景 · 上图下文 · 说书人的旁白",
-    "note": "每篇 12—20 页，一页一个情节瞬间，3—5 分钟读完一篇。画面为黑白线描，仿旧年石印连环画。",
-    "footer": "改编自公有领域古典小说，白话文案为再创作　｜　画面由 AI 生成，非文物复原",
+    "note": "每篇 12—20 页，一页一个情节瞬间，3—5 分钟读完一篇。",
+    "footer": "",
     "planned": [],
 }
 if SERIES_FILE.exists():
@@ -54,13 +59,28 @@ def esc(s: str) -> str:
     return html.escape(s, quote=True)
 
 
+def book_credit(story):
+    return " · ".join(part.strip() for part in (story["book"], story.get("author", "")) if part.strip())
+
+
+def caption_html(page, colophon=""):
+    caption = "\n".join(page["caption_lines"]) if "caption_lines" in page else page["caption"]
+    if not caption.strip():
+        return ""
+    legacy_lines = " caption-lines" if "caption_lines" in page else ""
+    extra = f'\n      <p class="colophon">{esc(colophon)}</p>' if colophon.strip() else ""
+    return f'''\n    <figcaption class="caption">
+      <p class="caption-body{legacy_lines}">{esc(caption.strip())}</p>{extra}
+    </figcaption>'''
+
+
 def asset_ver() -> str:
-    """静态资源版本号：样式与脚本的大小之和，内容一改就变，避免浏览器吃缓存。"""
-    h = 0
+    """静态资源内容哈希。"""
+    h = hashlib.sha256()
     for f in ("style.css", "reader.js"):
         p = TEMPLATES / f
-        h = h * 131 + (p.stat().st_size if p.exists() else 0)
-    return str(h % 100000)
+        h.update(p.read_bytes())
+    return h.hexdigest()[:16]
 
 
 def read_template(name: str) -> str:
@@ -71,8 +91,7 @@ def img_ver(p: pathlib.Path) -> str:
     """图片内容指纹（mtime×size），拼到 URL 上避免浏览器缓存旧图。"""
     if not p.exists():
         return "0"
-    st = p.stat()
-    return f"{int(st.st_mtime)}x{st.st_size}"
+    return file_sha(p)[:16]
 
 
 def build_read(story: dict) -> str:
@@ -82,6 +101,8 @@ def build_read(story: dict) -> str:
 
     pages = story["pages"]
     total_pages = len(pages) - 1
+    author = story.get("author", "").strip()
+    cover_credit = f'\n    <div class="sub">{esc(author)}</div>' if author else ""
 
     for p in pages:
         no = p["no"]
@@ -99,29 +120,27 @@ def build_read(story: dict) -> str:
         else:
             iw, ih = 1536, 944
 
+        frame = f'<div class="frame"><img src="{rel}" alt="{alt}" width="{iw}" height="{ih}"{lazy} decoding="async"></div>'
         if p["kind"] == "cover":
+            caption = caption_html(p) if p.get("show_caption") else ""
             spreads.append(
                 f'''<section class="spread cover" data-no="{no}" id="p{no}">
-  <figure class="frame"><img src="{rel}" alt="{alt}" width="{iw}" height="{ih}"{lazy} decoding="async"></figure>
+  <figure class="illustration">
+    {frame}{caption}
+  </figure>
   <div class="cover-title">
-    <h2>{esc(story['title'])}</h2>
-    <div class="sub">{esc(story['book'])} · {esc(story['author'])}　｜　{cn_num(total_pages)} 页连环画</div>
+    <h2>{esc(story['title'])}</h2>{cover_credit}
   </div>
-  <figcaption class="caption"><p>{esc(p['caption'])}</p></figcaption>
 </section>'''
             )
         else:
-            extra = ""
-            if no == total_pages:
-                extra = f'''
-    <p class="colophon">{esc(story.get('colophon', ''))}</p>'''
+            colophon = story.get("colophon", "") if no == total_pages else ""
             spreads.append(
                 f'''<section class="spread" data-no="{no}" id="p{no}">
   <div class="pno">第 {page_label(no)} 页</div>
-  <figure class="frame"><img src="{rel}" alt="{alt}" width="{iw}" height="{ih}"{lazy} decoding="async"></figure>
-  <figcaption class="caption">
-    <p>{esc(p['caption'])}</p>{extra}
-  </figcaption>
+  <figure class="illustration">
+    {frame}{caption_html(p, colophon)}
+  </figure>
 </section>'''
             )
 
@@ -168,7 +187,7 @@ def build_index(stories: list) -> None:
                 f'''    <a class="card" href="read/{s['slug']}/index.html">
       <img src="{thumb}" alt="{esc(s['title'])} 封面" loading="lazy">
       <div class="card-body">
-        <div class="card-book">{esc(book)} · {esc(s.get('author', ''))}</div>
+        <div class="card-book">{esc(book_credit(s))}</div>
         <h3>{esc(s['title'])}</h3>
         <p>{esc(s.get('summary', ''))}</p>
         <div class="card-meta">共 {pages} 页 · 约 {max(3, round(body * 0.35))} 分钟</div>
@@ -197,30 +216,18 @@ def build_index(stories: list) -> None:
         .replace("__SERIES__", esc(SERIES["title"]))
         .replace("__SERIES_SUB__", esc(SERIES["subtitle"]))
         .replace("__SERIES_NOTE__", esc(SERIES["note"]))
-        .replace("__FOOT__", esc(SERIES["footer"]))
+        .replace("__FOOT__", f'<footer class="foot">{esc(SERIES["footer"])}</footer>' if SERIES["footer"].strip() else "")
     )
     (SITE / "index.html").write_text(out, encoding="utf-8")
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--clean", action="store_true")
-    args = ap.parse_args()
-
-    if args.clean and SITE.exists():
-        shutil.rmtree(SITE)
+def construct(stories):
     SITE.mkdir(parents=True, exist_ok=True)
 
     static = SITE / "static"
     static.mkdir(exist_ok=True)
     for f in ("style.css", "reader.js"):
         shutil.copy2(TEMPLATES / f, static / f)
-
-    stories = []
-    for p in sorted(STORIES.glob("*.json")):
-        if p.name.startswith("_"):
-            continue
-        stories.append(json.loads(p.read_text(encoding="utf-8")))
 
     # 先把图片与缩略图同步进 site/，再构建 HTML（HTML 需要读图片指纹）
     for story in stories:
@@ -241,9 +248,54 @@ def main() -> None:
 
     build_index(stories)
 
+
+def main() -> int:
+    global SITE
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--clean", action="store_true", help="Compatibility flag; every build is clean")
+    ap.add_argument("--require-approved", action="store_true", help="Require visual review before publishing")
+    args = ap.parse_args()
+    try:
+        stories = [load_story(p.stem) for p in sorted(STORIES.glob("*.json")) if not p.name.startswith("_")]
+        if not stories:
+            raise ValueError("No stories found")
+        problems = [(s["slug"], check(s, args.require_approved)) for s in stories]
+        if any(issues for _, issues in problems):
+            for slug, issues in problems:
+                if issues:
+                    print(slug + ": " + "; ".join(issues))
+            return 1
+    except (ValueError, OSError) as e:
+        print(f"Build rejected: {e}")
+        return 1
+    final = SITE
+    # New and old sites live side by side until the new build succeeds.
+    with tempfile.TemporaryDirectory(prefix=".site-build-", dir=ROOT) as work:
+        stage = pathlib.Path(work) / "new"
+        # Keep the old site outside the temporary directory so a failed restore
+        # (or process interruption) never deletes the last successful build.
+        backup = ROOT / (".site-backup-" + uuid.uuid4().hex)
+        try:
+            SITE = stage
+            construct(stories)
+            if final.exists():
+                final.rename(backup)
+            try:
+                stage.rename(final)
+            except OSError:
+                if backup.exists():
+                    try:
+                        backup.rename(final)
+                    except OSError as exc:
+                        raise RuntimeError(f"Previous site preserved at {backup}; restore it manually") from exc
+                raise
+            if backup.exists():
+                shutil.rmtree(backup)
+        finally:
+            SITE = final
     print(f"\n站点已生成：{SITE}")
-    print(f"本地预览：python3 -m http.server 8788 --directory {SITE}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>连环画审图</title>
+  <link rel="stylesheet" href="/workbench.css">
+  <script defer src="/workbench.js"></script>
+</head>
+<body>
+  <header class="mast">
+    <div><p>整册审图</p><h1 id="book-title">连环画审图</h1></div>
+    <a id="reader" hidden>查看阅读试排 <span aria-hidden="true">↗</span></a>
+  </header>
+  <p id="notice" role="status" class="notice" hidden></p>
+  <main id="workspace" hidden>
+    <nav class="rail" aria-label="整册页目">
+      <h2>页目 <span id="page-count"></span></h2>
+      <div id="page-list" class="page-list"></div>
+    </nav>
+    <div class="desk">
+      <section class="editor" aria-labelledby="page-title">
+        <div class="page-heading">
+          <h2 id="page-title"></h2>
+          <div class="page-nav"><button id="previous" type="button">上一页</button><button id="next" type="button">下一页</button></div>
+        </div>
+        <div class="versions">
+          <label for="version">查看版本</label><select id="version"></select>
+          <button id="keep" type="button">设为审图稿</button>
+          <label class="compare-toggle"><input type="checkbox" id="compare"> 并排对照</label>
+        </div>
+        <div id="comparison-controls" class="comparison-controls" hidden>
+          <label for="compared-version">对照版本</label><select id="compared-version"></select>
+        </div>
+        <div class="page-work" id="page-work">
+          <div class="proof">
+            <div id="artwork" class="artwork">
+              <figure id="main-proof" class="page-proof">
+                <div id="position" class="image-position">
+                  <img id="art" alt="" class="proof-image">
+                  <div id="pins" class="pins" aria-hidden="true"></div>
+                </div>
+                <figcaption id="art-label"></figcaption>
+              </figure>
+              <figure class="page-proof" id="comparison-proof" hidden>
+                <img id="comparison-art" alt="" class="proof-image">
+                <figcaption id="comparison-label"></figcaption>
+              </figure>
+            </div>
+            <p id="draft-caption" class="draft-caption"></p>
+          </div>
+          <aside class="annotations" aria-labelledby="annotation-title">
+            <h3 id="annotation-title">本稿批注 <span id="annotation-count"></span></h3>
+            <form id="note-form">
+              <label for="note-detail">关联细节</label>
+              <select id="note-detail"></select>
+              <label for="message">批注</label>
+              <textarea id="message" rows="3" maxlength="2000" required placeholder="记录问题或核对结果"></textarea>
+              <div class="note-actions">
+                <button id="pick-pin" type="button" aria-pressed="false">在画面上标点</button>
+                <button id="save-note" type="submit" class="primary">保存批注</button>
+              </div>
+              <p id="pin-hint" class="pin-hint" hidden></p>
+            </form>
+            <ol id="notes" class="notes"></ol>
+          </aside>
+        </div>
+      </section>
+      <section id="continuity" class="continuity" aria-labelledby="continuity-title" hidden>
+        <div class="detail-heading"><h2 id="continuity-title">跨页细节对照</h2><label for="detail">选择细节</label><select id="detail"></select></div>
+        <p id="detail-rule" hidden></p>
+        <div id="detail-pages" class="detail-pages"></div>
+      </section>
+      <section id="rework" class="continuity" aria-labelledby="rework-title">
+        <div class="detail-heading"><h2 id="rework-title">返工队列</h2><button id="run-rework" type="button" class="primary">运行下一项</button></div>
+        <p id="rework-status" aria-live="polite"></p>
+        <ol id="rework-tasks"></ol>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

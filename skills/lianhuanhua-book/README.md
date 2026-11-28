@@ -1,76 +1,63 @@
-# lianhuanhua-book
+# lianhuanhua-book v1.5.1
 
-> 把古典小说、民间故事、长篇叙事做成可在线翻读的**小人书**（连环画）：一本 12—20 页，一页一个情节瞬间，上图下文，黑白线描。含分镜结构、人物定妆照锁定、逐页出图、裁水印、校验、建站与发布，以及 29 条实测出图经验。
+把故事做成可翻读的系列插图与图文连环画。默认成人和儿童均可阅读的通用故事结构，面向传统白描及其他原创画风。
 
-## Features
-
-- **流水线可复制** —— `pipeline/` 五个脚本：拼 prompt、裁水印、校验、建站、本地预览；`templates/` 是能直接跑的阅读器（连续图文 + 单页翻页 + 深链接 `#p12`）。
-- **人物一致性靠定妆照，不靠措辞** —— 每个主要角色先出一张白底正面半身定妆照，逐页作 `image1`（双人场景 `image1`+`image2`）。只写「没有胡须」挡不住模型给侧脸添一撮山羊胡。
-- **配角也必须进人物表** —— `scene` 里点名的角色若在 `cast` 里没有同名锚点，模型会给他套上主角同款衣冠、同一张脸。这条能省掉一整轮返工。
-- **「翻译成可检验的句子」** —— 29 条经验按人物 / 配角 / 动作 / 物件 / 环境 / 构图 / 验收分类，每条都给出可直接抄的正面句子：「不要雪白」→「灰度比宣纸底色深一档」，「不要看镜头」→「眼睛垂下来看着手里的碗」。
-- **物件不复制** —— 写「两人共捧一只碗」必出两只；正解是把物件只交给一方。同理适用于书信、灯、剑。
-- **后期规则优先于提示词** —— 人物贴画面底是模型先验，垫画布、写像素距离都扳不动；改后期（封面不裁底、接受衣摆截断）比继续烧图便宜。
-- **本地改色而非重生** —— 只改某件服饰颜色时，图生图会整幅重绘（脸、道具、背景全变）；改用多边形掩膜本地压暗，怎么保住褶皱线、怎么不把纸面投影压成黑雾，都有实测参数。
-- **一句话可验的验收** —— `verify.py` 查页数/尺寸/体积，另有三查清单（水印、脚、同框角色是否撞脸撞衫）。
-
-## 什么场景用它
-
-| 场景 | 说明 |
-|---|---|
-| 古典小说改编成图文书 | 一篇 12—20 页，一页一个情节瞬间 |
-| 民间故事 / 传说 / 长诗 | 需要连续画面叙事而不是单张插图 |
-| 系列插图 + 网页翻读 | 要统一画风、统一人物，且能发链接给人看 |
-| 教学用的故事分镜 | 图文对照，旁白口语化 |
-
-不适用：单张插图、漫画分格、彩色绘本、需要连续动画的项目。
-
-## Quick Start
+## 快速开始
 
 ```bash
-# 0. 建项目骨架
-cp -r assets/pipeline assets/templates assets/styles .
-mkdir -p stories assets/images
-
-# 1. 写分镜（照 assets/stories/_template.json 抄），同时写 stories/_series.json
-# 2. 拼 prompt
-python3 pipeline/make_prompts.py --slug <slug>
-# 3. 出定妆照 → 逐页出图 → 落到 assets/images/<slug>/_raw/NN-页名.png
-# 4. 后期 + 校验
-python3 pipeline/post_process.py --slug <slug>
-python3 pipeline/verify.py --slug <slug>
-# 5. 建站 + 预览
-python3 pipeline/build_site.py
+python3 pipeline/init_project.py /path/to/new-book
+cd /path/to/new-book
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+cp stories/_template.json stories/example-story.json
+cp stories/_series.example.json stories/_series.json
+# 按故事补全分镜
+python pipeline/make_prompts.py --slug example-story
+# 生成图片后逐页导入
+python pipeline/progress.py --slug example-story import --page 0 --file cover.png --backend imagegen
+python pipeline/progress.py --slug example-story status
+# 看图逐项写入审核记录后选用
+python pipeline/progress.py --slug example-story checklist --page 0
+python pipeline/progress.py --slug example-story approve --page 0 --note "画面复核通过" --checks-file review-00.json
+python pipeline/verify.py --slug example-story --require-approved
+python pipeline/build_site.py --require-approved
 ./serve.sh 8788
 ```
 
-依赖：Python 3 + `Pillow`。
+ComfyUI 本地适配见 [references/comfyui.md](references/comfyui.md)。已有模型和工作流优先，不要求额外安装模型。另支持 ImageGen 和其他模型导入。
 
-## 目录
+新模板采用 3:2 横版。默认从 1248×832 原图等比例输出 1536×1024，并在导入时检查原图比例。旧作品可继续按原有画幅验收。
 
-```
-SKILL.md                    何时用、先定三件事、六步流程、12 条硬规则、故障对照表
-references/
-  story-schema.md           story.json 字段、锚点写法、20 页故事结构
-  prompt-playbook.md        29 条实测经验（分类 + 可抄的句子）
-  pipeline.md               目录约定、五个脚本、尺寸体积、缓存与发布
-pipeline/                   五个脚本（复制到项目根后即可用）
-templates/                  阅读器模板（含系列标题占位符）
-styles/                     风格后缀原文
-stories/_template.json      分镜模板
-stories/_series.example.json 书架配置示例
-serve.sh                    本地预览
+已有 Qwen-Image-Local Q4/Q6 及对应 GGUF、文本编码器、VAE 的环境，可直接使用内置预设：
+
+```bash
+python pipeline/comfyui.py --slug example-story --page 0 --preset qwen-q4 --dry-run
+python pipeline/comfyui.py --slug example-story --page 0 --preset qwen-q4 --probe
+# 服务已就绪时再生成
+python pipeline/comfyui.py --slug example-story --page 0 --preset qwen-q4
 ```
 
-## 成本预期
+## v1.1–v1.3
 
-单页 1—3 次出图，每次 5—10 credits；20 页通常 30—50 张。返工集中在前 5 页定调阶段，人物与风格锁住之后很省。建议先做 1 页样张给用户确认再批量。
+- 严格分镜与图片验收，缺图、错尺寸、多余页码、损坏文件拒绝交付；建站失败保留旧站。
+- 每页原图、成品、提示词及上下文指纹、模型来源、审核状态独立归档，支持续作和回退。
+- 六种内置风格、自定义角色参考、可配置画幅及压缩。
+- ComfyUI API 格式工作流、干跑、单页或串行批量、任务 ID 持久化和恢复。
+- 静态资源真实内容哈希，完整构建避免旧页面残留。
 
-## 已知边界
+详细工作流程见 [SKILL.md](SKILL.md)，完整接口和迁移见 [references/pipeline.md](references/pipeline.md)。原始 29 条实测经验保留于 [references/prompt-playbook.md](references/prompt-playbook.md)。
 
-- 人物贴画面底、鞋出画：模型先验，靠后期规则应对，不靠提示词硬掰。
-- 配角没有定妆照时，相貌只能靠锚点描述 + 从既有页裁衣着参考，跨页可能漂。
-- 封面与内页画幅不同（3:2 vs 1.63），连续阅读下不可见。
+细节规则和验收记录见 [逐页跟进](references/continuity.md)。整册审图、批注与前后稿比较见 [审图工作台](references/review-workbench.md)，其余计划见 [路线图](ROADMAP.md)。
 
-## License
+## 测试
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+测试使用合成图片和模拟 ComfyUI 服务，不消耗生成额度。真实模型质量需要独立样张验证。
+
+本阶段已在完整画册的副本上通过浏览器检查逐页批注、跨页道具和新旧稿切换。单页返工实测覆盖优先级、超时后接回同一 ComfyUI 任务、仅归档指定页候选及阅读稿保留。整页候选仍需检查构图是否漂移。
 
 MIT © 2026 Evan Song

@@ -253,11 +253,13 @@ main#book {
   to { opacity: 1; transform: none; }
 }
 
+.illustration { margin: 0; --frame-pad: 9px; --frame-edge: calc(var(--frame-pad) + 1px); }
+
 .frame {
   margin: 0;
   border: 1px solid rgba(28, 26, 23, .22);
   background: #fff;
-  padding: 9px;
+  padding: var(--frame-pad);
   box-shadow: 0 1px 0 rgba(28, 26, 23, .06), 0 10px 26px -18px rgba(28, 26, 23, .45);
 }
 
@@ -265,25 +267,25 @@ main#book {
   display: block;
   width: 100%;
   height: auto;
-  aspect-ratio: 1536 / 944;
-  object-fit: cover;
   background: var(--paper-deep);
   filter: contrast(1.02);
 }
 
 .caption {
-  margin-top: 24px;
-  padding: 0 4px;
+  margin: 22px 0 0;
+  text-align: left;
 }
 
-.caption p {
-  margin: 0;
-  font-size: 18.5px;
-  line-height: 2;
+.caption-body {
+  margin: 0 calc(var(--frame-edge) + 2em);
+  margin-inline: calc(var(--frame-edge) + 2ic);
+  font-size: 20px;
+  line-height: 1.9;
   letter-spacing: .022em;
-  text-indent: 2em;
-  text-align: justify;
+  overflow-wrap: anywhere;
 }
+
+.caption-body.caption-lines { white-space: pre-line; }
 
 .pager {
   position: fixed;
@@ -332,7 +334,7 @@ main#book {
 
 /* 封面 */
 
-.spread.cover .frame { padding: 12px; max-width: 720px; margin: 0 auto; }
+.spread.cover .illustration { --frame-pad: 12px; max-width: 720px; margin-inline: auto; }
 
 .spread.cover .frame img {
   /* 封面是 1536×1024（不裁底），按自身比例铺满框宽，既不裁切也不留白边 */
@@ -364,9 +366,7 @@ main#book {
   letter-spacing: .14em;
 }
 
-.spread.cover .caption { text-align: center; }
-.spread.cover .caption p {
-  text-indent: 0;
+.spread.cover .caption-body {
   font-family: var(--kai);
   font-size: 16.5px;
   color: var(--ink-2);
@@ -376,7 +376,8 @@ main#book {
 /* 末页版权 */
 
 .colophon {
-  margin: 24px 0 0;
+  margin: 24px calc(var(--frame-edge) + 2em) 0;
+  margin-inline: calc(var(--frame-edge) + 2ic);
   padding-top: 16px;
   border-top: 1px solid var(--rule);
   font-size: 12.5px;
@@ -393,9 +394,9 @@ main#book {
   .grid { grid-template-columns: 1fr; gap: 22px; }
   main#book { padding: 18px 14px 132px; }
   .spread { margin-bottom: 56px; scroll-margin-top: 62px; }
-  .frame { padding: 6px; }
-  .caption { margin-top: 16px; padding: 0; }
-  .caption p { font-size: 17px; line-height: 1.95; }
+  .illustration { --frame-pad: 6px; }
+  .caption { margin-top: 16px; }
+  .caption-body { font-size: 17px; line-height: 1.9; }
   .spread.cover .cover-title h2 { font-size: 27px; }
   .pager { padding: 10px 14px 13px; gap: 10px; }
   .pager button { padding: 6px 11px; font-size: 12.5px; }

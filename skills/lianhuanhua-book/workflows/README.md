@@ -1,0 +1,4 @@
+# ComfyUI API workflow
+Use your installed model and a working local ComfyUI graph. Export the graph in API format, not UI canvas JSON. Replace only selected input values with exact placeholders (see references/comfyui.md). Node identifiers and required inputs depend on the graph. The example is an SD-style placeholder illustration, not a ready-to-run workflow or a reason to download a model. Use a graph you have already tested on your machine.
+
+The eight qwen-q4/qwen-q6 presets are adapted from Qwen-Image-Local, one graph per reference count (0–3). Use the preset with the corresponding GGUF, encoder, VAE and nodes installed. Start with `--dry-run` and `--probe`. With `output.fit: "strict"`, the runner binds sampling to the story generation dimensions, including when character references are supplied. See [ComfyUI guidance](../references/comfyui.md).

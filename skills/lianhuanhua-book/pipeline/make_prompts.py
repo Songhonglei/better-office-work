@@ -14,12 +14,15 @@
 import argparse
 import json
 import pathlib
+import re
 import sys
+from common import atomic_bytes, detail_rules, get_page, load_story, output_settings
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 STORIES = ROOT / "stories"
 STYLES = ROOT / "styles"
 IMAGES = ROOT / "assets" / "images"
+CAST_STYLE = re.compile(r"\[\[cast\]\](.*?)\[\[/cast\]\]", re.DOTALL)
 
 # 场景里常见、但不一定被写进 cast 的人物称谓。命中即提醒，不代表一定出错。
 ROLE_HINTS = (
@@ -29,16 +32,10 @@ ROLE_HINTS = (
 )
 
 
-def neg_line(story: dict) -> str:
-    """服色红线跟着主角走，不写死某本书的主角名。"""
-    cast = story.get("cast") or []
-    hero = cast[0]["name"] if cast else "主角"
-    return (
-        "不出现尸体、血腥、裸露、施暴动作。"
-        "墙面、门楣、匾额、书页、书脊、卷轴、旗帜、器物表面一律空白，不题任何字。"
-        "画面里不要出现任何现代物件。"
-        f"主角{hero}的服色与冠帽严格按「人物设定」一节执行，不得改色、不得换成深色或黑色衣袍。"
-    )
+def neg_line(story: dict, *, landscape=False) -> str:
+    direction = ("景物、时代与道具严格按本页场景执行。" if landscape
+                 else "人物服饰、时代与道具严格按本页场景及人物设定执行。")
+    return direction + "画面不添加无关文字或装饰。" + story.get("negative", "")
 
 
 def pick_names(story: dict, page: dict) -> list:
@@ -49,8 +46,8 @@ def pick_names(story: dict, page: dict) -> list:
 
     declared = page.get("who")
     if declared is not None:
-        if not isinstance(declared, list) or not declared:
-            raise SystemExit(f"第 {page.get('no')} 页：who 必须是非空数组")
+        if not isinstance(declared, list):
+            raise SystemExit(f"第 {page.get('no')} 页：who 必须是数组")
         missing = [n for n in declared if n not in cast_names]
         if missing:
             raise SystemExit(
@@ -77,19 +74,31 @@ def pick_names(story: dict, page: dict) -> list:
 
 def build(story: dict, page: dict, suffix: str) -> str:
     names = pick_names(story, page)
-    anchors = [c["anchor"] for c in story["cast"] if c["name"] in names]
-    prefix = f"{story['title']}图{page['no']:02d}·{page['title']}。"
+    anchors = [f"{c['name']}：{c['anchor']}" for c in story["cast"] if c["name"] in names]
+    landscape = page.get("who") == []
+    style = CAST_STYLE.sub("" if landscape else r"\1", suffix)
     parts = [
-        prefix,
         page["scene"],
+        "本页为无人景物画面，不出现人物。" if landscape else "",
         ("人物设定（严格照此描绘，逐项对齐）：" + "；".join(anchors) + "。") if anchors else "",
-        story.get("era_anchor", ""),
-        neg_line(story),
-        suffix.strip(),
+        page.get("era_anchor", story.get("era_anchor", "")),
+        neg_line(story, landscape=landscape),
+        style.strip(),
     ]
     if len(anchors) > 1:
-        parts.insert(3, "画面里所有人的脸型轮廓差异极大，绝不相同，不得画成同一张脸。")
+        parts.insert(3, "不同角色的脸型、年龄及衣着按设定区分，不画成同一张脸。")
+    details = detail_rules(story, page)
+    if details:
+        parts.insert(1, "本页连续性与动作细节：\n" + "\n".join(f"- {rule}" for rule in details.values()))
+    layout = output_settings(story)
+    if layout.get("fit") == "strict" and layout["width"] > layout["height"]:
+        parts.insert(0, "横幅连环画插图。采用满幅横向构图，场景与光影自然延伸至左右画边。")
     return "\n\n".join(p for p in parts if p)
+
+
+def render_page(story, page):
+    suffix = (STYLES / f"{story['style']}.txt").read_text(encoding="utf-8")
+    return build(story, page, suffix)
 
 
 def main() -> int:
@@ -98,17 +107,7 @@ def main() -> int:
     ap.add_argument("--page", type=int, default=None, help="只输出某一页")
     args = ap.parse_args()
 
-    story_file = STORIES / f"{args.slug}.json"
-    if not story_file.exists():
-        print(f"缺分镜文件：{story_file}", file=sys.stderr)
-        return 1
-    story = json.loads(story_file.read_text(encoding="utf-8"))
-
-    style_file = STYLES / f"{story['style']}.txt"
-    if not style_file.exists():
-        print(f"缺风格后缀文件：{style_file}", file=sys.stderr)
-        return 1
-    suffix = style_file.read_text(encoding="utf-8")
+    story = load_story(args.slug, complete=False)
 
     out_dir = IMAGES / args.slug / "prompts"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -121,9 +120,9 @@ def main() -> int:
             return 1
 
     for page in pages:
-        text = build(story, page, suffix)
-        path = out_dir / f"{page['no']:02d}-{page['title']}.txt"
-        path.write_text(text, encoding="utf-8")
+        text = render_page(story, page)
+        path = out_dir / f"{page['no']:02d}.txt"
+        atomic_bytes(path, text.encode("utf-8"))
         print(f"--- {path.name} ({len(text)} 字) ---")
         print(text)
     return 0
