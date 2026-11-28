@@ -37,6 +37,7 @@
 | [lianhuanhua-book](./skills/lianhuanhua-book/) | 小人书流水线：分镜 JSON → 定妆照锁人物 → 逐页出图 → 裁水印校验 → 建站发布，附 29 条出图经验（防撞脸 / 防多物件 / 灰度锚定）（v1.0.0） |
 | [mp-article-to-xhs](./skills/mp-article-to-xhs/) | 公众号长文转小红书图文：三条选题路径（URL/标题/热度候选）+ 配图滚动懒加载硬校验一张不漏 + 水印自动裁 + 8 套字体方案 + 默认只推草稿箱，发过的自动跳过（v1.3.0） |
 | [doubao-newmedia-writing](./skills/doubao-newmedia-writing/) | 中文新媒体写作：先定创作类型（小红书图文 / 公众号文章 / 3 分钟短视频分镜 / 复合方案），再交付可编辑的本地 Markdown + HTML，含配图落位与发布前检查 |
+| [weibo-chaohua-signin](./skills/weibo-chaohua-signin/) | 微博超话自动签到（默认张韶涵）：复用 ego-browser 已登录会话调用官方签到接口，幂等防重复打卡，日志外置并报告连续签到天数（v1.0.0） |
 
 ## Quick Start
 
@@ -56,6 +57,7 @@ cp -r skills/zhihu-yanghao ~/.workbuddy/skills/
 cp -r skills/imagegen-batch ~/.workbuddy/skills/
 cp -r skills/macos-power-control ~/.workbuddy/skills/
 cp -r skills/mp-article-to-xhs ~/.workbuddy/skills/
+cp -r skills/weibo-chaohua-signin ~/.workbuddy/skills/
 cp -r skills/oss-pages-sync ~/.workbuddy/skills/
 # 静态站镜像的唯一配置在 ~/.workbuddy/oss-pages-sync/config.json（含 AK/SK，chmod 600），模板见 config.example.json
 # 公众号转小红书依赖 ego-browser 与 xhs-image-note-release，装完跑自检：

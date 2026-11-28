@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — weibo-chaohua-signin v1.0.0（2026-11-28）
+
+由独立 repo `Songhonglei/weibo-chaohua-signin` 迁入本仓库，原仓库已删除。
+
+- 用 ego-browser 已登录微博的 profile 调用官方超话签到接口，幂等处理「今天已签到」，登录失效时退出码 2 并提示重新扫码。
+- 新增连续签到天数统计：页面文案优先，页面缺失时按外置日志逐日回溯，下限用 `+` 标注；日志从 skill 目录迁到 `~/.skill-data/weibo-chaohua-signin/logs/`，更新重装不丢历史。
+- 新增 `scripts/run-daily.sh` launchd 包装器：签到成功弹桌面通知，已签到静默。
+- 安装来源改为从本仓库 `skills/weibo-chaohua-signin` 复制。
+
 ### Added — workbuddy-checkin-daemon（2026-11-25）
 
 新增 skill：WorkBuddy「Buddy 加油站」每日签到 + 派猫猫旅行，v1.0.2。
