@@ -34,7 +34,7 @@
 | [text-humanize](./skills/text-humanize/) | 中英文清晰表达与风格润色：改善冗余、结构、语气、节奏与排版，保留事实、引用及必要披露；不判断作者来源或以规避检测为目标（v1.5.0） |
 | [zhihu-yanghao](./skills/zhihu-yanghao/) | 知乎养号：三线选题模型 + 每日1回答（写→发布→折叠验证）+ 点赞互动（计数差值自校正防误 toggle），依赖 ego-browser |
 | [imagegen-batch](./skills/imagegen-batch/) | 批量生图：防同名覆盖 + 量水印而非猜 + 相框感后期加白边 + 人物「标识包」防塌脸；附 `白纸速写`/`水墨文艺风` 两套命名风格配方 |
-| [lianhuanhua-book](./skills/lianhuanhua-book/) | 连环画制作与审图：原生横版、角色和道具连续性、本机 ComfyUI 逐页出图、批注与单页返工续跑、静态阅读器（v1.5.1） |
+| [lianhuanhua-book](./skills/lianhuanhua-book/) | 连环画制作与审图：原生横版、角色和道具连续性、本机 ComfyUI 逐页出图、批注与单页返工续跑、静态阅读器（v1.5.2） |
 | [mp-article-to-xhs](./skills/mp-article-to-xhs/) | 公众号长文转小红书图文：三条选题路径（URL/标题/热度候选）+ 配图滚动懒加载硬校验一张不漏 + 水印自动裁 + 8 套字体方案 + 默认只推草稿箱，发过的自动跳过（v1.3.0） |
 | [doubao-newmedia-writing](./skills/doubao-newmedia-writing/) | 中文新媒体写作：先定创作类型（小红书图文 / 公众号文章 / 3 分钟短视频分镜 / 复合方案），再交付可编辑的本地 Markdown + HTML，含配图落位与发布前检查 |
 | [weibo-chaohua-signin](./skills/weibo-chaohua-signin/) | 微博超话自动签到（默认张韶涵）：复用 ego-browser 已登录会话调用官方签到接口，幂等防重复打卡，日志外置并报告连续签到天数（v1.0.0） |

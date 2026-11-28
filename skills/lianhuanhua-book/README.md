@@ -1,4 +1,4 @@
-# lianhuanhua-book v1.5.1
+# lianhuanhua-book v1.5.2
 
 把故事做成可翻读的系列插图与图文连环画。默认成人和儿童均可阅读的通用故事结构，面向传统白描及其他原创画风。
 
@@ -59,5 +59,7 @@ python -m unittest discover -s tests -v
 测试使用合成图片和模拟 ComfyUI 服务，不消耗生成额度。真实模型质量需要独立样张验证。
 
 本阶段已在完整画册的副本上通过浏览器检查逐页批注、跨页道具和新旧稿切换。单页返工实测覆盖优先级、超时后接回同一 ComfyUI 任务、仅归档指定页候选及阅读稿保留。整页候选仍需检查构图是否漂移。
+
+v1.5.2 已在 [390 px 手机视口](references/mobile-local-check.md) 实测批注圈选、ComfyUI Q6 局部修订、候选直达和正式单页替换。
 
 MIT © 2026 Evan Song

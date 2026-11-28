@@ -12,10 +12,22 @@
     <div><p>整册审图</p><h1 id="book-title">连环画审图</h1></div>
     <a id="reader" hidden>查看阅读试排 <span aria-hidden="true">↗</span></a>
   </header>
+  <nav class="work-tabs" id="work-tabs" aria-label="审图导航" hidden>
+    <div>
+      <button type="button" data-jump="page-title">逐页审图</button>
+      <button type="button" data-jump="continuity">跨页对照</button>
+      <button type="button" data-jump="rework">返工队列 <span id="queue-count"></span></button>
+      <button type="button" id="next-to-review">下一处待审</button>
+    </div>
+  </nav>
   <p id="notice" role="status" class="notice" hidden></p>
   <main id="workspace" hidden>
     <nav class="rail" aria-label="整册页目">
       <h2>页目 <span id="page-count"></span></h2>
+      <select id="page-filter" aria-label="筛选页目">
+        <option value="all">全部页面</option><option value="notes">有待处理批注</option>
+        <option value="working">正在返工</option><option value="candidate">有候选待审</option>
+      </select>
       <div id="page-list" class="page-list"></div>
     </nav>
     <div class="desk">
@@ -31,6 +43,9 @@
         </div>
         <div id="comparison-controls" class="comparison-controls" hidden>
           <label for="compared-version">对照版本</label><select id="compared-version"></select>
+        </div>
+        <div class="region-toolbar" id="region-toolbar" hidden>
+          <button type="button" id="toggle-region">看整幅</button><span id="candidate-note"></span>
         </div>
         <div class="page-work" id="page-work">
           <div class="proof">
@@ -78,5 +93,21 @@
       </section>
     </div>
   </main>
+  <dialog id="rework-dialog" aria-labelledby="rework-dialog-title">
+    <form id="rework-form">
+      <div class="dialog-heading"><h2 id="rework-dialog-title">加入返工队列</h2><button id="close-rework" type="button">关闭</button></div>
+      <p id="origin-note"></p>
+      <div class="dialog-controls">
+        <label>修改范围 <select id="rework-scope"><option value="local">局部修订</option><option value="page">整页重画</option></select></label>
+        <label>模型 <select id="rework-preset"><option value="qwen-q4">Q4</option><option value="qwen-q6">Q6</option></select></label>
+      </div>
+      <div id="region-picker">
+        <p id="region-status" role="status">在图上拖动，框住要修改的部分。</p>
+        <div id="region-target"><img id="region-image" alt="批注对应的原稿" draggable="false"><div id="region-box" hidden></div></div>
+        <button type="button" id="clear-region">重选范围</button>
+      </div>
+      <button type="submit" id="add-rework-confirm" class="primary">加入队列</button>
+    </form>
+  </dialog>
 </body>
 </html>

@@ -176,6 +176,26 @@ class Pipeline(unittest.TestCase):
         self.assertIn("Keep the drop small", graph["4"]["inputs"]["prompt"])
         self.assertTrue(graph["8"]["inputs"]["filename_prefix"].endswith("/009"))
 
+    def test_local_rework_persists_a_bounded_source_mask_and_comparison_scope(self):
+        source = progress.ingest(self.story, 9, png("white"))
+        review_workbench.change_review(self.story, {"action": "annotate", "page": 9, "version": source["id"], "message": "Small drop"})
+        note = review_workbench.review_state(self.story)["notes"]["9"][0]
+        full = rework.enqueue(self.story, 9, source["id"], note["id"])
+        box = [0.25, 0.25, 0.5, 0.5]
+        local = rework.enqueue(self.story, 9, source["id"], note["id"], preset="qwen-q6", scope="local", box=box)
+        self.assertNotEqual(local["id"], full["id"])
+        self.assertEqual(rework.enqueue(self.story, 9, source["id"], note["id"], preset="qwen-q6", scope="local", box=box)["id"], local["id"])
+        mask = self.images / local["mask"]
+        self.assertEqual(common.file_sha(mask), local["mask_sha256"])
+        with Image.open(mask) as image:
+            self.assertEqual(image.size, (320, 256))
+            x1, y1, x2, y2 = image.getbbox()
+            self.assertTrue(80 <= x1 < x2 <= 160 and 64 <= y1 < y2 <= 128)
+            self.assertEqual(image.getpixel((114, 92)), 255)
+        self.assertLess(review_workbench.comparison_focus(self.story, 9, source["id"], local["id"])[0], box[0])
+        with self.assertRaises(ValueError):
+            review_workbench.comparison_focus(self.story, 8, source["id"], local["id"])
+
     def test_schema_rejects_short_and_duplicate(self):
         self.story['pages'] = self.story['pages'][:2]
         self.save_story()

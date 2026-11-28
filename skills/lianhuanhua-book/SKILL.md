@@ -3,7 +3,7 @@ name: lianhuanhua-book
 description: 将故事改编成可翻读的连环画、图文书和系列插图。支持分镜、角色定妆、ImageGen 或本机 ComfyUI 逐页出图、跨页细节核对、批注、候选稿对照、单页返工续跑和静态阅读器。用户要求小人书、故事插图、连续角色一致性，或审图与修订既有连环画时使用。
 ---
 
-# 连环画故事书 v1.5.1
+# 连环画故事书 v1.5.2
 
 ## 工作流程
 
@@ -17,7 +17,7 @@ description: 将故事改编成可翻读的连环画、图文书和系列插图�
    - ComfyUI：已有本机 Qwen-Image-Local 时用 `--preset qwen-q4` / `qwen-q6`，自动选择 0–3 张角色参考图。`--samples` 先做样张，`--pages` 按段串行，`--all` 补缺。使用前干跑或只读探测。已完成的页面可用 `comfyui_edit.py` 局部修订，或以 `--candidate` 提交整页候选。见 [ComfyUI 适配](references/comfyui.md)。
    - 其他模型：导入实际生成的图，记录模型名称；旧版编号原图可用 `post_process.py` 导入。
 7. 出一页、审一页。用 `progress.py ... checklist --page N` 对照画面和邻页，记录每项可见证据。新项目通过 `approve --checks-file` 提交全部通过项，返工通过 `reject` 保留问题。核对人物视线对象、肢体方向、道具支点和门槛等空间关系。未观察到的细节记为待核，不因程序校验通过而放行。
-   - 整册审图时可开 [工作台](references/review-workbench.md)，查看缩略图、按同一细节跨页对照、定位批注和比较新旧稿。批注可转成指定页的返工任务，待跑任务按优先级排序。ComfyUI 超时后从原任务继续。工作台选稿用于审查，发布前仍执行正式选稿和验收。
+   - 整册审图时可开 [工作台](references/review-workbench.md)。首屏导航可直达待审候选和返工队列。点批注选择局部修订或整页重画，局部任务圈选编辑范围；完成后可直接并排看原稿和候选的同一处。待跑任务按优先级排序，ComfyUI 超时后从原任务继续。正式出版前另行选稿和验收。
 8. 用户追加要求时，更新对应的共用或单页规则并用 `checklist` 定位受影响页。需要保留机位、背景和人物姿态的细节走 `comfyui_edit.py` 蒙版修订。需要重新安排整页构图或动作链的批注可转返工队列。归档候选后并排复审，检查目标细节和邻页衔接，通过后用 `approve --version <候选> --select` 切换；正式阅读稿由重新建站更新。续作使用 `status` 和对应生成器的 `--resume`。
 9. 成书执行 `python pipeline/verify.py --slug <slug> --require-approved`；执行 `python pipeline/build_site.py --require-approved`，成功后使用 `./serve.sh 8788` 本地预览。仅用户明确要求时再发布静态站。程序验收与视觉验收是两回事。
 

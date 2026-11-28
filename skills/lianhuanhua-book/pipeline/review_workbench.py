@@ -79,13 +79,13 @@ def archive_lookup(story, number, version_id):
     return page, version
 
 
-def image_bytes(story, page, version, detail=None, thumbnail=False):
+def image_bytes(story, page, version, detail=None, thumbnail=False, focus=None):
     path = version_dir(story, page["no"], version) / "render.jpg"
     if not path.is_file() or file_sha(path) != version["image_sha256"]:
         raise FileNotFoundError("归档图片缺失或有变动")
-    if detail is None and not thumbnail:
+    if detail is None and not thumbnail and focus is None:
         return path.read_bytes()
-    box = page.get("review_focus", {}).get(detail)
+    box = focus or page.get("review_focus", {}).get(detail)
     with Image.open(path) as source:
         image = source.convert("RGB")
         if box:
@@ -141,7 +141,8 @@ def change_queue(story, command):
         raise ValueError("返工请求格式有误")
     action = command.get("action")
     if action == "enqueue":
-        enqueue(story, command.get("page"), command.get("version"), command.get("note"), command.get("priority", 3))
+        enqueue(story, command.get("page"), command.get("version"), command.get("note"), command.get("priority", 3),
+                preset=command.get("preset", "qwen-q4"), scope=command.get("scope", "page"), box=command.get("box"))
     elif action == "priority":
         change_task(story, command.get("task"), rank=command.get("priority"))
     elif action == "cancel":
@@ -156,6 +157,16 @@ def change_queue(story, command):
     else:
         raise ValueError("未知的返工操作")
     return queue_view(story)
+
+
+def comparison_focus(story, no, version_id, task_id):
+    task = next((t for t in queue_view(story)["tasks"] if t["id"] == task_id and t["page"] == no
+                 and t.get("scope") == "local" and version_id in (t["source_version"], t.get("candidate"))), None)
+    if task is None:
+        raise ValueError("找不到这个版本的返工对照范围")
+    x1, y1, x2, y2 = task["box"]
+    pad_x, pad_y = max(.023, (x2 - x1) * .7), max(.034, (y2 - y1) * .7)
+    return max(0, x1 - pad_x), max(0, y1 - pad_y), min(1, x2 + pad_x), min(1, y2 + pad_y)
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -199,7 +210,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 params = dict(urllib.parse.parse_qsl(request.query))
                 story = load_story(self.slug, complete=False)
                 page, version = archive_lookup(story, int(params.get("page", "-1")), params.get("version"))
-                data = image_bytes(story, page, version, params.get("detail"), params.get("thumb") == "1")
+                focus = comparison_focus(story, page["no"], version["id"], params["task"]) if "task" in params else None
+                data = image_bytes(story, page, version, params.get("detail"), params.get("thumb") == "1", focus)
                 return self.reply(data, "image/jpeg")
         except (ValueError, FileNotFoundError) as exc:
             return self.json({"error": str(exc)}, 404)

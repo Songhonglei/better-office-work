@@ -3,13 +3,17 @@
 import argparse
 import fcntl
 import json
+import math
 import subprocess
 import sys
 import uuid
 from contextlib import contextmanager
 
-from common import ROOT, atomic_json, get_page, load_story, read_json
-from progress import book_dir, context, entry, find_version, locked, manifest, now
+from PIL import Image, ImageFilter, ImageOps
+
+from common import ROOT, atomic_bytes, atomic_json, file_sha, get_page, load_story, read_json, sha
+from comfyui_edit import png, source_image
+from progress import book_dir, context, entry, find_version, locked, manifest, now, version_dir
 
 
 ACTIVE = {"running", "paused"}
@@ -30,11 +34,44 @@ def priority(value):
     return value
 
 
-def enqueue(story, number, version, note_id, rank=3, preset="qwen-q4"):
+def region_mask(story, page, row, version_id, box):
+    if (not isinstance(box, list) or len(box) != 4 or any(type(n) not in (int, float) for n in box)
+            or not (0 <= box[0] < box[2] <= 1 and 0 <= box[1] < box[3] <= 1)):
+        raise ValueError("请在图上圈出要修订的矩形范围")
+    original, version = source_image(story, page["no"], row, version_id)
+    output = version["context"]["output"]
+    canvas = output["width"], output["height"]
+    with Image.open(version_dir(story, page["no"], version) / "render.jpg") as render:
+        display = render.size
+    if output.get("fit") == "strict":
+        fitted = canvas
+    else:
+        fitted = ImageOps.contain(original, canvas).size
+    origin = tuple(round((outer - inner) / 2) for outer, inner in zip(canvas, fitted))
+    bounds = []
+    for i, coordinate in enumerate(box):
+        axis = i % 2
+        scale = original.size[axis] / fitted[axis]
+        mapped = (coordinate * display[axis] - origin[axis]) * scale
+        bounds.append(max(0, min(original.size[axis], (math.floor if i < 2 else math.ceil)(mapped))))
+    x1, y1, x2, y2 = bounds
+    if x2 - x1 < 8 or y2 - y1 < 8:
+        raise ValueError("圈选太小，或落在图片留白中。请稍微扩大范围。")
+    region = Image.new("L", (x2 - x1, y2 - y1))
+    inset = min(3, min(region.size) // 4)
+    region.paste(255, (inset, inset, region.width - inset, region.height - inset))
+    mask = Image.new("L", original.size)
+    mask.paste(region.filter(ImageFilter.GaussianBlur(1.2)), (x1, y1))
+    return mask
+
+
+def enqueue(story, number, version, note_id, rank=3, preset="qwen-q4", scope="page", box=None):
     page = get_page(story, number)
     rank = priority(rank)
     if preset not in ("qwen-q4", "qwen-q6"):
         raise ValueError("请选择本机 Q4 或 Q6 工作流")
+    if scope not in ("page", "local") or (scope == "page" and box is not None):
+        raise ValueError("请选择返工范围")
     with locked(story):
         row = entry(manifest(story), number)
         if not isinstance(version, str) or not find_version(row, version):
@@ -45,13 +82,21 @@ def enqueue(story, number, version, note_id, rank=3, preset="qwen-q4"):
         if not note:
             raise ValueError("找不到这个版本的批注")
         data = queue_data(story)
-        existing = next((task for task in data["tasks"] if task["annotation"] == note_id and task["status"] != "cancelled"), None)
+        existing = next((task for task in data["tasks"] if task["annotation"] == note_id and task.get("scope", "page") == scope
+                         and task.get("box") == box and task["preset"] == preset
+                         and task["status"] not in ("cancelled", "failed", "stale")), None)
         if existing:
             return existing
         tid = uuid.uuid4().hex
-        task = dict(id=tid, page=number, source_version=version, annotation=note_id, instruction=note["text"],
+        task = dict(id=tid, page=number, source_version=version, annotation=note_id, instruction=note["text"], scope=scope,
                     detail=note.get("detail"), status="queued", priority=rank, preset=preset,
                     seed=int(tid[:8], 16), context_sha256=context(story, page)[1], created=now(), runs=0)
+        if scope == "local":
+            mask = region_mask(story, page, row, version, box)
+            target = book_dir(story) / "rework-masks" / (tid + ".png")
+            content = png(mask)
+            atomic_bytes(target, content)
+            task.update(box=box, mask=str(target.relative_to(book_dir(story))), mask_sha256=sha(content))
         data["tasks"].append(task)
         atomic_json(queue_path(story), data)
         return task
@@ -187,10 +232,22 @@ def run_one(story, server, timeout):
         if claimed is None:
             return {"status": "idle"}
         task, resume = claimed
-        command = [sys.executable, "-B", str(ROOT / "pipeline/comfyui.py"), "--slug", story["slug"], "--page", str(task["page"]),
+        local = task.get("scope") == "local"
+        script = "comfyui_edit.py" if local else "comfyui.py"
+        command = [sys.executable, "-B", str(ROOT / "pipeline" / script), "--slug", story["slug"], "--page", str(task["page"]),
                    "--preset", task["preset"], "--server", server, "--seed", str(task["seed"]), "--timeout", str(timeout),
                    "--task-id", task["id"]]
-        command += ["--resume"] if resume else ["--candidate", "--revision-note", task["instruction"]]
+        if resume:
+            command.append("--resume")
+        elif local:
+            mask = book_dir(story) / task["mask"]
+            if not mask.is_file() or (task.get("mask_sha256") and file_sha(mask) != task["mask_sha256"]):
+                process = subprocess.CompletedProcess(command, 1, "", "局部蒙版缺失或已变更，请重新圈选。")
+                return settle(story, task, process)
+            command.extend(["--from-version", task["source_version"], "--mask", str(mask),
+                            "--instruction", task["instruction"], "--padding", "96"])
+        else:
+            command.extend(["--candidate", "--revision-note", task["instruction"]])
         process = subprocess.run(command, cwd=ROOT, text=True, capture_output=True)
         return settle(story, task, process)
 

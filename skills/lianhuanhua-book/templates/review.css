@@ -30,6 +30,12 @@ h1, h2, h3, p, figure { margin: 0; }
 .mast h1 { font: 600 clamp(26px, 3.2vw, 42px)/1.2 var(--serif); }
 .mast p { color: var(--seal); font-size: 12px; margin-bottom: 5px; }
 .mast a { flex: none; padding-bottom: 3px; }
+.work-tabs { position: sticky; top: 0; z-index: 4; background: var(--desk); border-bottom: 1px solid var(--rule); }
+.work-tabs > div { max-width: 1540px; margin: 0 auto; padding: 6px clamp(16px, 4vw, 52px); display: flex; gap: 5px; overflow-x: auto; }
+.work-tabs button { flex: none; white-space: nowrap; }
+.work-tabs button[data-jump="rework"] { color: var(--seal); }
+[data-jump] span { font-variant-numeric: tabular-nums; }
+#page-title, #continuity, #rework, #artwork, #region-toolbar { scroll-margin-top: 58px; }
 .notice { position: fixed; z-index: 5; bottom: 14px; left: 50%; max-width: calc(100% - 32px); transform: translateX(-50%); padding: 7px 14px; border: 1px solid var(--rule); border-radius: 4px; background: var(--sheet); box-shadow: 0 4px 18px #172b301b; color: var(--ink); }
 .notice.error { border-color: #97433b; color: #7f332b; }
 
@@ -37,6 +43,7 @@ h1, h2, h3, p, figure { margin: 0; }
 .rail { align-self: start; }
 .rail h2 { font-size: 15px; padding: 9px 2px; border-top: 1px solid var(--rule); }
 .rail h2 span, .annotations h3 span { margin-left: 4px; color: var(--muted); font-size: 12px; font-weight: 400; }
+#page-filter { width: 100%; margin-bottom: 6px; }
 .page-list { display: grid; gap: 7px; max-height: 73vh; padding: 2px 5px 3px 3px; overflow: auto; }
 .page-item { width: 100%; display: grid; grid-template-columns: 52px minmax(0, 1fr); align-items: center; gap: 7px; padding: 5px; text-align: left; background: transparent; border-color: transparent; }
 .page-item[aria-current="page"] { border-color: var(--seal); background: var(--wash); }
@@ -64,6 +71,9 @@ input[type=checkbox] { accent-color: var(--seal); }
 .pin { position: absolute; display: grid; place-items: center; transform: translate(-50%, -50%); min-width: 25px; height: 25px; padding: 0 4px; border-radius: 50%; color: white; background: var(--seal); border: 2px solid white; font-size: 11px; font-weight: 650; box-shadow: 0 1px 5px #0005; }
 .pin.draft { background: #7f332b; }
 .page-proof figcaption { padding: 4px 8px; border-top: 1px solid var(--rule); font-size: 12px; color: var(--muted); }
+.region-toolbar { display: flex; align-items: start; gap: 8px; margin-top: 8px; color: var(--muted); font-size: 12px; }
+.region-toolbar button { flex: none; }
+.artwork.region-focus .proof-image { max-height: 360px; object-fit: contain; }
 .draft-caption { font: 16px/1.85 var(--serif); text-align: left; margin: 14px calc(1px + 2em) 0; margin-inline: calc(1px + 2ic); }
 
 .annotations { min-width: 0; border-left: 1px solid var(--rule); padding-left: 14px; }
@@ -98,6 +108,18 @@ input[type=checkbox] { accent-color: var(--seal); }
 .task-controls { display: flex; align-items: start; flex-wrap: wrap; gap: 6px; }
 .task-controls label { display: inline-flex; align-items: center; gap: 5px; }
 
+#rework-dialog { width: min(690px, calc(100% - 24px)); max-height: calc(100% - 28px); padding: 14px; border: 1px solid var(--rule); background: var(--sheet); color: var(--ink); }
+#rework-dialog::backdrop { background: #172b306a; }
+#rework-dialog form { display: grid; gap: 9px; }
+.dialog-heading, .dialog-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.dialog-heading { justify-content: space-between; }
+.dialog-heading h2 { font: 600 22px var(--serif); }
+#origin-note, #region-status { font-size: 13px; color: var(--muted); }
+#region-target { position: relative; overflow: hidden; touch-action: none; cursor: crosshair; margin: 5px 0; }
+#region-target img { display: block; width: 100%; height: auto; user-select: none; }
+#region-box { position: absolute; pointer-events: none; border: 2px solid #076d5e; box-shadow: 0 0 0 100vmax #1d333b50; }
+#clear-region, #add-rework-confirm { justify-self: start; }
+
 @media (max-width: 940px) {
   .page-work { grid-template-columns: minmax(0, 1fr); }
   .annotations { border-left: 0; padding: 12px 0 0; border-top: 1px solid var(--rule); }
@@ -107,6 +129,8 @@ input[type=checkbox] { accent-color: var(--seal); }
   .mast { padding-top: 16px; padding-bottom: 12px; }
   .rail h2 { padding: 5px 2px; }
   .page-list { display: flex; overflow-x: auto; padding-bottom: 7px; }
+  #page-filter { width: auto; max-width: min(100%, 200px); }
+  .work-tabs button { padding: 5px 6px; font-size: 12px; }
   .page-item { flex: 0 0 110px; }
   .page-nav button { padding: 5px; }
   .detail-pages { grid-template-columns: repeat(2, minmax(0, 1fr)); }

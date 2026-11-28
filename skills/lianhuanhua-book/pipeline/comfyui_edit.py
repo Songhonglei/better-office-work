@@ -8,7 +8,7 @@ import uuid
 
 from PIL import Image, ImageChops, ImageOps
 
-from common import ROOT, atomic_bytes, atomic_json, file_sha, get_page, load_story, read_json, sha, visual_checks
+from common import ROOT, atomic_bytes, atomic_json, file_sha, get_page, identifier, load_story, read_json, sha, visual_checks
 from comfyui import Client, finish_job, receive_image, submit_job
 from progress import book_dir, context, entry, find_version, manifest, now, version_dir
 
@@ -87,6 +87,7 @@ def main():
     parser.add_argument("--preset", choices=("qwen-q4", "qwen-q6"), default="qwen-q4")
     parser.add_argument("--server", default="http://127.0.0.1:8188")
     parser.add_argument("--from-version", help="Defaults to the selected version")
+    parser.add_argument("--task-id", help="Associate this candidate with a workbench task")
     parser.add_argument("--mask", type=pathlib.Path, help="Full-size grayscale mask. White edits, black preserves")
     parser.add_argument("--instruction", help="Describe the requested visual change in the selected area")
     parser.add_argument("--check", action="append", default=[], help="Include a tracked visual rule in the edit instruction")
@@ -103,6 +104,8 @@ def main():
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument("--probe", action="store_true")
     args = parser.parse_args()
+    if args.task_id:
+        identifier(args.task_id, "task ID")
     if args.timeout <= 0 or args.padding < 0 or not 256 <= args.size <= 1024 or args.size % 32:
         parser.error("Use positive timeout, nonnegative padding and size of 256–1024 divisible by 32")
     if args.resume and (args.mask or args.instruction or args.reference or args.from_version or args.check or args.crop):
@@ -124,7 +127,8 @@ def main():
     if args.resume:
         job = row.get("job") or {}
         if (job.get("mode") != "local_edit" or job.get("server") != args.server
-                or job.get("context_sha256") != expected_context):
+                or job.get("context_sha256") != expected_context
+                or (args.task_id and job.get("task_id") != args.task_id)):
             raise ValueError("No matching local revision to resume for this page and context")
         folder = directory / job["edit_inputs"]
         base, source = source_image(story, args.page, row, job["source_version"])
@@ -169,6 +173,8 @@ def main():
                    working_size=dimensions, edit_inputs=str(folder.relative_to(directory)), checks_addressed=args.check)
         if args.reference:
             job["detail_reference_sha256"] = file_sha(ref_path)
+        if args.task_id:
+            job["task_id"] = args.task_id
         submit_job(client, story, args.page, workflow, job)
     model_bytes, meta = receive_image(client, job, args.timeout)
     atomic_bytes(folder / "model-output.png", model_bytes)
